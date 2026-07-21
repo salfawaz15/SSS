@@ -3,10 +3,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
-
+import 'screens/import_distribution_screen.dart';
 import 'screens/chats_list_screen.dart';
 import 'screens/login_screen.dart';
 import 'services/auth_service.dart';
+import 'screens/mail_test_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -42,7 +43,7 @@ class SulaimanApp extends StatelessWidget {
           brightness: Brightness.dark,
         ),
       ),
-      home: const AuthGate(),
+      home: const ImportDistributionScreen(),
     );
   }
 }
