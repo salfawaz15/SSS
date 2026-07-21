@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(flutter pub get)",
+      "PowerShell(flutter analyze 2>&1)",
+      "PowerShell($adb = \"$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\"; & $adb devices)",
+      "PowerShell($keystore = \"$env:USERPROFILE\\\\.android\\\\debug.keystore\"; $keytool = Get-ChildItem \"$env:LOCALAPPDATA\\\\Programs\\\\Android Studio\\\\jbr\\\\bin\\\\keytool.exe\",\"$env:ProgramFiles\\\\Android\\\\Android Studio\\\\jbr\\\\bin\\\\keytool.exe\",\"$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\..\\\\keytool.exe\" -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName; if \\(-not $keytool\\) { $keytool = \\(Get-Command keytool -ErrorAction SilentlyContinue\\).Source }; Write-Output \"keytool: $keytool\"; if \\(Test-Path $keystore\\) { Write-Output \"keystore exists\" } else { Write-Output \"keystore MISSING\" })",
+      "PowerShell($keytool = \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr\\\\bin\\\\keytool.exe\"; $keystore = \"$env:USERPROFILE\\\\.android\\\\debug.keystore\"; & $keytool -list -v -keystore $keystore -alias androiddebugkey -storepass android -keypass android | Select-String \"SHA1|SHA256\")",
+      "PowerShell(flutter run -d emulator-5554)"
+    ]
+  }
+}
