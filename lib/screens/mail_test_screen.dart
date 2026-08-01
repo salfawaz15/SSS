@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../services/mail_service.dart';
 
 class MailTestScreen extends StatefulWidget {
@@ -19,14 +20,15 @@ class _MailTestScreenState extends State<MailTestScreen> {
     });
 
     final success = await MailService.sendDepartmentReport(
-      
       shatr: 'شطر الطلاب',
       department: 'قسم اختبار',
       cycleId: 'test_cycle',
+      coordinatorEmail: 'test@example.com',
+      coordinatorName: 'منسّق تجريبي',
       tickets: [
         {
           'name': 'سلطان الاختباري',
-   'university_id': '',
+          'university_id': '',
           'shatr': 'شطر الطلاب',
           'department': 'قسم اختبار',
           'advisor': 'مرشد تجريبي',
@@ -39,9 +41,9 @@ class _MailTestScreenState extends State<MailTestScreen> {
               'course': 'مقرر تجريبي',
               'required_section': '101',
               'reason': 'اختبار النظام',
-            }
+            },
           ],
-        }
+        },
       ],
     );
 

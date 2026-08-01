@@ -1,17 +1,29 @@
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'screens/import_distribution_screen.dart';
-import 'screens/chats_list_screen.dart';
-import 'screens/login_screen.dart';
-import 'services/auth_service.dart';
-import 'screens/mail_test_screen.dart';
+
+import 'firebase_options.dart';
+import 'screens/home_shell.dart';
+import 'theme/app_theme.dart';
+import 'web_portal/hidden_admin_login_screen.dart';
+import 'web_portal/public_landing_screen.dart';
+
+/// المسار السرّي لدخول المدير العام (salfawaz) - غير ظاهر أو مرتبط بأي زر
+/// في الموقع؛ يُفتح فقط بكتابة الرابط كاملاً في المتصفح:
+/// https://sss-advising-tu.web.app/#su-portal-2026
+const String _hiddenAdminPath = 'su-portal-2026';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+  try {
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  } catch (e) {
+    // بوابة الويب (Firestore/Auth) تعتمد على Firebase - تطبيق الأندرويد
+    // (HomeShell) لا يعتمد عليها إطلاقًا، فلا يتأثر لو فشلت التهيئة هنا.
+    debugPrint('تعذّر تهيئة Firebase: $e');
+  }
   await initializeDateFormatting('ar', null);
   runApp(const SulaimanApp());
 }
@@ -21,10 +33,9 @@ class SulaimanApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const seed = Color(0xFF3A7BD5);
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'محادثات',
+      title: 'وحدة الإرشاد الأكاديمي',
       locale: const Locale('ar'),
       supportedLocales: const [Locale('ar'), Locale('en')],
       localizationsDelegates: const [
@@ -32,41 +43,14 @@ class SulaimanApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: seed),
-      ),
-      darkTheme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: seed,
-          brightness: Brightness.dark,
-        ),
-      ),
-      home: const ImportDistributionScreen(),
-    );
-  }
-}
-
-/// يوجّه المستخدم إلى شاشة الدخول أو المحادثات حسب حالة المصادقة.
-class AuthGate extends StatelessWidget {
-  const AuthGate({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
-      stream: authService.authState,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
-        }
-        if (snapshot.hasData) {
-          return const ChatsListScreen();
-        }
-        return const LoginScreen();
-      },
+      theme: AppTheme.light(),
+      darkTheme: AppTheme.dark(),
+      scrollBehavior: AppScrollBehavior(),
+      home: kIsWeb
+          ? (Uri.base.fragment == _hiddenAdminPath
+              ? const HiddenAdminLoginScreen()
+              : const PublicLandingScreen())
+          : const HomeShell(),
     );
   }
 }

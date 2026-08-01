@@ -51,9 +51,8 @@ class _ChatScreenState extends State<ChatScreen> {
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تعذّر إرسال الرسالة')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('تعذّر إرسال الرسالة')));
       }
     } finally {
       if (mounted) setState(() => _sending = false);
@@ -76,8 +75,10 @@ class _ChatScreenState extends State<ChatScreen> {
                   ? NetworkImage(widget.peer.photoUrl!)
                   : null,
               child: widget.peer.photoUrl == null
-                  ? Text(widget.peer.initials,
-                      style: TextStyle(color: cs.onPrimaryContainer))
+                  ? Text(
+                      widget.peer.initials,
+                      style: TextStyle(color: cs.onPrimaryContainer),
+                    )
                   : null,
             ),
             const SizedBox(width: 12),
@@ -86,11 +87,14 @@ class _ChatScreenState extends State<ChatScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(widget.peer.displayName,
-                      style: const TextStyle(fontSize: 16)),
-                  Text(widget.peer.email,
-                      style: TextStyle(
-                          fontSize: 12, color: cs.onSurfaceVariant)),
+                  Text(
+                    widget.peer.displayName,
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                  Text(
+                    widget.peer.email,
+                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                  ),
                 ],
               ),
             ),
@@ -119,7 +123,9 @@ class _ChatScreenState extends State<ChatScreen> {
                   controller: _scrollCtrl,
                   reverse: true,
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 12),
+                    horizontal: 12,
+                    vertical: 12,
+                  ),
                   itemCount: messages.length,
                   itemBuilder: (context, index) {
                     final msg = messages[index];
@@ -130,11 +136,7 @@ class _ChatScreenState extends State<ChatScreen> {
               },
             ),
           ),
-          _Composer(
-            controller: _textCtrl,
-            sending: _sending,
-            onSend: _send,
-          ),
+          _Composer(controller: _textCtrl, sending: _sending, onSend: _send),
         ],
       ),
     );
@@ -187,8 +189,9 @@ class _MessageBubble extends StatelessWidget {
               time,
               style: TextStyle(
                 fontSize: 10,
-                color: (isMine ? cs.onPrimary : cs.onSurfaceVariant)
-                    .withValues(alpha: 0.7),
+                color: (isMine ? cs.onPrimary : cs.onSurfaceVariant).withValues(
+                  alpha: 0.7,
+                ),
               ),
             ),
           ],
@@ -229,7 +232,9 @@ class _Composer extends StatelessWidget {
                   filled: true,
                   fillColor: cs.surfaceContainerHighest,
                   contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 10),
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(24),
                     borderSide: BorderSide.none,
@@ -246,7 +251,9 @@ class _Composer extends StatelessWidget {
                       height: 22,
                       width: 22,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white),
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
                     )
                   : const Icon(Icons.send_rounded),
             ),

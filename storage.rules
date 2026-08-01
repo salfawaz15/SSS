@@ -1,0 +1,17 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // ملف تنزيل تطبيق CBA Advising (APK) - قراءة عامة للجميع (بلا تسجيل
+    // دخول، يُستخدم من داخل التطبيق نفسه للتحقق من التحديثات وتنزيلها)،
+    // وكتابة مقصورة على المطوّر عبر Firebase CLI فقط (لا كتابة من التطبيق).
+    match /app_releases/{fileName} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

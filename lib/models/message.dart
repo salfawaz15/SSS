@@ -26,8 +26,8 @@ class Message {
   }
 
   Map<String, dynamic> toMap() => {
-        'senderId': senderId,
-        'text': text,
-        'timestamp': FieldValue.serverTimestamp(),
-      };
+    'senderId': senderId,
+    'text': text,
+    'timestamp': FieldValue.serverTimestamp(),
+  };
 }

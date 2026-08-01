@@ -75,7 +75,8 @@ class AuthService {
     final user = _auth.currentUser;
     if (user == null) return;
 
-    final displayName = overrideName ??
+    final displayName =
+        overrideName ??
         user.displayName ??
         (user.email?.split('@').first ?? 'مستخدم');
 
@@ -87,10 +88,10 @@ class AuthService {
       'updatedAt': FieldValue.serverTimestamp(),
     };
 
-    await _db.collection('users').doc(user.uid).set(
-          data,
-          SetOptions(merge: true),
-        );
+    await _db
+        .collection('users')
+        .doc(user.uid)
+        .set(data, SetOptions(merge: true));
   }
 
   /// يحوّل رمز الخطأ من Firebase إلى رسالة عربية واضحة.

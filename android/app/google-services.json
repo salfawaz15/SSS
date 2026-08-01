@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "396420191623",
-    "project_id": "chat-e0a84",
-    "storage_bucket": "chat-e0a84.firebasestorage.app"
+    "project_number": "843787630334",
+    "project_id": "sss-advising-tu",
+    "storage_bucket": "sss-advising-tu.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:396420191623:android:5f64448bea694e1148af22",
+        "mobilesdk_app_id": "1:843787630334:android:bdb59a185231e2a0ea97af",
         "android_client_info": {
           "package_name": "com.sulaiman.chat"
         }
@@ -15,7 +15,26 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyBObVXLeNIltAZl47nklSeGtu-etLf5SnY"
+          "current_key": "AIzaSyC2e4SyjH7LG3ywv46gWHISMntS3n75QPo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:843787630334:android:01b9f5a9d7ea7712ea97af",
+        "android_client_info": {
+          "package_name": "com.taif.cba.advising"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC2e4SyjH7LG3ywv46gWHISMntS3n75QPo"
         }
       ],
       "services": {

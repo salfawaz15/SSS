@@ -1,3 +1,7 @@
+# أداة الإدارة المحلية السرّية - لا تُنشر أبدًا
+tool/admin_cli/node_modules/
+node_modules/
+
 # Miscellaneous
 *.class
 *.log

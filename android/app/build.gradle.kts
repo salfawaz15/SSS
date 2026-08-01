@@ -33,6 +33,18 @@ android {
         versionName = flutter.versionName
     }
 
+    flavorDimensions += "app"
+    productFlavors {
+        create("sulaiman") {
+            dimension = "app"
+            applicationId = "com.sulaiman.chat"
+        }
+        create("advising") {
+            dimension = "app"
+            applicationId = "com.taif.cba.advising"
+        }
+    }
+
     buildTypes {
         release {
             // TODO: Add your own signing config for the release build.

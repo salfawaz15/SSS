@@ -1,0 +1,180 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAdmin() {
+      return request.auth != null &&
+        (request.auth.token.email == 'admin@sss-advising-tu.internal' ||
+         request.auth.token.email == 'salfawaz@sss-advising-tu.internal');
+    }
+
+    // حساب المدير العام (salfawaz) فقط - صلاحيات إضافية حصرية عليه لا يملكها
+    // حساب الإدارة العادي (admin@)، مثل تعديل بيانات منسّقي الأقسام.
+    function isSuperAdmin() {
+      return request.auth != null &&
+        request.auth.token.email == 'salfawaz@sss-advising-tu.internal';
+    }
+
+    // حسابا عرض للتقارير فقط (أمين الوحدة وسكرتيرة الوحدة) - قراءة فقط،
+    // بلا أي صلاحية رفع أو تعديل أو تنزيل ملفات الأقسام.
+    function isViewer() {
+      return request.auth != null &&
+        (request.auth.token.email == 'ameen@sss-advising-tu.internal' ||
+         request.auth.token.email == 'secretary@sss-advising-tu.internal');
+    }
+
+    function coordinatorAccount() {
+      return get(/databases/$(database)/documents/coordinator_accounts/$(request.auth.uid)).data;
+    }
+
+    function isCoordinatorFor(shatr, department) {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/coordinator_accounts/$(request.auth.uid)) &&
+        coordinatorAccount().shatr == shatr &&
+        coordinatorAccount().department == department;
+    }
+
+    // منسّق/ة الكلية (المستوى الثالث في مسار التصعيد: مرشد -> منسّق قسم ->
+    // منسّق الكلية) - يرى كل أقسام شطره مجتمعة، لا قسمًا واحدًا فقط.
+    function collegeCoordinatorAccount() {
+      return get(/databases/$(database)/documents/college_coordinator_accounts/$(request.auth.uid)).data;
+    }
+
+    function isCollegeCoordinatorFor(shatr) {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/college_coordinator_accounts/$(request.auth.uid)) &&
+        collegeCoordinatorAccount().shatr == shatr;
+    }
+
+    match /tickets/{ticketId} {
+      allow read, write: if isAdmin();
+
+      allow read: if isCoordinatorFor(resource.data.shatr, resource.data.department);
+
+      allow read: if isCollegeCoordinatorFor(resource.data.shatr);
+
+      allow read: if isViewer();
+
+      allow update: if isCoordinatorFor(resource.data.shatr, resource.data.department) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['actions']) &&
+        request.resource.data.shatr == resource.data.shatr &&
+        request.resource.data.department == resource.data.department &&
+        request.resource.data.university_id == resource.data.university_id;
+
+      allow update: if isCollegeCoordinatorFor(resource.data.shatr) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['actions']) &&
+        request.resource.data.shatr == resource.data.shatr &&
+        request.resource.data.department == resource.data.department &&
+        request.resource.data.university_id == resource.data.university_id;
+    }
+
+    match /coordinator_accounts/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if isAdmin();
+    }
+
+    match /college_coordinator_accounts/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if isAdmin();
+    }
+
+    // إحصائيات علنية موجزة تُعرض في الصفحة الرئيسية العامة قبل تسجيل
+    // الدخول (بدون كشف أي بيانات طالب فردية) - قراءة عامة للجميع، وكتابة
+    // للإدارة فقط (تُحدَّث تلقائيًا من لوحة الإدارة عند أي تغيير في البيانات).
+    match /public_stats/summary {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // بيانات منسّقي الأقسام (اسم + بريد رسمي) - تُعرض علنًا في الصفحة
+    // الرئيسية قبل تسجيل الدخول، لكن التعديل مقصور على حساب الإدارة الكامل
+    // (admin/salfawaz) فقط.
+    match /coordinator_contacts/{docId} {
+      allow read: if true;
+      allow write: if isSuperAdmin();
+    }
+
+    // حالات الظروف الخاصة: يسجّلها منسّق القسم لقسمه/شطره فقط بعد اعتماد
+    // نموذج توثيق الحالة الورقي، وتراها إدارة الوحدة كاملة عبر كل الأقسام
+    // لمتابعة ما تم بشأن كل حالة. لا صلاحية حذف لأي طرف - سجل تاريخي دائم.
+    match /hardship_cases/{caseId} {
+      allow read, update: if isAdmin();
+
+      allow read: if isCoordinatorFor(resource.data.shatr, resource.data.department);
+
+      allow create: if isCoordinatorFor(request.resource.data.shatr, request.resource.data.department);
+
+      allow update: if isCoordinatorFor(resource.data.shatr, resource.data.department) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'history']) &&
+        request.resource.data.student_name == resource.data.student_name &&
+        request.resource.data.university_id == resource.data.university_id &&
+        request.resource.data.shatr == resource.data.shatr &&
+        request.resource.data.department == resource.data.department;
+    }
+
+    // حالات الدعم النفسي والاجتماعي: نفس آلية حالات الظروف الخاصة بالضبط
+    // لكن في مجموعة منفصلة تمامًا لحساسية طبيعتها.
+    match /support_cases/{caseId} {
+      allow read, update: if isAdmin();
+
+      allow read: if isCoordinatorFor(resource.data.shatr, resource.data.department);
+
+      allow create: if isCoordinatorFor(request.resource.data.shatr, request.resource.data.department);
+
+      allow update: if isCoordinatorFor(resource.data.shatr, resource.data.department) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'history']) &&
+        request.resource.data.student_name == resource.data.student_name &&
+        request.resource.data.university_id == resource.data.university_id &&
+        request.resource.data.shatr == resource.data.shatr &&
+        request.resource.data.department == resource.data.department;
+    }
+
+    // إعدادات إصدار تطبيق CBA Advising (رقم الإصدار الحالي + رابط تنزيل
+    // الملف) - تُقرأ من داخل التطبيق نفسه للتحقق من توفر تحديث جديد، قراءة
+    // عامة للجميع (لا بيانات حساسة)، وتعديل مقصور على حساب الإدارة الكامل.
+    match /app_config/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // قائمة مرشدي كل قسم (اسم + هل هو منسّق قسم) - تُستخدم لتوزيع حالات
+    // منسّق القسم على بقية المرشدين خلال فترة الحذف والإضافة. يقرؤها كل من
+    // الإدارة والمنسّقين (بحاجتها عند تنزيل ملف قسمهم)، وتعديلها للإدارة فقط.
+    match /advisor_roster/{advisorId} {
+      allow read: if isAdmin() || isViewer() ||
+        (request.auth != null && exists(/databases/$(database)/documents/coordinator_accounts/$(request.auth.uid)));
+      allow write: if isAdmin();
+    }
+
+    // تقارير المراحل الثلاث المجمَّدة (مرشدون / منسّق قسم / منسّق كلية) -
+    // وثيقة ثابتة تُنشأ عند "تجميد" مرحلة، ولا تُعدَّل أو تُحذف أبدًا بعد
+    // إنشائها (لا قاعدة update/delete هنا عمدًا) حتى تبقى توثيقًا تاريخيًا
+    // موثوقًا لما أنجزه كل مستوى، حتى لو تغيّرت بيانات tickets لاحقًا.
+    match /stage_snapshots/{snapshotId} {
+      allow read: if isAdmin() || isViewer();
+
+      allow read: if resource.data.department != '__ALL__' &&
+        isCoordinatorFor(resource.data.shatr, resource.data.department);
+
+      allow read: if resource.data.department == '__ALL__' &&
+        isCollegeCoordinatorFor(resource.data.shatr);
+
+      allow create: if isAdmin() ||
+        (request.resource.data.department != '__ALL__' &&
+          isCoordinatorFor(request.resource.data.shatr, request.resource.data.department)) ||
+        (request.resource.data.department == '__ALL__' &&
+          isCollegeCoordinatorFor(request.resource.data.shatr));
+    }
+
+    // دليل مقررات الحذف والإضافة (جدول تسكين الشعب لكل شطر) - رفع وقراءة
+    // مقصوران على حساب المدير العام (salfawaz) فقط، حسب طلبه صراحةً.
+    match /courseSchedules/{shatrId} {
+      allow read, write: if isSuperAdmin();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

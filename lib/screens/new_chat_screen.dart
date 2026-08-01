@@ -46,17 +46,17 @@ class NewChatScreen extends StatelessWidget {
                       ? NetworkImage(user.photoUrl!)
                       : null,
                   child: user.photoUrl == null
-                      ? Text(user.initials,
-                          style: TextStyle(color: cs.onPrimaryContainer))
+                      ? Text(
+                          user.initials,
+                          style: TextStyle(color: cs.onPrimaryContainer),
+                        )
                       : null,
                 ),
                 title: Text(user.displayName),
                 subtitle: Text(user.email),
                 onTap: () {
                   Navigator.of(context).pushReplacement(
-                    MaterialPageRoute(
-                      builder: (_) => ChatScreen(peer: user),
-                    ),
+                    MaterialPageRoute(builder: (_) => ChatScreen(peer: user)),
                   );
                 },
               );

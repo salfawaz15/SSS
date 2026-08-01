@@ -29,11 +29,11 @@ class AppUser {
   }
 
   Map<String, dynamic> toMap() => {
-        'uid': uid,
-        'email': email,
-        'displayName': displayName,
-        'photoUrl': photoUrl,
-      };
+    'uid': uid,
+    'email': email,
+    'displayName': displayName,
+    'photoUrl': photoUrl,
+  };
 
   /// أول حرف من الاسم لعرضه في الصورة الرمزية عند غياب الصورة.
   String get initials {

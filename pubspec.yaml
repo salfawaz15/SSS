@@ -1,8 +1,8 @@
 name: sulaiman
-description: "A new Flutter project."
+description: "تطبيق وحدة الإرشاد الأكاديمي والخريجين - استيراد وتوزيع طلبات الطلاب"
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 
-version: 1.0.0+1
+version: 1.0.4+5
 
 environment:
   sdk: ^3.14.0-10.0.dev
@@ -15,6 +15,7 @@ dependencies:
   http: ^1.2.0
   excel: ^4.0.6
   file_picker: ^10.3.5
+  html: ^0.15.5
 
   cupertino_icons: ^1.0.8
   firebase_core: ^4.11.0
@@ -23,12 +24,46 @@ dependencies:
   firebase_storage: ^13.4.3
   google_sign_in: ^7.2.0
   intl: ^0.20.3
+  shared_preferences: ^2.3.3
+  archive: ^3.6.1
+  xml: ^6.6.1
+  pdf: ^3.11.1
+  printing: ^5.13.4
+  path_provider: ^2.1.5
+  open_filex: ^4.5.0
+  google_fonts: ^6.2.1
+  url_launcher: ^6.3.1
+  fl_chart: ^0.69.2
+  package_info_plus: ^8.1.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
 
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.3
+  image: ^4.3.0
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  web:
+    generate: true
+    image_path: "assets/images/app_icon.png"
+  image_path: "assets/images/app_icon.png"
+  min_sdk_android: 21
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/images/unit_logo_cropped.png
+    - assets/images/full_logo_green.png
+    - assets/images/app_icon.png
+    - assets/images/unit_logo_transparent.jpeg
+    - assets/images/unit_logo_light.png
+    - assets/images/unit_logo_dark.png
+    - assets/images/guide/login_coordinator.png
+    - assets/images/guide/workspace_overview.png
+    - assets/images/guide/change_password.png
+    - assets/fonts/NotoNaskhArabic-Regular.ttf
+    - assets/fonts/NotoNaskhArabic-Bold.ttf

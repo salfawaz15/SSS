@@ -83,22 +83,27 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         borderRadius: BorderRadius.circular(28),
                       ),
-                      child: const Icon(Icons.chat_rounded,
-                          color: Colors.white, size: 44),
+                      child: const Icon(
+                        Icons.chat_rounded,
+                        color: Colors.white,
+                        size: 44,
+                      ),
                     ),
                     const SizedBox(height: 20),
                     Text(
                       'مرحبًا بعودتك',
                       textAlign: TextAlign.center,
-                      style: theme.textTheme.headlineSmall
-                          ?.copyWith(fontWeight: FontWeight.bold),
+                      style: theme.textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const SizedBox(height: 6),
                     Text(
                       'سجّل دخولك لمتابعة محادثاتك',
                       textAlign: TextAlign.center,
-                      style: theme.textTheme.bodyMedium
-                          ?.copyWith(color: cs.onSurfaceVariant),
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: cs.onSurfaceVariant,
+                      ),
                     ),
                     const SizedBox(height: 32),
                     TextFormField(
@@ -127,11 +132,12 @@ class _LoginScreenState extends State<LoginScreen> {
                         prefixIcon: const Icon(Icons.lock_outline),
                         border: const OutlineInputBorder(),
                         suffixIcon: IconButton(
-                          icon: Icon(_obscure
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined),
-                          onPressed: () =>
-                              setState(() => _obscure = !_obscure),
+                          icon: Icon(
+                            _obscure
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                          ),
+                          onPressed: () => setState(() => _obscure = !_obscure),
                         ),
                       ),
                       validator: (v) => (v == null || v.length < 6)
@@ -158,8 +164,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         const Expanded(child: Divider()),
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 12),
-                          child: Text('أو',
-                              style: TextStyle(color: cs.onSurfaceVariant)),
+                          child: Text(
+                            'أو',
+                            style: TextStyle(color: cs.onSurfaceVariant),
+                          ),
                         ),
                         const Expanded(child: Divider()),
                       ],

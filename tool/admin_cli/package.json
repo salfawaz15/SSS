@@ -1,0 +1,9 @@
+{
+  "name": "sss-advising-admin-cli",
+  "private": true,
+  "version": "1.0.0",
+  "description": "أداة محلية سرّية لإدارة حسابات بوابة الويب (إنشاء/حذف/تغيير كلمة مرور أي حساب) - تعمل من جهازك فقط عبر صلاحياتك الحالية في Firebase CLI، بلا حاجة لخطة Blaze أو أي تكلفة.",
+  "dependencies": {
+    "firebase-admin": "^13.0.0"
+  }
+}

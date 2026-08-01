@@ -79,9 +79,9 @@ class ChatsListScreen extends StatelessWidget {
         },
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const NewChatScreen()),
-        ),
+        onPressed: () =>
+            Navigator.of(context)
+                .push(MaterialPageRoute(builder: (_) => const NewChatScreen())),
         icon: const Icon(Icons.chat_rounded),
         label: const Text('جديدة'),
       ),
@@ -115,8 +115,10 @@ class _ChatTile extends StatelessWidget {
         final peer = snapshot.data;
         final name = peer?.displayName ?? '...';
         return ListTile(
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 4,
+          ),
           leading: CircleAvatar(
             radius: 26,
             backgroundColor: cs.primaryContainer,
@@ -124,23 +126,27 @@ class _ChatTile extends StatelessWidget {
                 ? NetworkImage(peer!.photoUrl!)
                 : null,
             child: peer?.photoUrl == null
-                ? Text(peer?.initials ?? '؟',
-                    style: TextStyle(color: cs.onPrimaryContainer))
+                ? Text(
+                    peer?.initials ?? '؟',
+                    style: TextStyle(color: cs.onPrimaryContainer),
+                  )
                 : null,
           ),
-          title: Text(name,
-              maxLines: 1, overflow: TextOverflow.ellipsis),
-          subtitle: Text(lastMessage,
-              maxLines: 1, overflow: TextOverflow.ellipsis),
-          trailing: Text(time,
-              style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+          title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
+          subtitle: Text(
+            lastMessage,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: Text(
+            time,
+            style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+          ),
           onTap: peer == null
               ? null
               : () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => ChatScreen(peer: peer),
-                    ),
-                  ),
+                  MaterialPageRoute(builder: (_) => ChatScreen(peer: peer)),
+                ),
         );
       },
     );
@@ -167,11 +173,16 @@ class _EmptyState extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.forum_outlined,
-              size: 80, color: colorScheme.primary.withValues(alpha: 0.5)),
+          Icon(
+            Icons.forum_outlined,
+            size: 80,
+            color: colorScheme.primary.withValues(alpha: 0.5),
+          ),
           const SizedBox(height: 16),
-          Text('لا توجد محادثات بعد',
-              style: Theme.of(context).textTheme.titleMedium),
+          Text(
+            'لا توجد محادثات بعد',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
           const SizedBox(height: 8),
           Text(
             'اضغط "جديدة" لبدء محادثة',
