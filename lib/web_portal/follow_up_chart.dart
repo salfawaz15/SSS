@@ -100,6 +100,35 @@ class _FollowUpChartState extends State<FollowUpChart> {
               ),
             ],
           ),
+          if (_hasFilters) ...[
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                if (widget.showShatrFilter)
+                  DropdownMenu<String>(
+                    label: const Text('الشطر'),
+                    initialSelection: _shatr,
+                    dropdownMenuEntries: [ExcelParserService.shatrMale, ExcelParserService.shatrFemale]
+                        .map((s) => DropdownMenuEntry(value: s, label: s))
+                        .toList(),
+                    onSelected: (v) => setState(() => _shatr = v),
+                  ),
+                if (widget.showDepartmentFilter)
+                  DropdownMenu<String>(
+                    label: const Text('القسم'),
+                    initialSelection: _department,
+                    dropdownMenuEntries: ExcelParserService.departments
+                        .map((d) => DropdownMenuEntry(value: d, label: d))
+                        .toList(),
+                    onSelected: (v) => setState(() => _department = v),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            const Divider(height: 1),
+          ],
           const SizedBox(height: 14),
           if (filteredPie == null)
             _StatusPie(notStarted: notStarted, inProgress: inProgress, complete: complete)
@@ -137,45 +166,6 @@ class _FollowUpChartState extends State<FollowUpChart> {
                 );
               },
             ),
-          if (_hasFilters) ...[
-            const SizedBox(height: 18),
-            const Divider(height: 1),
-            const SizedBox(height: 14),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                if (widget.showShatrFilter)
-                  SizedBox(
-                    width: 200,
-                    child: DropdownButtonFormField<String>(
-                      initialValue: _shatr,
-                      isExpanded: true,
-                      hint: const Text('اختر الشطر'),
-                      decoration: const InputDecoration(labelText: 'الشطر', isDense: true, border: OutlineInputBorder()),
-                      items: [ExcelParserService.shatrMale, ExcelParserService.shatrFemale]
-                          .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                          .toList(),
-                      onChanged: (v) => setState(() => _shatr = v),
-                    ),
-                  ),
-                if (widget.showDepartmentFilter)
-                  SizedBox(
-                    width: 240,
-                    child: DropdownButtonFormField<String>(
-                      initialValue: _department,
-                      isExpanded: true,
-                      hint: const Text('اختر القسم'),
-                      decoration: const InputDecoration(labelText: 'القسم', isDense: true, border: OutlineInputBorder()),
-                      items: ExcelParserService.departments
-                          .map((d) => DropdownMenuItem(value: d, child: Text(d)))
-                          .toList(),
-                      onChanged: (v) => setState(() => _department = v),
-                    ),
-                  ),
-              ],
-            ),
-          ],
           const SizedBox(height: 18),
           bars,
         ],

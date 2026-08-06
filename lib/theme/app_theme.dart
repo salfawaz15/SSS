@@ -7,6 +7,90 @@ class AppColors {
   static const greenDark = Color(0xFF0D3324);
   static const gold = Color(0xFFC9A227);
   static const goldLight = Color(0xFFE2C766);
+
+  // ألوان كانت متكررة يدويًا داخل شاشات متفرقة (خلفية، تنبيه، دخول سري) -
+  // مجمَّعة هنا كمرجع واحد بدل تكرار قيم Hex مباشرة في كل ملف.
+  static const background = Color(0xFFF5F7F6);
+  static const errorRed = Color(0xFFB3261E);
+  static const surfaceDark = Color(0xFF20261F);
+}
+
+/// مقاسات خط موحّدة بخط Cairo - بديل عن كتابة TextStyle يدويًا في كل شاشة
+/// (كان مصدر تكرار كبير وتفاوت غير مقصود في الأحجام/الأوزان عبر الملفات).
+class AppTextStyles {
+  static TextStyle h1({Color color = AppColors.greenDark}) =>
+      GoogleFonts.cairo(fontSize: 24, fontWeight: FontWeight.w700, color: color);
+  static TextStyle h2({Color color = AppColors.greenDark}) =>
+      GoogleFonts.cairo(fontSize: 20, fontWeight: FontWeight.w700, color: color);
+  static TextStyle h3({Color color = AppColors.greenDark}) =>
+      GoogleFonts.cairo(fontSize: 16, fontWeight: FontWeight.w600, color: color);
+  static TextStyle body({Color color = Colors.black87}) =>
+      GoogleFonts.cairo(fontSize: 14, fontWeight: FontWeight.w400, color: color);
+  static TextStyle caption({Color color = Colors.black54}) =>
+      GoogleFonts.cairo(fontSize: 12, fontWeight: FontWeight.w400, color: color);
+}
+
+/// زوايا استدارة موحّدة - بديل عن كتابة BorderRadius.circular(..) بأرقام
+/// متفرقة (12/14/16...) يدويًا في كل شاشة.
+class AppRadius {
+  static const sm = 8.0;
+  static const md = 12.0;
+  static const lg = 16.0;
+}
+
+/// مسافات حشو/تباعد موحّدة - بديل عن أرقام Padding/SizedBox المتكررة يدويًا.
+class AppSpacing {
+  static const xs = 4.0;
+  static const sm = 8.0;
+  static const md = 12.0;
+  static const lg = 16.0;
+  static const xl = 24.0;
+}
+
+/// تنبيهات موحّدة الهوية البصرية (بديل SnackBar الأحمر الافتراضي المزعج) -
+/// بطاقة عائمة داكنة بشريط جانبي ملوّن وأيقونة، بدل شريط كامل العرض بلون
+/// صارخ. تُستخدم في كل الشاشات بدل `ScaffoldMessenger.showSnackBar` مباشرة.
+class AppNotice {
+  static void show(
+    BuildContext context, {
+    required String message,
+    bool isError = false,
+  }) {
+    final color = isError ? const Color(0xFFB3261E) : AppColors.green;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: const Color(0xFF20261F),
+        elevation: 6,
+        margin: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        padding: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        duration: Duration(seconds: isError ? 6 : 3),
+        content: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(width: 5, decoration: BoxDecoration(color: color, borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)))),
+              const SizedBox(width: 12),
+              Icon(isError ? Icons.error_outline : Icons.check_circle_outline, color: color, size: 22),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Text(message, style: const TextStyle(color: Colors.white, fontSize: 13.5, height: 1.5)),
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  static void error(BuildContext context, String message) => show(context, message: message, isError: true);
+  static void success(BuildContext context, String message) => show(context, message: message, isError: false);
 }
 
 /// سلوك تمرير مخصَّص يجعل شريط التمرير يلتصق تمامًا بالحافة اليسرى للنافذة

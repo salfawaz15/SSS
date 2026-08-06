@@ -60,6 +60,7 @@ flutter:
     - assets/images/full_logo_green.png
     - assets/images/app_icon.png
     - assets/images/unit_logo_transparent.jpeg
+    - assets/images/unit_logo_transparent.png
     - assets/images/unit_logo_light.png
     - assets/images/unit_logo_dark.png
     - assets/images/guide/login_coordinator.png

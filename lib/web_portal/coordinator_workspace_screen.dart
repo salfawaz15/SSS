@@ -22,11 +22,11 @@ import '../services/stage_snapshot_service.dart';
 import '../services/web_download.dart';
 import '../theme/app_theme.dart';
 import 'change_password_dialog.dart';
+import 'coordinator_nav.dart';
 import 'follow_up_chart.dart';
 import 'hardship_cases_coordinator_screen.dart';
-import 'portal_footer.dart';
+import 'portal_header.dart';
 import 'portal_operations_guide_page.dart';
-import 'public_landing_screen.dart';
 import 'round_icon_button.dart';
 import 'stage_progress_chart.dart';
 import 'support_cases_coordinator_screen.dart';
@@ -435,41 +435,16 @@ class _CoordinatorBodyState extends State<_CoordinatorBody> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('${widget.department} - ${widget.shatr}'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.home_outlined),
-            tooltip: 'الصفحة الرئيسية للموقع',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const PublicLandingScreen()),
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.volunteer_activism_outlined),
-            tooltip: 'حالات الظروف الخاصة',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => HardshipCasesCoordinatorScreen(
-                  shatr: widget.shatr,
-                  department: widget.department,
-                ),
-              ),
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.favorite_border),
-            tooltip: 'حالات الدعم النفسي والاجتماعي',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => SupportCasesCoordinatorScreen(
-                  shatr: widget.shatr,
-                  department: widget.department,
-                ),
-              ),
-            ),
-          ),
+    return PortalScaffold(
+      title: '${widget.department} - ${widget.shatr}',
+      showBackButton: false,
+      navItems: buildCoordinatorNavItems(
+        context,
+        current: 'dashboard',
+        shatr: widget.shatr,
+        department: widget.department,
+      ),
+      actions: [
           PopupMenuButton<VoidCallback>(
             icon: const Icon(Icons.more_vert),
             tooltip: 'المزيد',
@@ -492,9 +467,7 @@ class _CoordinatorBodyState extends State<_CoordinatorBody> {
               ),
             ],
           ),
-        ],
-      ),
-      bottomNavigationBar: const PortalFooterBar(),
+      ],
       body: StreamBuilder<List<Map<String, dynamic>>>(
         stream: FirestoreTicketService.watchDepartmentTickets(
           shatr: widget.shatr,

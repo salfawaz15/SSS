@@ -9,7 +9,7 @@ import '../services/report_pdf_service.dart';
 import '../services/web_download.dart';
 import '../theme/app_theme.dart';
 import 'change_password_dialog.dart';
-import 'portal_footer.dart';
+import 'portal_header.dart';
 
 /// شاشة حساب "العرض فقط" (أمين الوحدة / سكرتير الوحدة): استطلاع وعرض
 /// وطباعة التقرير الشامل حصرًا - بلا أي صلاحية رفع أو تنزيل ملفات الأقسام
@@ -99,10 +99,10 @@ class _ViewerReportsScreenState extends State<ViewerReportsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('التقرير الشامل'),
-        actions: [
+    return PortalScaffold(
+      title: 'التقرير الشامل',
+      showBackButton: false,
+      actions: [
           IconButton(
             icon: const Icon(Icons.lock_outline),
             tooltip: 'تغيير كلمة المرور',
@@ -113,9 +113,7 @@ class _ViewerReportsScreenState extends State<ViewerReportsScreen> {
             tooltip: 'تسجيل خروج',
             onPressed: () => FirebaseAuth.instance.signOut(),
           ),
-        ],
-      ),
-      bottomNavigationBar: const PortalFooterBar(),
+      ],
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),

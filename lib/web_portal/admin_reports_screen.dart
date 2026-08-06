@@ -11,7 +11,9 @@ import '../services/report_filter_service.dart';
 import '../services/report_pdf_service.dart';
 import '../services/web_download.dart';
 import '../theme/app_theme.dart';
+import 'admin_nav.dart';
 import 'follow_up_chart.dart';
+import 'portal_header.dart';
 
 /// شاشة التقارير التفصيلية: تتيح للإدارة اختيار نوع التقرير (شامل / حسب
 /// القسم / حسب الشطر / حسب المرشد الأكاديمي) ثم تصديره Excel أو PDF أو
@@ -394,8 +396,9 @@ class _AdminReportsScreenState extends State<AdminReportsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('التقارير التفصيلية')),
+    return PortalScaffold(
+      title: 'التقارير التفصيلية',
+      navItems: buildAdminNavItems(context, current: 'reports'),
       body: StreamBuilder<List<Map<String, dynamic>>>(
         stream: FirestoreTicketService.watchAllTickets(),
         builder: (context, snapshot) {

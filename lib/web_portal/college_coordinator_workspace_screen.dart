@@ -14,7 +14,7 @@ import '../services/web_download.dart';
 import '../theme/app_theme.dart';
 import 'change_password_dialog.dart';
 import 'follow_up_chart.dart';
-import 'portal_footer.dart';
+import 'portal_header.dart';
 import 'public_landing_screen.dart';
 import 'stage_progress_chart.dart';
 
@@ -180,17 +180,25 @@ class _CollegeCoordinatorBodyState extends State<_CollegeCoordinatorBody> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('منسّق الكلية - ${widget.shatr}'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.home_outlined),
-            tooltip: 'الصفحة الرئيسية للموقع',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const PublicLandingScreen()),
-            ),
+    return PortalScaffold(
+      title: 'منسّق الكلية - ${widget.shatr}',
+      showBackButton: false,
+      navItems: [
+        PortalNavItem(
+          label: 'لوحة منسّق الكلية',
+          icon: Icons.dashboard_outlined,
+          selected: true,
+          onTap: () {},
+        ),
+        PortalNavItem(
+          label: 'الموقع العام',
+          icon: Icons.public_outlined,
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const PublicLandingScreen()),
           ),
+        ),
+      ],
+      actions: [
           IconButton(
             icon: const Icon(Icons.lock_outline),
             tooltip: 'تغيير كلمة المرور',
@@ -201,9 +209,7 @@ class _CollegeCoordinatorBodyState extends State<_CollegeCoordinatorBody> {
             tooltip: 'تسجيل خروج',
             onPressed: () => FirebaseAuth.instance.signOut(),
           ),
-        ],
-      ),
-      bottomNavigationBar: const PortalFooterBar(),
+      ],
       body: StreamBuilder<List<Map<String, dynamic>>>(
         stream: FirestoreTicketService.watchShatrTickets(shatr: widget.shatr),
         builder: (context, snapshot) {

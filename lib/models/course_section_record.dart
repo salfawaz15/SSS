@@ -40,6 +40,10 @@ class CourseSectionRecord {
   final String? practicalInstructorName; // محاضر الشعبة العملية (قد يختلف عن محاضر النظري)
   final int theoryHours; // عدد الساعات المعتمدة لنشاط النظري (من عمود "الساعات" في الملف)
   final int practicalHours; // عدد الساعات المعتمدة لنشاط العملي (0 إن لم توجد شعبة عملية)
+  final int theoryMaxCapacity; // "اعلى حد" لشعبة النظري
+  final int theoryRegistered; // "المسجلين" في شعبة النظري
+  final int? practicalMaxCapacity; // "اعلى حد" لشعبة العملي (إن وُجدت)
+  final int? practicalRegistered; // "المسجلين" في شعبة العملي (إن وُجدت)
 
   const CourseSectionRecord({
     required this.courseCode,
@@ -53,6 +57,10 @@ class CourseSectionRecord {
     this.practicalInstructorName,
     this.theoryHours = 0,
     this.practicalHours = 0,
+    this.theoryMaxCapacity = 0,
+    this.theoryRegistered = 0,
+    this.practicalMaxCapacity,
+    this.practicalRegistered,
   });
 
   Map<String, dynamic> toJson() => {
@@ -67,6 +75,10 @@ class CourseSectionRecord {
         'practicalInstructorName': practicalInstructorName,
         'theoryHours': theoryHours,
         'practicalHours': practicalHours,
+        'theoryMaxCapacity': theoryMaxCapacity,
+        'theoryRegistered': theoryRegistered,
+        'practicalMaxCapacity': practicalMaxCapacity,
+        'practicalRegistered': practicalRegistered,
       };
 
   factory CourseSectionRecord.fromJson(Map<String, dynamic> json) => CourseSectionRecord(
@@ -85,5 +97,9 @@ class CourseSectionRecord {
         practicalInstructorName: json['practicalInstructorName'] as String?,
         theoryHours: json['theoryHours'] as int? ?? 0,
         practicalHours: json['practicalHours'] as int? ?? 0,
+        theoryMaxCapacity: json['theoryMaxCapacity'] as int? ?? 0,
+        theoryRegistered: json['theoryRegistered'] as int? ?? 0,
+        practicalMaxCapacity: json['practicalMaxCapacity'] as int?,
+        practicalRegistered: json['practicalRegistered'] as int?,
       );
 }

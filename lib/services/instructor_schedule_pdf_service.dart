@@ -4,8 +4,9 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
-import '../data/college_leadership.dart';
 import '../models/course_section_record.dart';
+import 'college_roster_lookup_service.dart';
+import 'college_roster_repository.dart';
 import 'instructor_schedule_table.dart';
 
 /// يبني نسخة PDF من الجدول الدراسي لعضو هيئة تدريس واحد، بنفس أعمدة الجدول
@@ -45,7 +46,13 @@ class InstructorSchedulePdfService {
     final logo = pw.MemoryImage(logoBytes);
 
     final tableRows = InstructorScheduleTable.buildRows(records);
-    final headHint = CollegeLeadership.headOf(department) ?? '';
+
+    // المصدر الوحيد لاسم رئيس القسم وعميد الكلية هو ملف أعضاء هيئة التدريس
+    // المعتمد المرفوع عبر الموقع - لا قوائم ثابتة بالكود (college_leadership.dart
+    // القديم مصدره ملفات من مجلد المرفقات وليس ملفًا مرفوعًا).
+    final roster = await CollegeRosterRepository.load();
+    final headHint = CollegeRosterLookupService.departmentHeadName(roster, department) ?? '';
+    final deanName = CollegeRosterLookupService.deanName(roster) ?? '';
 
     final doc = pw.Document(theme: pw.ThemeData.withFont(base: regularFont, bold: boldFont));
 
@@ -78,7 +85,7 @@ class InstructorSchedulePdfService {
             children: [
               _signatureBlock('عضو هيئة التدريس', instructorName, boldFont),
               _signatureBlock('رئيس القسم', headHint, boldFont),
-              _signatureBlock('عميد كلية إدارة الأعمال', CollegeLeadership.dean, boldFont),
+              _signatureBlock('عميد كلية إدارة الأعمال', deanName, boldFont),
             ],
           ),
         ],

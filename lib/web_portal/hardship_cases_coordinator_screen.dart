@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import '../models/hardship_case.dart';
 import '../services/hardship_case_service.dart';
 import '../theme/app_theme.dart';
+import 'coordinator_nav.dart';
+import 'portal_header.dart';
 
 /// شاشة "حالات الظروف الخاصة" لدى المنسّق - يسجّل حالة جديدة بعد اعتماد
 /// نموذج توثيق الحالة الورقي، ويحدّث مسار متابعتها بمرور الوقت. يرى فقط
@@ -224,8 +226,14 @@ class _HardshipCasesCoordinatorScreenState extends State<HardshipCasesCoordinato
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('حالات الظروف الخاصة')),
+    return PortalScaffold(
+      title: 'حالات الظروف الخاصة',
+      navItems: buildCoordinatorNavItems(
+        context,
+        current: 'hardship',
+        shatr: widget.shatr,
+        department: widget.department,
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _openAddCaseDialog,
         icon: const Icon(Icons.add),

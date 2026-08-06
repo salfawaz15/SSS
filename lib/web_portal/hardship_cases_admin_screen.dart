@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../models/hardship_case.dart';
 import '../services/hardship_case_service.dart';
 import '../theme/app_theme.dart';
+import 'admin_nav.dart';
+import 'portal_header.dart';
 
 /// شاشة "حالات الظروف الخاصة" لإدارة الوحدة - قسم منفصل تمامًا عن تقارير
 /// طلبات الإضافة/الحذف، يعرض كل الحالات من كل الأقسام مجتمعة، مع إمكانية
@@ -67,8 +69,9 @@ class HardshipCasesAdminScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('حالات الظروف الخاصة')),
+    return PortalScaffold(
+      title: 'حالات الظروف الخاصة',
+      navItems: buildAdminNavItems(context, current: 'hardship'),
       body: StreamBuilder<List<HardshipCase>>(
         stream: HardshipCaseService.watchAllCases(),
         builder: (context, snapshot) {

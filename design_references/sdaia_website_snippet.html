@@ -1,0 +1,169 @@
+<!--
+  مرجع تصميم فقط - كود واجهة موقع سدايا (SDAIA) الرسمي، أرسله المستخدم لأن
+  التصميم أعجبه (شريط التوثيق الحكومي، شكل شريط التنقل العلوي، بطاقات
+  الخدمات بشكل كاروسيل...). محفوظ هنا للرجوع إليه عند تصميم/تطوير واجهات
+  المشروع مستقبلاً - وليس كودًا يُستخدم أو يُدمَج مباشرة في التطبيق.
+
+  ملاحظة: هذا المقتطف غير مكتمل - انقطع عند حد 50,000 حرف أثناء اللصق في
+  المحادثة (توقّف داخل قسم كاروسيل "الخدمات الإلكترونية"). إن احتجت الجزء
+  المتبقي (تذييل الصفحة footer وغيره) اطلب من المستخدم إرساله كملف بدل لصقه
+  في الدردشة.
+-->
+<body class="home-page" dir="rtl" lang="ar" data-theme="light" data-user-settings="{&quot;nightMode&quot;: false, &quot;contrast&quot;: false, &quot;fontSize&quot;: &quot;default&quot;}" style="overflow: auto;">
+    <!-- main header -->
+    <div id="dga-stamp-slot">
+    <aside class="DGA-stamp border-top" aria-label="توثيق الموقع الحكومي">
+      <div class="container">
+        <div class="row">
+          <div class="col-12">
+            <div class="d-flex align-items-center py-2">
+              <div class="linksNB">
+                <div class="Sdaia-stamp">
+                  <div class="mb-0 d-inline" role="group"><img class="mx-2 d-inline" src="/assets/images/FlagKSA.svg" alt="KSAFLAG" title="ksa flag icon" width="20" height="20">
+موقع حكومي مسجل لدى هيئة الحكومة الرقمية <div class="Sdaia-Verification collapsible d-inline">
+                    <a class="link" title="كيف تتحقق" role="button" aria-expanded="false" aria-controls="sdaia-verification-content">كيف تتحقق</a>
+                    <i class="hgi hgi-stroke hgi-arrow-down-01" aria-hidden="true"></i>
+                  </div></div>
+                  <div class="Sdaia-content-stamp" id="sdaia-verification-content" style="display: none;">
+                    <div class="container-xl">
+                      <div class="row">
+                        <div class="col-md-6">
+                          <div class="Sdaia-verification-item">
+                            <div class="Sdaia-verification-icon">
+                              <i class="hgi hgi-stroke hgi-link-04"></i>
+                            </div>
+                            <div class="Sdaia-verification-text">
+                              <div class="h5">روابط المواقع الإلكترونية الرسمية الحكومية تنتهي بـ  <span class="text-primary">gov.sa</span></div>
+                              <p>جميع روابط المواقع الرسمية التابعة للجهات الحكومية في المملكة العربية السعودية تنتهي بـ   gov.sa </p>
+                            </div>
+                          </div>
+                        </div>
+                        <div class="col-md-6">
+                          <div class="Sdaia-verification-item">
+                            <div class="Sdaia-verification-icon">
+                              <i class="hgi hgi-stroke hgi-lock-password"></i>
+                            </div>
+                            <div class="Sdaia-verification-text">
+                              <div class="h5">المواقع الإلكترونية الحكومية الموثوقة تستخدم بروتوكول  <span class="text-primary">HTTPS</span></div>
+                              <p>تحقق من أن الموقع يستخدم بروتوكول HTTPS.</p>
+                            </div>
+                          </div>
+                        </div>
+                        <div class="Sdaia-verification-DGA px-md-5 px-2 mt-3 d-flex flex-wrap align-items-center">
+                          <p class="mb-0 mx-1">
+                            <img class="mx-2" src="/assets/Images/logo-dga-icon.svg" alt="DGA" title="dga icon" width="21" height="31">
+                           مسجل لدى هيئة الحكومة الرقمية برقم :
+                            <a class="mx-1 text-decoration-underline" target="_blank" href="https://raqmi.dga.gov.sa/platforms/platforms/6148b449-fc03-4785-6317-08dda1d8abcf/platform-license">20260505308</a>
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+	<header>
+		<div id="topline-slot">
+    <div class="TopLine align-content-center">
+     <div class="container">
+        <div class="TopLineDetails d-flex justify-content-between">
+            <div class="login-section align-items-center d-flex gap-1"><i class="hgi hgi-stroke hgi-rounded hgi-login-01"></i><a href="/_layouts/15/nafath/CustomLogin.aspx"><span class="LogInText">تسجيل الدخول</span></a></div>
+            <div class="user-actions"></div>
+        </div>
+     </div>
+    </div></div>
+		<nav class="navbar navbar-expand-lg custom-navbar fixed-top" data-menu-container="" data-cached="1">
+      <div class="container">
+        <div class="navbar-right">
+          <a class="navbar-brand" href="/ar/default.aspx">
+            <img src="/assets/images/logo.svg" alt="SDAIA Logo" title="SDAIA Logo" width="144" height="50">
+          </a>
+          <div class="navbar-menu" id="mainMenu">
+            <a class="navbar-brand-sm" href="/ar/default.aspx">
+              <img src="/assets/images/logo.svg" alt="SDAIA Logo" title="SDAIA Logo" width="110" height="38">
+            </a>
+            <ul class="navbar-nav">
+              <li class="nav-item navbar-lang d-lg-none order-last">
+                <a class="nav-link d-flex gap-2" href="javascript:switchLanguage()" title="English">
+                    <i class="hgi hgi-stroke hgi-rounded hgi-translation"></i>EN
+                </a>
+              </li>
+              <!-- ... باقي عناصر القائمة الرئيسية (سدايا/القطاعات/الخدمات/الأبحاث/الاستثمار/المركز الإعلامي/تواصل) بنمط mega-menu ... -->
+            </ul>
+          </div>
+        </div>
+        <div class="navbar-left d-flex">
+          <ul class="navbar-nav d-none d-lg-flex">
+            <li class="nav-item">
+              <a class="nav-link search-link" href="#" title="البحث" data-bs-toggle="modal" data-bs-target="#searchModal">
+                <i class="hgi hgi-stroke hgi-search-01"></i> البحث
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link d-flex gap-2" href="javascript:switchLanguage()" title="English">
+                <i class="hgi hgi-stroke hgi-rounded hgi-translation"></i>EN
+              </a>
+            </li>
+          </ul>
+          <button class="navbar-toggler" type="button" id="menuToggler" aria-controls="mainMenu" aria-expanded="false" aria-label="Toggle navigation">
+            <i class="hgi hgi-stroke hgi-menu-01"></i>
+          </button>
+        </div>
+      </div>
+      <div class="menu-overlay" id="menuOverlay"></div>
+	</nav>
+	</header>
+	<!-- main -->
+<main>
+    <section class="hero-banner">
+        <a href="/ar/MediaCenter/Pages/ai-year.aspx" title="Ai Logo 2026"><img src="/Assets/images/Ai2026Logo.webp" alt="Ai Logo 2026" width="400" height="148" style="height: auto;" fetchpriority="high"></a>
+        <h1 class="visually-hidden">عام الذكاء الاصطناعي 2026</h1>
+        <div class="Ai2026Cover"></div>
+    </section>
+
+    <div class="crownPrince-mbs bg-white pb-0 section">
+        <!-- قسم صورة/كلمة - غير ذي صلة بتصميم بوابتنا -->
+    </div>
+
+    <div class="services-section position-relative section">
+        <div class="container carousel-wrapper">
+            <div class="col-12 d-flex justify-content-between w-100">
+              <h2 class="section-title-4 text-primary">الخدمات الإلكترونية</h2>
+              <a class="btn btn-outline mb-3" href="/ar/Services/Pages/ServicesGuideline.aspx">عرض الكل</a>
+            </div>
+            <!--
+              كاروسيل بطاقات خدمات: كل بطاقة = أيقونة/شعار الخدمة + عنوان +
+              زر "سهم" دائري للانتقال. عناصر مستنسخة (clone) على الطرفين
+              لتحقيق تمرير لا نهائي سلس. هذا هو العنصر الأبرز الذي يستحق
+              الاقتباس لاحقًا: بطاقة خدمة بسيطة، أيقونة كبيرة في الأعلى،
+              عنوان واضح، وزر إجراء دائري صغير أسفل يمين البطاقة.
+            -->
+            <div class="carousel-container ServicesItems" dir="ltr">
+              <div class="carousel-track" id="carouselTrack">
+                <div class="carousel-slide h-100">
+                  <div class="card h-100" dir="rtl">
+                    <div class="Service-logo">
+                      <img src="/SDAIAAssets/assets/images/apps/0238.svg" alt="إحسان" height="60" width="60" loading="lazy">
+                    </div>
+                    <div class="card-title h5">إحسان</div>
+                    <span class="badge badge-default d-none">المسؤولية الاجتماعية</span>
+                    <div class="text-end w-100 mt-auto">
+                      <a title="إحسان" class="btn btn-secondary" href="#">
+                        <i class="hgi-stroke hgi-rounded hgi-arrow-left-02"></i>
+                      </a>
+                    </div>
+                  </div>
+                </div>
+                <!-- ... بقية بطاقات الخدمات (نفاذ، إيفاء، توكلنا، نبأ، سحابة ديم، بنك البيانات الوطني، بروق...) بنفس البنية ... -->
+              </div>
+            </div>
+        </div>
+    </div>
+    <!-- ... باقي الصفحة (أقسام إضافية + التذييل footer) لم يصل - انقطع اللصق عند 50,000 حرف ... -->
+</main>
+</body>

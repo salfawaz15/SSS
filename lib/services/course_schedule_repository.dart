@@ -44,4 +44,9 @@ class CourseScheduleRepository {
     return list.map((e) => CourseSectionRecord.fromJson(e as Map<String, dynamic>)).toList();
   }
 
+  /// تفريغ كامل لجدول شطر معيّن - لتسهيل إعادة الاختبار (رفع ملف بنفس تاريخ
+  /// السحب أو أقدم يُرفض عادةً بسبب فحص "أحدث من السابق").
+  static Future<void> clear(Shatr shatr) async {
+    await _col.doc(shatr.docId).delete();
+  }
 }

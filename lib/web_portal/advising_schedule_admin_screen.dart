@@ -1,0 +1,544 @@
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
+import 'package:printing/printing.dart';
+
+import '../data/course_catalog.dart';
+import '../models/advising_schedule.dart';
+import '../models/college_roster_member.dart';
+import '../services/advising_schedule_excel_service.dart';
+import '../services/advising_schedule_pdf_service.dart';
+import '../services/advising_schedule_repository.dart';
+import '../services/college_roster_repository.dart';
+import '../services/excel_parser_service.dart';
+import '../services/web_download.dart';
+import '../theme/app_theme.dart';
+import 'admin_nav.dart';
+import 'portal_header.dart';
+
+String _normalizeArabic(String s) =>
+    s.trim().replaceAll('أ', 'ا').replaceAll('إ', 'ا').replaceAll('آ', 'ا').replaceAll(RegExp(r'\s+'), ' ');
+
+// اسم جدول الإرشاد غالبًا مختصر مقارنة بالاسم الكامل في قاعدة بيانات
+// المنسوبين - نعتبر تطابقًا لو كانت كل كلمات الاسم المختصر موجودة ضمن
+// كلمات الاسم الكامل.
+bool _isSubsetMatch(String shortName, String fullName) {
+  final shortWords = shortName.split(' ').where((w) => w.isNotEmpty);
+  final fullWords = fullName.split(' ').where((w) => w.isNotEmpty).toSet();
+  if (shortWords.isEmpty) return false;
+  return shortWords.every(fullWords.contains);
+}
+
+/// يبحث عن مرشدين ظهروا برقم مكتب مختلف بين يوم وآخر ضمن نفس الجدول -
+/// بخلاف تشارك عضوين لنفس المكتب (وهذا طبيعي ولا يُعتبر خطأ)، فاختلاف رقم
+/// مكتب **نفس** العضو بين الأيام أمر غير منطقي وغالبًا خطأ في الملف المصدر
+/// يحتاج تصحيحًا من إدارة القسم.
+List<({String name, List<String> offices})> _findOfficeConflicts(List<AdvisingScheduleSlot> slots) {
+  final officesByName = <String, Set<String>>{};
+  for (final slot in slots) {
+    for (final entry in slot.entries) {
+      officesByName.putIfAbsent(entry.advisorName, () => {}).add(entry.office);
+    }
+  }
+  return officesByName.entries
+      .where((e) => e.value.length > 1)
+      .map((e) => (name: e.key, offices: e.value.toList()))
+      .toList();
+}
+
+/// شاشة موحّدة لبناء جدول توزيع فترات الإرشاد الأكاديمي بهوية بصرية واحدة
+/// لكل الأقسام - بديلة عن التصاميم المتفرّقة التي كان كل قسم يبنيها بنفسه.
+class AdvisingScheduleAdminScreen extends StatefulWidget {
+  const AdvisingScheduleAdminScreen({super.key});
+
+  @override
+  State<AdvisingScheduleAdminScreen> createState() => _AdvisingScheduleAdminScreenState();
+}
+
+const String _kAllDepartments = 'الكل';
+const String _kAllShatr = 'الكل';
+
+class _AdvisingScheduleAdminScreenState extends State<AdvisingScheduleAdminScreen> {
+  String _department = _kAllDepartments;
+  String _shatr = _kAllShatr;
+  List<AdvisingScheduleSlot> _slots = [];
+  bool _loading = false;
+
+  bool get _isAllDepartments => _department == _kAllDepartments;
+  bool get _isAllShatr => _shatr == _kAllShatr;
+  bool get _isFiltered => _isAllDepartments || _isAllShatr;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    if (_isFiltered) {
+      setState(() => _slots = []);
+      return;
+    }
+    setState(() => _loading = true);
+    final slots = await AdvisingScheduleRepository.load(_department, _shatr);
+    if (!mounted) return;
+    setState(() {
+      _slots = slots;
+      _loading = false;
+    });
+  }
+
+  bool _downloadingTemplate = false;
+  bool _uploadingTemplate = false;
+
+  /// يبني خريطة (قسم، شطر) ← (اسم ← رقم مكتب) لكل أعضاء هيئة التدريس - بلا
+  /// أي استثناء لأصحاب المناصب (قد يترك أحدهم منصبه). الأسماء من ملف
+  /// منسوبي الكلية المعتمد (يُطابَق قسمه الفعلي مع القوائم الخمس المعتمدة
+  /// حتى لو اختلفت صياغة الهمزة)، ورقم المكتب (إن عُرف) من الجدول الحالي
+  /// المرفوع عبر الموقع (مطابقة مرنة تتحمّل اختلاف صيغة الاسم بين الملفين).
+  Future<Map<(String, String), Map<String, String>>> _buildMembersByDeptShatr() async {
+    final roster = await CollegeRosterRepository.load();
+
+    final knownOffices = <String, String>{}; // اسم مطبَّع من الجدول ← مكتب
+    for (final department in CourseCatalog.departments) {
+      for (final shatr in [ExcelParserService.shatrMale, ExcelParserService.shatrFemale]) {
+        final slots = await AdvisingScheduleRepository.load(department, shatr);
+        for (final slot in slots) {
+          for (final entry in slot.entries) {
+            if (entry.office.isEmpty) continue;
+            knownOffices.putIfAbsent(_normalizeArabic(entry.advisorName), () => entry.office);
+          }
+        }
+      }
+    }
+
+    String officeFor(String name) {
+      final normalized = _normalizeArabic(name);
+      final direct = knownOffices[normalized];
+      if (direct != null) return direct;
+      final match = knownOffices.entries.firstWhere(
+        (e) => _isSubsetMatch(e.key, normalized),
+        orElse: () => const MapEntry('', ''),
+      );
+      return match.value;
+    }
+
+    final result = <(String, String), Map<String, String>>{
+      for (final d in CourseCatalog.departments)
+        for (final s in [ExcelParserService.shatrMale, ExcelParserService.shatrFemale]) (d, s): <String, String>{},
+    };
+    for (final member in roster) {
+      if (member.type != CollegeMemberType.faculty) continue;
+      final deptKey = _normalizeArabic(member.department.replaceFirst(RegExp(r'^قسم\s+'), ''));
+      final matchedDept = CourseCatalog.departments.firstWhere(
+        (d) => _normalizeArabic(d.replaceFirst(RegExp(r'^قسم\s+'), '')).contains(deptKey) || deptKey.contains(_normalizeArabic(d.replaceFirst(RegExp(r'^قسم\s+'), ''))),
+        orElse: () => '',
+      );
+      if (matchedDept.isEmpty) continue;
+      final shatrKey = member.shatr.contains('طالبات') ? ExcelParserService.shatrFemale : ExcelParserService.shatrMale;
+      result[(matchedDept, shatrKey)]![member.name] = officeFor(member.name);
+    }
+    return result;
+  }
+
+  Future<void> _downloadTemplate() async {
+    setState(() => _downloadingTemplate = true);
+    try {
+      final membersByDeptShatr = await _buildMembersByDeptShatr();
+      final bytes = AdvisingScheduleExcelService.buildTemplate(membersByDeptShatr: membersByDeptShatr);
+      await downloadBytes(bytes, 'نموذج_توزيع_فترات_الإرشاد.xlsx');
+    } finally {
+      if (mounted) setState(() => _downloadingTemplate = false);
+    }
+  }
+
+  Future<void> _uploadTemplate() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['xlsx'],
+      withData: true,
+    );
+    if (result == null || result.files.single.bytes == null) return;
+    final Uint8List bytes = result.files.single.bytes!;
+
+    setState(() => _uploadingTemplate = true);
+    try {
+      final parsed = AdvisingScheduleExcelService.parseTemplate(bytes);
+      if (parsed.department.isEmpty || parsed.shatr.isEmpty) {
+        throw Exception('لم يتم اختيار القسم/الشطر أعلى النموذج - عبّئهما قبل الرفع.');
+      }
+      if (parsed.slots.isEmpty) {
+        throw Exception('لم يتم العثور على أي فترة إرشاد في النموذج - تأكد من اختيار فترة لعضو واحد على الأقل.');
+      }
+      if (!mounted) return;
+      final total = parsed.slots.fold<int>(0, (s, slot) => s + slot.entries.length);
+      final conflicts = _findOfficeConflicts(parsed.slots);
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('تأكيد الاعتماد'),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'تم استخراج ${parsed.slots.length} فترة إرشاد بإجمالي $total مرشدًا لـ ${parsed.department} '
+                  '(${parsed.shatr}).\n\nسيستبدل هذا الجدول السابق لنفس القسم/الشطر بالكامل. هل تريد الاعتماد؟',
+                ),
+                if (conflicts.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.shade50,
+                      border: Border.all(color: Colors.amber.shade400),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('⚠ اختلاف رقم مكتب نفس المرشد بين يوم وآخر:',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5)),
+                        const SizedBox(height: 6),
+                        for (final c in conflicts)
+                          Text('- ${c.name}: ${c.offices.join(' / ')}', style: const TextStyle(fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('اعتماد')),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+
+      await AdvisingScheduleRepository.save(parsed.department, parsed.shatr, parsed.slots);
+      await _load();
+      if (!mounted) return;
+      AppNotice.success(context, 'تم اعتماد جدول ${parsed.department} (${parsed.shatr}) بنجاح.');
+    } catch (e) {
+      if (!mounted) return;
+      AppNotice.error(context, 'تعذّر قراءة النموذج: $e');
+    } finally {
+      if (mounted) setState(() => _uploadingTemplate = false);
+    }
+  }
+
+  /// يبني تقريرًا يغطّي أي تركيبة يختارها المستخدم: قسم واحد أو "الكل"، ×
+  /// شطر واحد أو "الكل" - القسم و/أو الشطر قد يكونا "الكل" كلٌ على حدة
+  /// (مثال: كل الأقسام لكن شطر الطلاب فقط)، بدل الاقتصار على "الكل" للقسم
+  /// فقط.
+  Future<Uint8List> _buildFilteredPdf({required bool signage}) async {
+    final departments = _isAllDepartments ? CourseCatalog.departments : [_department];
+    final shatrList = _isAllShatr
+        ? [ExcelParserService.shatrMale, ExcelParserService.shatrFemale]
+        : [_shatr];
+
+    final all = <(String, String), List<AdvisingScheduleSlot>>{};
+    for (final department in departments) {
+      for (final shatr in shatrList) {
+        final slots = await AdvisingScheduleRepository.load(department, shatr);
+        if (slots.isNotEmpty) all[(department, shatr)] = slots;
+      }
+    }
+    return AdvisingSchedulePdfService.buildAll(byDeptShatr: all, signage: signage);
+  }
+
+  /// يغلّف أي عملية PDF/طباعة بمعالجة أخطاء ظاهرة للمستخدم - بدونها كان أي
+  /// استثناء (مثلاً فشل تحميل بيانات منسوبي الكلية) يفشل بصمت تام بلا أي
+  /// رسالة، فيبدو للمستخدم وكأن الزر "لا يعمل" دون تفسير.
+  Future<void> _runPdfAction(Future<void> Function() action) async {
+    try {
+      await action();
+    } catch (e) {
+      if (!mounted) return;
+      AppNotice.error(context, 'تعذّر إنشاء الملف: $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PortalScaffold(
+      title: 'توزيع فترات الإرشاد',
+      navItems: buildAdminNavItems(context, current: 'tools'),
+      body: Column(
+        children: [
+          _buildToolbar(),
+          _buildReportSection(),
+          const Divider(height: 1),
+          Expanded(child: _loading ? const Center(child: CircularProgressIndicator()) : _buildPreview()),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildToolbar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+      decoration: BoxDecoration(color: Colors.white, border: Border(bottom: BorderSide(color: Colors.grey.shade300))),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 12,
+            runSpacing: 10,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              SizedBox(
+                width: 190,
+                child: DropdownMenu<String>(
+                  label: const Text('الشطر'),
+                  initialSelection: _shatr,
+                  expandedInsets: EdgeInsets.zero,
+                  dropdownMenuEntries: [
+                    const DropdownMenuEntry(value: _kAllShatr, label: _kAllShatr),
+                    DropdownMenuEntry(value: ExcelParserService.shatrMale, label: ExcelParserService.shatrMale),
+                    DropdownMenuEntry(value: ExcelParserService.shatrFemale, label: ExcelParserService.shatrFemale),
+                  ],
+                  onSelected: (v) {
+                    if (v == null) return;
+                    setState(() => _shatr = v);
+                    _load();
+                  },
+                ),
+              ),
+              SizedBox(
+                width: 230,
+                child: DropdownMenu<String>(
+                  label: const Text('القسم'),
+                  initialSelection: _department,
+                  expandedInsets: EdgeInsets.zero,
+                  dropdownMenuEntries: [
+                    const DropdownMenuEntry(value: _kAllDepartments, label: _kAllDepartments),
+                    ...CourseCatalog.departments.map((d) => DropdownMenuEntry(value: d, label: d)),
+                  ],
+                  onSelected: (v) {
+                    if (v == null) return;
+                    setState(() => _department = v);
+                    _load();
+                  },
+                ),
+              ),
+              Container(width: 1, height: 34, color: Colors.grey.shade300),
+              _ToolbarButton(
+                onPressed: _downloadingTemplate ? null : _downloadTemplate,
+                loading: _downloadingTemplate,
+                icon: Icons.download_outlined,
+                label: 'تنزيل نموذج Excel',
+                color: AppColors.green,
+              ),
+              _ToolbarButton(
+                onPressed: _uploadingTemplate ? null : _uploadTemplate,
+                loading: _uploadingTemplate,
+                icon: Icons.upload_file,
+                label: 'رفع نموذج معبّأ',
+                color: AppColors.green,
+                filled: false,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReportSection() {
+    final deptLabel = _isAllDepartments ? 'كل الأقسام' : _department;
+    final shatrLabel = _isAllShatr ? 'كل الشطرين' : _shatr;
+    final fileTag = '${_isAllDepartments ? 'كل_الأقسام' : _department}_${_isAllShatr ? 'كل_الشطرين' : _shatr}';
+
+    final card = _ReportCard(
+      title: 'تقرير $deptLabel ($shatrLabel)',
+      enabled: !_isFiltered ? _slots.isNotEmpty : true,
+      onOfficialView: () => _runPdfAction(() async => Printing.sharePdf(
+            bytes: await _buildFilteredPdf(signage: false),
+            filename: 'توزيع_فترات_الإرشاد_$fileTag.pdf',
+          )),
+      onOfficialPrint: () =>
+          _runPdfAction(() => Printing.layoutPdf(onLayout: (_) async => _buildFilteredPdf(signage: false))),
+      onSignageView: () => _runPdfAction(() async => Printing.sharePdf(
+            bytes: await _buildFilteredPdf(signage: true),
+            filename: 'شاشات_العرض_توزيع_فترات_الإرشاد_$fileTag.pdf',
+          )),
+    );
+
+    return Container(
+      width: double.infinity,
+      color: const Color(0xFFF7F5EF),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+      child: Wrap(
+        alignment: WrapAlignment.center,
+        spacing: 12,
+        runSpacing: 10,
+        children: [card],
+      ),
+    );
+  }
+
+  Widget _buildPreview() {
+    if (_isFiltered) {
+      return const Center(child: Text('اختر قسمًا وشطرًا محدَّدين لعرض التفاصيل هنا، أو استخدم بطاقة التقرير أعلاه للنطاق الشامل'));
+    }
+    if (_slots.isEmpty) {
+      return const Center(child: Text('لا يوجد جدول محفوظ لهذا القسم/الشطر - نزّل النموذج وارفعه بعد تعبئته'));
+    }
+    final byDay = <String, List<AdvisingScheduleSlot>>{};
+    for (final s in _slots) {
+      byDay.putIfAbsent(s.dayLabel, () => []).add(s);
+    }
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: byDay.entries.map((day) {
+          return Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(day.key, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppColors.green)),
+                  const Divider(),
+                  for (final slot in day.value) ...[
+                    Text('الفترة: ${slot.periodLabel}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: slot.entries
+                          .map((e) => Chip(label: Text('${e.advisorName} (مكتب ${e.office})')))
+                          .toList(),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+                ],
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
+
+/// زر مضغوط بشكل موحّد لأزرار الشريط العلوي (بديل عن FilledButton/OutlinedButton
+/// المتفرّقة بأنماط مختلفة كانت تجعل الشريط يبدو مبعثرًا).
+class _ToolbarButton extends StatelessWidget {
+  final VoidCallback? onPressed;
+  final bool loading;
+  final IconData icon;
+  final String label;
+  final Color color;
+  final bool filled;
+
+  const _ToolbarButton({
+    required this.onPressed,
+    required this.loading,
+    required this.icon,
+    required this.label,
+    required this.color,
+    this.filled = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final child = loading
+        ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2))
+        : Icon(icon, size: 17);
+    return filled
+        ? FilledButton.icon(
+            onPressed: onPressed,
+            icon: child,
+            label: Text(label),
+            style: FilledButton.styleFrom(
+              backgroundColor: color,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            ),
+          )
+        : OutlinedButton.icon(
+            onPressed: onPressed,
+            icon: child,
+            label: Text(label),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: color,
+              side: BorderSide(color: color),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            ),
+          );
+  }
+}
+
+/// زر قائمة واحد يجمع 4 إجراءات (عرض/طباعة × رسمي/شاشات عرض) بدل 4 أزرار
+/// متفرّقة لكل نطاق تقرير - يقلّل عدد الأزرار الظاهرة دفعة واحدة بشكل كبير.
+/// بطاقة تقرير بنفس الهوية البصرية المعتمدة في بقية الموقع (عنوان بين
+/// معينتين ذهبيتين وخط ذهبي، ثم أزرار PDF/طباعة) - بدل قائمة منسدلة غريبة
+/// الشكل لا تحمل هوية بصرية واضحة.
+class _ReportCard extends StatelessWidget {
+  final String title;
+  final bool enabled;
+  final VoidCallback onOfficialView;
+  final VoidCallback onOfficialPrint;
+  final VoidCallback onSignageView;
+
+  const _ReportCard({
+    required this.title,
+    required this.enabled,
+    required this.onOfficialView,
+    required this.onOfficialPrint,
+    required this.onSignageView,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: enabled ? 1 : 0.5,
+      child: Card(
+        elevation: 1,
+        color: const Color(0xFFFBF9F3),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: BorderSide(color: AppColors.gold.withValues(alpha: 0.5)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('◆', style: TextStyle(color: AppColors.gold, fontSize: 9)),
+              const SizedBox(width: 6),
+              Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+              const SizedBox(width: 14),
+              Container(width: 1, height: 20, color: AppColors.gold.withValues(alpha: 0.4)),
+              const SizedBox(width: 10),
+              _iconAction(enabled ? onOfficialView : null, Icons.picture_as_pdf_outlined, 'عرض PDF - رسمي', AppColors.green),
+              _iconAction(enabled ? onOfficialPrint : null, Icons.print_outlined, 'طباعة - رسمي', AppColors.green),
+              const SizedBox(width: 6),
+              _iconAction(enabled ? onSignageView : null, Icons.tv_outlined, 'عرض PDF - شاشات العرض', AppColors.gold),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _iconAction(VoidCallback? onPressed, IconData icon, String tooltip, Color color) {
+    return Tooltip(
+      message: tooltip,
+      child: IconButton(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 19),
+        color: color,
+        visualDensity: VisualDensity.compact,
+        style: IconButton.styleFrom(padding: const EdgeInsets.all(6)),
+      ),
+    );
+  }
+}

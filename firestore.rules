@@ -173,6 +173,55 @@ service cloud.firestore {
       allow read, write: if isSuperAdmin();
     }
 
+    // قوائم مواد خارج الكلية المعتمدة لكل شطر (ناتجة عن تقاطع القائمة الثابتة
+    // مع ملف حويّة الجامعة الشامل) - نفس صلاحيات courseSchedules تمامًا.
+    match /outsideCourses/{shatrId} {
+      allow read, write: if isSuperAdmin();
+    }
+
+    // تقرير "بيانات الطلبة الأكاديمية حسب الكلية والقسم" المعتمد لكل شطر -
+    // مصدر صفحة "متابعة حالات الإرشاد" - نفس صلاحيات courseSchedules تمامًا.
+    match /advisingReports/{shatrId} {
+      allow read, write: if isSuperAdmin();
+    }
+
+    // النسخة السابقة من بيانات الطلبة (قبل آخر رفعة) - مصدر "النطاق السابق"
+    // للمعدل - نفس الصلاحيات تمامًا.
+    match /advisingReportsPrevious/{shatrId} {
+      allow read, write: if isSuperAdmin();
+    }
+
+    // تقريرا "طلاب تابعين لمرشد" و"طلاب غير تابعين لمرشد" (ربط المرشد) لكل
+    // شطر - يُدمَجان مع advisingReports عند التحليل - نفس الصلاحيات تمامًا.
+    match /advisingAssignedReports/{shatrId} {
+      allow read, write: if isSuperAdmin();
+    }
+    match /advisingUnassignedReports/{shatrId} {
+      allow read, write: if isSuperAdmin();
+    }
+    // تقرير "الحالة الصحية للطلبة" (ذوو الإعاقة/الحالات الخاصة) لكل شطر -
+    // نفس الصلاحيات تمامًا.
+    match /advisingHealthReports/{shatrId} {
+      allow read, write: if isSuperAdmin();
+    }
+    // تقرير "طلاب على غير مرشدهم" الرسمي من الجامعة (للمقارنة والتحقق من
+    // حالات الانتداب) لكل شطر - نفس الصلاحيات تمامًا.
+    match /advisingMismatchReports/{shatrId} {
+      allow read, write: if isSuperAdmin();
+    }
+
+    // بيانات منسوبي الكلية الرسمية (أعضاء هيئة تدريس وإداريين) - رفع وقراءة
+    // مقصوران على حساب المدير العام (salfawaz) فقط، نفس مبدأ courseSchedules.
+    match /collegeRoster/{docId} {
+      allow read, write: if isSuperAdmin();
+    }
+
+    // جدول توزيع فترات الإرشاد الأكاديمي الموحّد لكل (قسم × شطر) - رفع
+    // وقراءة مقصوران على حساب المدير العام فقط.
+    match /advisingSchedules/{docId} {
+      allow read, write: if isSuperAdmin();
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

@@ -13,7 +13,28 @@ class DropdownColumn {
   final int columnIndex;
   final List<String> options;
 
-  const DropdownColumn({required this.columnIndex, required this.options});
+  /// true (الافتراضي) = يرفض إكسل أي قيمة خارج القائمة تمامًا. false = تظهر
+  /// القائمة كاقتراح مع تحذير فقط، ويبقى بإمكان المستخدم كتابة نص حر (مثال:
+  /// عمود ملاحظات فيه خيارات شائعة لكن تُسمح كتابة حالة غير متوقعة يدويًا).
+  final bool strict;
+
+  /// نطاق خلايا مخصَّص (مثال: "B2:B2" لخلية واحدة أعلى الجدول) بدل الحساب
+  /// التلقائي لعمود كامل عبر كل صفوف البيانات - يُستخدم لقوائم لا تتكرر لكل
+  /// صف (كاختيار القسم مرّة واحدة أعلى النموذج).
+  final String? sqrefOverride;
+
+  /// مرجع نطاق خام كصيغة (مثال: "قائمة_الأسماء!\$A\$2:\$A\$50") بدل قائمة
+  /// نصية حرفية - يتفادى حد الطول (~255 حرفًا) الذي يرفضه إكسل للقوائم
+  /// الطويلة المكتوبة كنص مباشر داخل الصيغة.
+  final String? rangeFormula;
+
+  const DropdownColumn({
+    required this.columnIndex,
+    this.options = const [],
+    this.strict = true,
+    this.sqrefOverride,
+    this.rangeFormula,
+  });
 }
 
 class ExcelProtectionService {
@@ -28,6 +49,12 @@ class ExcelProtectionService {
     required List<DropdownColumn> dropdowns,
     required List<int> unlockedColumnIndexes,
     required int dataRowCount,
+    int headerRowCount = 1,
+    List<String> unlockedCellRefs = const [],
+    // false = لا قفل/كلمة مرور إطلاقًا (قوائم منسدلة إرشادية فقط) - يُستخدم
+    // للنماذج التي يعبّئها مسؤول موثوق (رئيس قسم/أمين/منسّق) لا يحتاج قيدًا
+    // صارمًا، بعكس نماذج أخرى في الموقع تتطلب حماية فعلية.
+    bool addProtection = true,
   }) {
     final archive = ZipDecoder().decodeBytes(xlsxBytes);
 
@@ -41,9 +68,12 @@ class ExcelProtectionService {
     final sheetXml = XmlDocument.parse(
       utf8.decode(sheetFile.content as List<int>),
     );
-    _unlockColumns(sheetXml, unlockedColumnIndexes, unlockedStyleIndex);
-    _addSheetProtection(sheetXml);
-    _addDropdowns(sheetXml, dropdowns, dataRowCount);
+    if (addProtection) {
+      _unlockColumns(sheetXml, unlockedColumnIndexes, unlockedStyleIndex, headerRowCount);
+      _unlockCells(sheetXml, unlockedCellRefs, unlockedStyleIndex);
+      _addSheetProtection(sheetXml);
+    }
+    _addDropdowns(sheetXml, dropdowns, dataRowCount, headerRowCount);
 
     final newArchive = Archive();
     for (final file in archive.files) {
@@ -85,18 +115,34 @@ class ExcelProtectionService {
     XmlDocument sheetXml,
     List<int> unlockedColumnIndexes,
     int unlockedStyleIndex,
+    int headerRowCount,
   ) {
     final unlockedLetters = unlockedColumnIndexes.map(_columnLetter).toSet();
 
     final rows = sheetXml.findAllElements('row');
     for (final row in rows) {
-      final rowNumber = row.getAttribute('r');
-      if (rowNumber == '1') continue; // تخطّي صف العناوين
+      final rowNumber = int.tryParse(row.getAttribute('r') ?? '') ?? 0;
+      if (rowNumber <= headerRowCount) continue; // تخطّي صفوف العناوين/الرأس
 
       for (final cell in row.findElements('c')) {
         final ref = cell.getAttribute('r') ?? '';
         final letters = ref.replaceAll(RegExp(r'\d'), '');
         if (unlockedLetters.contains(letters)) {
+          cell.setAttribute('s', unlockedStyleIndex.toString());
+        }
+      }
+    }
+  }
+
+  /// يفتح خلايا محدَّدة بعناوينها الصريحة (مثال: "B1") بصرف النظر عن كونها
+  /// ضمن صفوف الرأس المحمية أصلاً - يُستخدم لخلايا اختيار مفردة أعلى النموذج
+  /// (كخلية اختيار القسم) لا تتبع نمط "عمود بيانات متكرر لكل صف".
+  static void _unlockCells(XmlDocument sheetXml, List<String> refs, int unlockedStyleIndex) {
+    if (refs.isEmpty) return;
+    final refSet = refs.toSet();
+    for (final row in sheetXml.findAllElements('row')) {
+      for (final cell in row.findElements('c')) {
+        if (refSet.contains(cell.getAttribute('r') ?? '')) {
           cell.setAttribute('s', unlockedStyleIndex.toString());
         }
       }
@@ -124,19 +170,27 @@ class ExcelProtectionService {
     XmlDocument sheetXml,
     List<DropdownColumn> dropdowns,
     int dataRowCount,
+    int headerRowCount,
   ) {
     if (dropdowns.isEmpty) return;
 
     final worksheet = sheetXml.rootElement;
-    final protectionEl = worksheet.findElements('sheetProtection').first;
-    final lastRow = dataRowCount + 1; // +1 لصف العناوين
+    // dataValidations يجب أن يأتي بعد mergeCells (إن وُجد) وبعد sheetProtection
+    // (إن وُجد) حسب ترتيب مخطط OOXML الرسمي (sheetData < sheetProtection <
+    // ... < mergeCells < ... < dataValidations) - وإلا يعتبر إكسل الملف تالفًا
+    // أو يتجاهل القوائم المنسدلة بصمت عند "الإصلاح التلقائي" للملف.
+    final anchorEl = worksheet.findElements('mergeCells').firstOrNull ??
+        worksheet.findElements('sheetProtection').firstOrNull ??
+        worksheet.findElements('sheetData').first;
+    final firstRow = headerRowCount + 1;
+    final lastRow = headerRowCount + dataRowCount;
 
     final validationElements = dropdowns.map((dropdown) {
       final letter = _columnLetter(dropdown.columnIndex);
-      final sqref = '${letter}2:$letter$lastRow';
+      final sqref = dropdown.sqrefOverride ?? '$letter$firstRow:$letter$lastRow';
 
       final formula = XmlElement(XmlName('formula1'), [], [
-        XmlText('"${dropdown.options.join(',')}"'),
+        XmlText(dropdown.rangeFormula ?? '"${dropdown.options.join(',')}"'),
       ]);
 
       return XmlElement(
@@ -146,6 +200,7 @@ class ExcelProtectionService {
           XmlAttribute(XmlName('allowBlank'), '1'),
           XmlAttribute(XmlName('showInputMessage'), '1'),
           XmlAttribute(XmlName('showErrorMessage'), '1'),
+          if (!dropdown.strict) XmlAttribute(XmlName('errorStyle'), 'information'),
           XmlAttribute(XmlName('sqref'), sqref),
         ],
         [formula],
@@ -156,10 +211,175 @@ class ExcelProtectionService {
       XmlAttribute(XmlName('count'), validationElements.length.toString()),
     ], validationElements);
 
-    protectionEl.parent!.children.insert(
-      protectionEl.parent!.children.indexOf(protectionEl) + 1,
+    anchorEl.parent!.children.insert(
+      anchorEl.parent!.children.indexOf(anchorEl) + 1,
       validationsElement,
     );
+  }
+
+  /// يضيف صورة (مثل شعار الوحدة) في الشيت الأول عند خلية معيّنة - مكتبة
+  /// `excel` لا تدعم تضمين الصور، فتُبنى أجزاء OOXML (media/drawing/rels)
+  /// يدويًا وتُدمج في أرشيف الملف.
+  static Uint8List addLogoImage(
+    Uint8List xlsxBytes, {
+    required List<int> imageBytes,
+    int colFrom = 0,
+    int rowFrom = 0,
+    int widthPx = 130,
+    int heightPx = 50,
+  }) {
+    final archive = ZipDecoder().decodeBytes(xlsxBytes);
+
+    final sheetFile = archive.findFile('xl/worksheets/sheet1.xml')!;
+    final sheetXml = XmlDocument.parse(utf8.decode(sheetFile.content as List<int>));
+    final drawingRef = XmlDocument.parse(
+      '<drawing xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="rId1"/>',
+    ).rootElement.copy();
+    sheetXml.rootElement.children.add(drawingRef);
+
+    // إكسل حساس لترتيب [Content_Types].xml: كل عناصر Default يجب أن تسبق كل
+    // عناصر Override (المخطط الرسمي يفرض ذلك)، ومكتبة excel نفسها تُصدر
+    // بالفعل عنصر Override لـ drawing1.xml ضمن كل ملف تولّده (حتى بلا صور) -
+    // فيجب إزالته أولاً بدل تكراره، وإلا يرفض إكسل الملف عند الفتح.
+    final ctFile = archive.findFile('[Content_Types].xml')!;
+    final ctXml = XmlDocument.parse(utf8.decode(ctFile.content as List<int>));
+    final ctChildren = ctXml.rootElement.children.whereType<XmlElement>().toList();
+    ctChildren
+        .where((e) => e.name.local == 'Override' && e.getAttribute('PartName') == '/xl/drawings/drawing1.xml')
+        .toList()
+        .forEach((e) => e.parent?.children.remove(e));
+
+    final hasPngDefault = ctXml.rootElement.children
+        .whereType<XmlElement>()
+        .any((e) => e.name.local == 'Default' && e.getAttribute('Extension') == 'png');
+    final lastDefaultIndex = ctXml.rootElement.children.lastIndexWhere(
+      (n) => n is XmlElement && n.name.local == 'Default',
+    );
+    if (!hasPngDefault) {
+      ctXml.rootElement.children.insert(
+        lastDefaultIndex + 1,
+        XmlElement(XmlName('Default'), [
+          XmlAttribute(XmlName('Extension'), 'png'),
+          XmlAttribute(XmlName('ContentType'), 'image/png'),
+        ]),
+      );
+    }
+    ctXml.rootElement.children.add(XmlElement(XmlName('Override'), [
+      XmlAttribute(XmlName('PartName'), '/xl/drawings/drawing1.xml'),
+      XmlAttribute(XmlName('ContentType'), 'application/vnd.openxmlformats-officedocument.drawing+xml'),
+    ]));
+
+    const emuPerPx = 9525;
+    final widthEmu = widthPx * emuPerPx;
+    final heightEmu = heightPx * emuPerPx;
+    final drawingXml = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <xdr:oneCellAnchor>
+    <xdr:from><xdr:col>$colFrom</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>$rowFrom</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>
+    <xdr:ext cx="$widthEmu" cy="$heightEmu"/>
+    <xdr:pic>
+      <xdr:nvPicPr><xdr:cNvPr id="1" name="Logo"/><xdr:cNvPicPr/></xdr:nvPicPr>
+      <xdr:blipFill><a:blip r:embed="rId1"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill>
+      <xdr:spPr>
+        <a:xfrm><a:off x="0" y="0"/><a:ext cx="$widthEmu" cy="$heightEmu"/></a:xfrm>
+        <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+      </xdr:spPr>
+    </xdr:pic>
+    <xdr:clientData/>
+  </xdr:oneCellAnchor>
+</xdr:wsDr>''';
+
+    const drawingRelsXml = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image1.png"/>
+</Relationships>''';
+
+    const sheetRelsXml = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/>
+</Relationships>''';
+
+    final newArchive = Archive();
+    for (final file in archive.files) {
+      if (!file.isFile) continue;
+      if (file.name == 'xl/worksheets/sheet1.xml') {
+        final bytes = utf8.encode(sheetXml.toXmlString());
+        newArchive.addFile(ArchiveFile(file.name, bytes.length, bytes));
+      } else if (file.name == '[Content_Types].xml') {
+        final bytes = utf8.encode(ctXml.toXmlString());
+        newArchive.addFile(ArchiveFile(file.name, bytes.length, bytes));
+      } else if (file.name == 'xl/worksheets/_rels/sheet1.xml.rels' ||
+          file.name == 'xl/drawings/drawing1.xml' ||
+          file.name == 'xl/drawings/_rels/drawing1.xml.rels') {
+        // تُستبدل أدناه - مكتبة excel تُصدر نسخة فارغة (stub) من drawing1.xml
+        // في كل ملف حتى بلا صور؛ نسخها هنا كما هي يُنتج ملفًا مكررًا بنفس
+        // الاسم داخل الأرشيف (ملف ZIP غير صالح) عند إضافة نسختنا لاحقًا.
+        continue;
+      } else {
+        final content = file.content as List<int>;
+        newArchive.addFile(ArchiveFile(file.name, content.length, content));
+      }
+    }
+    newArchive.addFile(ArchiveFile('xl/media/image1.png', imageBytes.length, imageBytes));
+    final drawingBytes = utf8.encode(drawingXml);
+    newArchive.addFile(ArchiveFile('xl/drawings/drawing1.xml', drawingBytes.length, drawingBytes));
+    final drawingRelsBytes = utf8.encode(drawingRelsXml);
+    newArchive.addFile(ArchiveFile('xl/drawings/_rels/drawing1.xml.rels', drawingRelsBytes.length, drawingRelsBytes));
+    final sheetRelsBytes = utf8.encode(sheetRelsXml);
+    newArchive.addFile(ArchiveFile('xl/worksheets/_rels/sheet1.xml.rels', sheetRelsBytes.length, sheetRelsBytes));
+
+    return Uint8List.fromList(ZipEncoder().encode(newArchive)!);
+  }
+
+  /// يُخفي أوراق عمل مرجعية (كقائمة أسماء يُبنى عليها بحث/قوائم منسدلة) عن
+  /// المستخدم النهائي، ويضيف أسماء نطاقات معرَّفة (Defined Names) في
+  /// workbook.xml يمكن الإشارة إليها بصيغ INDIRECT لاحقًا (مثال: قائمة
+  /// منسدلة تتغيّر حسب قسم/شطر مُختار في خليتين أخريين).
+  static Uint8List finalizeWorkbook(
+    Uint8List xlsxBytes, {
+    List<String> hiddenSheetNames = const [],
+    Map<String, String> definedNames = const {},
+  }) {
+    if (hiddenSheetNames.isEmpty && definedNames.isEmpty) return xlsxBytes;
+    final archive = ZipDecoder().decodeBytes(xlsxBytes);
+    final wbFile = archive.findFile('xl/workbook.xml')!;
+    final wbXml = XmlDocument.parse(utf8.decode(wbFile.content as List<int>));
+
+    if (hiddenSheetNames.isNotEmpty) {
+      for (final sheetEl in wbXml.findAllElements('sheet')) {
+        if (hiddenSheetNames.contains(sheetEl.getAttribute('name'))) {
+          sheetEl.setAttribute('state', 'hidden');
+        }
+      }
+    }
+
+    if (definedNames.isNotEmpty) {
+      final definedNamesEl = wbXml.findAllElements('definedNames').firstOrNull ??
+          () {
+            final el = XmlElement(XmlName('definedNames'));
+            final sheetsEl = wbXml.findAllElements('sheets').first;
+            sheetsEl.parent!.children.insert(sheetsEl.parent!.children.indexOf(sheetsEl) + 1, el);
+            return el;
+          }();
+      for (final entry in definedNames.entries) {
+        definedNamesEl.children.add(
+          XmlElement(XmlName('definedName'), [XmlAttribute(XmlName('name'), entry.key)], [XmlText(entry.value)]),
+        );
+      }
+    }
+
+    final newArchive = Archive();
+    for (final file in archive.files) {
+      if (!file.isFile) continue;
+      if (file.name == 'xl/workbook.xml') {
+        final bytes = utf8.encode(wbXml.toXmlString());
+        newArchive.addFile(ArchiveFile(file.name, bytes.length, bytes));
+      } else {
+        final content = file.content as List<int>;
+        newArchive.addFile(ArchiveFile(file.name, content.length, content));
+      }
+    }
+    return Uint8List.fromList(ZipEncoder().encode(newArchive)!);
   }
 
   /// يحوّل فهرس عمود صفر-فهرسة إلى حرف/أحرف عمود Excel (0 -> A, 25 -> Z, 26 -> AA)

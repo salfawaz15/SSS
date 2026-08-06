@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 
-import '../data/official_coordinators.dart';
 import '../models/coordinator.dart';
+import '../services/college_roster_lookup_service.dart';
+import '../services/college_roster_repository.dart';
 import '../services/excel_parser_service.dart';
 import '../services/firestore_coordinator_service.dart';
 import '../theme/app_theme.dart';
+import 'admin_nav.dart';
+import 'portal_header.dart';
 
 /// شاشة "بيانات منسقي الأقسام" في بوابة الويب/تطبيق CBA Advising - نفس
 /// تصميم الشاشة المحلية في التطبيق القديم (lib/screens/coordinators_settings_screen.dart)
@@ -58,19 +61,32 @@ class _CoordinatorsContactsScreenState
     if (mounted) setState(() => _isLoading = false);
   }
 
-  void _fillFromOfficialList() {
-    for (final c in officialCoordinators) {
-      final shatr = c.male ? ExcelParserService.shatrMale : ExcelParserService.shatrFemale;
-      final key = '$shatr|${c.department}';
-      final nameController = _nameControllers[key];
-      final emailController = _emailControllers[key];
-      if (nameController == null || emailController == null) continue;
-      nameController.text = c.name;
-      emailController.text = c.email;
+  /// يعبّئ تلقائيًا من ملف أعضاء هيئة التدريس المعتمد المرفوع عبر الموقع -
+  /// المصدر الوحيد المسموح به لهذي البيانات (بدل قائمة ثابتة قديمة بالكود
+  /// مصدرها ملف من مجلد المرفقات).
+  Future<void> _fillFromOfficialList() async {
+    final roster = await CollegeRosterRepository.load();
+    if (!mounted) return;
+    var filledCount = 0;
+    for (final pair in _pairs) {
+      final shatr = pair.key;
+      final department = pair.value;
+      final member = CollegeRosterLookupService.coordinatorMemberFor(roster, department, shatr);
+      if (member == null) continue;
+      final key = '$shatr|$department';
+      _nameControllers[key]!.text = member.name;
+      _emailControllers[key]!.text = member.email;
+      filledCount++;
     }
     setState(() {});
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('تمت التعبئة من القائمة الرسمية - اضغط "حفظ" لاعتمادها')),
+      SnackBar(
+        content: Text(
+          filledCount == 0
+              ? 'لا يوجد أي منسّق في ملف أعضاء هيئة التدريس المعتمد بعد - ارفعه أولاً من شاشة "بيانات منسوبي الكلية"'
+              : 'تمت تعبئة $filledCount منسّق/ة من ملف أعضاء هيئة التدريس المعتمد - اضغط "حفظ" لاعتمادها',
+        ),
+      ),
     );
   }
 
@@ -131,10 +147,10 @@ class _CoordinatorsContactsScreenState
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('بيانات منسقي الأقسام'),
-        actions: [
+    return PortalScaffold(
+      title: 'بيانات منسقي الأقسام',
+      navItems: buildAdminNavItems(context, current: 'tools'),
+      actions: [
           IconButton(
             icon: const Icon(Icons.playlist_add_check_rounded),
             tooltip: 'تعبئة تلقائية من القائمة الرسمية',
@@ -156,8 +172,7 @@ class _CoordinatorsContactsScreenState
             tooltip: 'حفظ',
             onPressed: _isLoading || _isSaving ? null : _saveAll,
           ),
-        ],
-      ),
+      ],
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : ListView.builder(

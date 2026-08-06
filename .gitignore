@@ -2,6 +2,10 @@
 tool/admin_cli/node_modules/
 node_modules/
 
+# إعدادات أداة Claude Code المحلية وكاش Firebase - خاصة بالجهاز، ليست جزءًا من المشروع
+.claude/
+.firebase/
+
 # Miscellaneous
 *.class
 *.log

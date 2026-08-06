@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../models/hardship_case.dart';
 import '../services/support_case_service.dart';
 import '../theme/app_theme.dart';
+import 'admin_nav.dart';
+import 'portal_header.dart';
 
 /// شاشة "حالات الدعم النفسي والاجتماعي" لإدارة الوحدة - قسم منفصل تمامًا عن حالات الظروف الخاصة وعن تقارير
 /// طلبات الإضافة/الحذف، يعرض كل الحالات من كل الأقسام مجتمعة، مع إمكانية
@@ -67,8 +69,9 @@ class SupportCasesAdminScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('حالات الدعم النفسي والاجتماعي')),
+    return PortalScaffold(
+      title: 'حالات الدعم النفسي والاجتماعي',
+      navItems: buildAdminNavItems(context, current: 'support'),
       body: StreamBuilder<List<HardshipCase>>(
         stream: SupportCaseService.watchAllCases(),
         builder: (context, snapshot) {

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import 'pdf_brand_kit.dart';
 import 'report_data_service.dart';
 import 'report_filter_service.dart';
 
@@ -107,7 +108,6 @@ class ReportPdfService {
   static final _gold = PdfColor.fromHex('C9A227');
   static final _red = PdfColor.fromHex('C0392B');
   static final _lightGray = PdfColor.fromHex('E5E9E7');
-  static final _grayText = PdfColor.fromHex('666666');
 
   // الخط العربي (Noto Naskh Arabic) يُحمَّل مرة واحدة فقط ويُخزَّن مؤقتًا -
   // كان يُعاد تنزيله وتحليله بالكامل من الإنترنت في كل ضغطة "تنزيل PDF"،
@@ -260,109 +260,13 @@ class ReportPdfService {
       pw.MultiPage(
         textDirection: pw.TextDirection.rtl,
         margin: const pw.EdgeInsets.all(28),
-        header: (context) => pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            _headerBanner(title: title, logo: logo, generatedAt: generatedAt),
-            if (subtitle != null) ...[
-              pw.SizedBox(height: 6),
-              pw.Align(
-                alignment: pw.Alignment.centerRight,
-                child: pw.Container(
-                  padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: pw.BoxDecoration(
-                    color: _gold,
-                    borderRadius: pw.BorderRadius.circular(6),
-                  ),
-                  child: pw.Text(
-                    subtitle,
-                    style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: _greenDark),
-                  ),
-                ),
-              ),
-            ],
-            pw.SizedBox(height: 10),
-          ],
-        ),
-        footer: (context) => pw.Column(
-          children: [
-            pw.Divider(color: _lightGray),
-            pw.Text(
-              'صفحة ${context.pageNumber} من ${context.pagesCount}',
-              style: pw.TextStyle(fontSize: 8, color: _grayText),
-              textAlign: pw.TextAlign.center,
-            ),
-          ],
-        ),
+        header: (context) => PdfBrandKit.header(title: title, logo: logo, subtitle: subtitle, generatedAt: generatedAt),
+        footer: PdfBrandKit.footer,
         build: (context) => sections,
       ),
     );
 
     return doc.save();
-  }
-
-  /// شريط ترويسة موحّد لكل التقارير: شعار الوحدة + اسمها على اليمين، والعنوان
-  /// وتاريخ الإصدار (بخط صغير أنيق تحت العنوان، بدل دمج التاريخ داخل العنوان
-  /// نفسه بصيغة "دورة 2026-07-30" غير الاحترافية) على اليسار.
-  static pw.Widget _headerBanner({
-    required String title,
-    required pw.MemoryImage logo,
-    required DateTime generatedAt,
-  }) {
-    final dateLabel =
-        '${generatedAt.year}/${generatedAt.month.toString().padLeft(2, '0')}/${generatedAt.day.toString().padLeft(2, '0')}';
-    return pw.Container(
-      padding: const pw.EdgeInsets.symmetric(vertical: 8, horizontal: 14),
-      decoration: pw.BoxDecoration(
-        gradient: pw.LinearGradient(colors: [_greenDark, _green]),
-        borderRadius: pw.BorderRadius.circular(8),
-      ),
-      child: pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-        crossAxisAlignment: pw.CrossAxisAlignment.center,
-        children: [
-          pw.Row(
-            children: [
-              // بطاقة بيضاء صغيرة خلف الشعار فقط: حواف الشعار الذهبي المموَّهة
-              // (anti-aliasing) مبنية أصلاً على افتراض خلفية بيضاء، فتظهر
-              // كخطوط بيضاء غير احترافية لو وُضع مباشرة فوق الأخضر. خلفية
-              // بيضاء صغيرة هنا تُخفي هذا التموّه تمامًا بدل إعادة تصميم الملف.
-              pw.Container(
-                padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                decoration: pw.BoxDecoration(
-                  color: PdfColors.white,
-                  borderRadius: pw.BorderRadius.circular(5),
-                ),
-                child: pw.Image(logo, height: 24, fit: pw.BoxFit.contain),
-              ),
-              pw.SizedBox(width: 10),
-              pw.Text(
-                'وحدة الإرشاد الأكاديمي والخريجين',
-                style: pw.TextStyle(fontSize: 10, color: PdfColors.white),
-              ),
-            ],
-          ),
-          pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.end,
-            children: [
-              pw.Text(
-                title,
-                style: pw.TextStyle(
-                  fontSize: 18,
-                  fontWeight: pw.FontWeight.bold,
-                  color: PdfColors.white,
-                ),
-              ),
-              pw.SizedBox(height: 2),
-              pw.Text(
-                'تاريخ الإصدار: $dateLabel',
-                style: pw.TextStyle(fontSize: 8, color: PdfColors.white),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
   }
 
   static pw.Widget _summarySection(ReportData data) {
@@ -840,37 +744,8 @@ class ReportPdfService {
       pw.MultiPage(
         textDirection: pw.TextDirection.rtl,
         margin: const pw.EdgeInsets.all(28),
-        header: (context) => pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            _headerBanner(title: title, logo: logo, generatedAt: generatedAt),
-            if (subtitle != null) ...[
-              pw.SizedBox(height: 6),
-              pw.Align(
-                alignment: pw.Alignment.centerRight,
-                child: pw.Container(
-                  padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: pw.BoxDecoration(color: _gold, borderRadius: pw.BorderRadius.circular(6)),
-                  child: pw.Text(
-                    subtitle,
-                    style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: _greenDark),
-                  ),
-                ),
-              ),
-            ],
-            pw.SizedBox(height: 10),
-          ],
-        ),
-        footer: (context) => pw.Column(
-          children: [
-            pw.Divider(color: _lightGray),
-            pw.Text(
-              'صفحة ${context.pageNumber} من ${context.pagesCount}',
-              style: pw.TextStyle(fontSize: 8, color: _grayText),
-              textAlign: pw.TextAlign.center,
-            ),
-          ],
-        ),
+        header: (context) => PdfBrandKit.header(title: title, logo: logo, subtitle: subtitle, generatedAt: generatedAt),
+        footer: PdfBrandKit.footer,
         build: (context) => [
           pw.Container(
             padding: const pw.EdgeInsets.all(14),

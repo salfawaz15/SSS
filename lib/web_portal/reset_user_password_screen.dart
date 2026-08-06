@@ -4,7 +4,9 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../services/excel_parser_service.dart';
 import '../theme/app_theme.dart';
+import 'admin_nav.dart';
 import 'portal_accounts.dart';
+import 'portal_header.dart';
 
 class _AccountEntry {
   final String label;
@@ -68,8 +70,9 @@ class ResetUserPasswordScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accounts = _allAccounts();
-    return Scaffold(
-      appBar: AppBar(title: const Text('الحسابات وكلمات المرور')),
+    return PortalScaffold(
+      title: 'الحسابات وكلمات المرور',
+      navItems: buildAdminNavItems(context, current: 'tools'),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

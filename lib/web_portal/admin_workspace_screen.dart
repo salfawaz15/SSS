@@ -18,17 +18,21 @@ import '../services/report_pdf_service.dart';
 import '../services/stage_snapshot_service.dart';
 import '../services/web_download.dart';
 import '../theme/app_theme.dart';
+import 'admin_nav.dart';
 import 'admin_reports_screen.dart';
 import 'advisor_roster_screen.dart';
 import 'change_password_dialog.dart';
 import 'coordinators_contacts_screen.dart';
+import 'advising_cases_admin_screen.dart';
+import 'advising_schedule_admin_screen.dart';
+import 'college_roster_admin_screen.dart';
 import 'course_schedule_admin_screen.dart';
 import 'follow_up_chart.dart';
 import 'hardship_cases_admin_screen.dart';
 import 'portal_accounts.dart';
-import 'portal_footer.dart';
+import 'portal_header.dart';
 import 'portal_operations_guide_page.dart';
-import 'public_landing_screen.dart';
+import 'portal_sitemap_screen.dart';
 import 'reset_user_password_screen.dart';
 import 'round_icon_button.dart';
 import 'stage_progress_chart.dart';
@@ -356,31 +360,11 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
     final isSuperAdmin =
         FirebaseAuth.instance.currentUser?.email == PortalAccounts.superAdminEmail;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('لوحة الإدارة'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.home_outlined),
-            tooltip: 'الصفحة الرئيسية للموقع',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const PublicLandingScreen()),
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.volunteer_activism_outlined),
-            tooltip: 'حالات الظروف الخاصة',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const HardshipCasesAdminScreen()),
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.favorite_border),
-            tooltip: 'حالات الدعم النفسي والاجتماعي',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const SupportCasesAdminScreen()),
-            ),
-          ),
+    return PortalScaffold(
+      title: 'لوحة الإدارة',
+      showBackButton: false,
+      navItems: buildAdminNavItems(context, current: 'dashboard'),
+      actions: [
           PopupMenuButton<VoidCallback>(
             icon: const Icon(Icons.more_vert),
             tooltip: 'المزيد',
@@ -414,6 +398,12 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
               ],
               const PopupMenuDivider(),
               PopupMenuItem(
+                value: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const PortalSitemapScreen()),
+                ),
+                child: const PortalMenuRow(icon: Icons.map_outlined, label: 'خريطة صفحات الموقع'),
+              ),
+              PopupMenuItem(
                 value: () => showChangePasswordDialog(context),
                 child: const PortalMenuRow(icon: Icons.lock_outline, label: 'تغيير كلمة المرور'),
               ),
@@ -427,9 +417,7 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
               ),
             ],
           ),
-        ],
-      ),
-      bottomNavigationBar: const PortalFooterBar(),
+      ],
       body: StreamBuilder<List<Map<String, dynamic>>>(
         stream: FirestoreTicketService.watchAllTickets(),
         builder: (context, snapshot) {
@@ -517,9 +505,9 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
         foreground: AppColors.goldLight,
         onTap: () => Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (_) => Scaffold(
-              appBar: AppBar(title: const Text('التقارير')),
-              bottomNavigationBar: const PortalFooterBar(),
+            builder: (context) => PortalScaffold(
+              title: 'التقارير',
+              navItems: buildAdminNavItems(context, current: 'reports'),
               body: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
@@ -539,61 +527,113 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
         foreground: AppColors.greenDark,
         onTap: () => Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (_) => Scaffold(
-              appBar: AppBar(title: const Text('تنزيل ملفات الحالات')),
-              bottomNavigationBar: const PortalFooterBar(),
+            builder: (context) => PortalScaffold(
+              title: 'تنزيل ملفات الحالات',
+              navItems: buildAdminNavItems(context, current: 'downloads'),
               body: _buildDownloadsList(groups, hasData),
             ),
           ),
         ),
       ),
-      if (isSuperAdmin) ...[
-        (
-          title: 'تسكين المقررات وشعبها',
-          icon: Icons.event_note_outlined,
-          background: AppColors.green,
-          foreground: AppColors.goldLight,
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const CourseScheduleAdminScreen(initialTabIndex: 0)),
-          ),
-        ),
-        (
-          title: 'الجدول الدراسي لأعضاء هيئة التدريس',
-          icon: Icons.person_search_outlined,
-          background: AppColors.gold,
-          foreground: AppColors.greenDark,
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const CourseScheduleAdminScreen(initialTabIndex: 1)),
-          ),
-        ),
-      ],
     ];
+    final adminOnlyActions = isSuperAdmin
+        ? [
+            (
+              title: 'تسكين المقررات وشعبها',
+              icon: Icons.event_note_outlined,
+              background: AppColors.green,
+              foreground: AppColors.goldLight,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const CourseScheduleAdminScreen(initialTabIndex: 0, singleTab: true)),
+              ),
+            ),
+            (
+              title: 'الجدول الدراسي لأعضاء هيئة التدريس',
+              icon: Icons.person_search_outlined,
+              background: AppColors.gold,
+              foreground: AppColors.greenDark,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const CourseScheduleAdminScreen(initialTabIndex: 1, singleTab: true)),
+              ),
+            ),
+            (
+              title: 'بيانات منسوبي الكلية',
+              icon: Icons.badge_outlined,
+              background: AppColors.greenDark,
+              foreground: AppColors.goldLight,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const CollegeRosterAdminScreen()),
+              ),
+            ),
+            (
+              title: 'توزيع فترات الإرشاد',
+              icon: Icons.schedule_outlined,
+              background: AppColors.gold,
+              foreground: AppColors.greenDark,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const AdvisingScheduleAdminScreen()),
+              ),
+            ),
+            (
+              title: 'متابعة حالات الإرشاد',
+              icon: Icons.fact_check_outlined,
+              background: AppColors.greenDark,
+              foreground: AppColors.goldLight,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const AdvisingCasesAdminScreen()),
+              ),
+            ),
+          ]
+        : const <_QuickAction>[];
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isNarrow = constraints.maxWidth < 760;
-        if (isNarrow) {
-          return Column(
-            children: [
-              for (var i = 0; i < actions.length; i++) ...[
-                _QuickActionCard(action: actions[i]),
-                if (i < actions.length - 1) const SizedBox(height: 12),
-              ],
-            ],
-          );
-        }
-        return IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (var i = 0; i < actions.length; i++) ...[
-                Expanded(child: _QuickActionCard(action: actions[i])),
-                if (i < actions.length - 1) const SizedBox(width: 12),
-              ],
-            ],
+    Widget group(String label, List<_QuickAction> items) {
+      if (items.isEmpty) return const SizedBox.shrink();
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8, right: 4),
+            child: Text(label, style: AppTextStyles.h3(color: Colors.grey.shade700)),
           ),
-        );
-      },
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isNarrow = constraints.maxWidth < 760;
+              if (isNarrow) {
+                return Column(
+                  children: [
+                    for (var i = 0; i < items.length; i++) ...[
+                      _QuickActionCard(action: items[i]),
+                      if (i < items.length - 1) const SizedBox(height: 12),
+                    ],
+                  ],
+                );
+              }
+              return IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var i = 0; i < items.length; i++) ...[
+                      Expanded(child: _QuickActionCard(action: items[i])),
+                      if (i < items.length - 1) const SizedBox(width: 12),
+                    ],
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        group('إجراءات عامة', actions),
+        if (adminOnlyActions.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          group('أدوات المدير العام', adminOnlyActions),
+        ],
+      ],
     );
   }
 
@@ -1128,16 +1168,18 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
 /// بطاقة إجراء واحدة ضمن شريط الإجراءات الأربعة (`_buildQuickActionsBar`) -
 /// أيقونة + عنوان داخل خلفية ملوّنة بالهوية البصرية، مع نص بلون مخالف
 /// للخلفية دائمًا لضمان التباين.
+typedef _QuickAction = ({
+  String title,
+  IconData icon,
+  Color background,
+  Color foreground,
+  VoidCallback onTap,
+});
+
 class _QuickActionCard extends StatelessWidget {
   const _QuickActionCard({required this.action});
 
-  final ({
-    String title,
-    IconData icon,
-    Color background,
-    Color foreground,
-    VoidCallback onTap,
-  }) action;
+  final _QuickAction action;
 
   @override
   Widget build(BuildContext context) {

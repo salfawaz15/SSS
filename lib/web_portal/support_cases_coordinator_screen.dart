@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import '../models/hardship_case.dart';
 import '../services/support_case_service.dart';
 import '../theme/app_theme.dart';
+import 'coordinator_nav.dart';
+import 'portal_header.dart';
 
 /// شاشة "حالات الدعم النفسي والاجتماعي" لدى المنسّق - يسجّل حالة جديدة بعد اعتماد
 /// نموذج طلب الدعم النفسي والاجتماعي الورقي، ويحدّث مسار متابعتها بمرور
@@ -226,8 +228,14 @@ class _SupportCasesCoordinatorScreenState extends State<SupportCasesCoordinatorS
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('حالات الدعم النفسي والاجتماعي')),
+    return PortalScaffold(
+      title: 'حالات الدعم النفسي والاجتماعي',
+      navItems: buildCoordinatorNavItems(
+        context,
+        current: 'support',
+        shatr: widget.shatr,
+        department: widget.department,
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _openAddCaseDialog,
         icon: const Icon(Icons.add),

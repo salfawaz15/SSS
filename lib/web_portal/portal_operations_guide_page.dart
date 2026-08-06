@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/unit_guide_pdf_service.dart';
 import '../services/web_download.dart';
 import '../theme/app_theme.dart';
+import 'portal_header.dart';
 
 /// دليل استخدام البوابة لمنسّقي الأقسام - يشرح خطوات عمل المنسّق فقط (تنزيل
 /// ملف القسم، رفع الملف المعالج، ملف ذوي الإعاقة، متابعة الإنجاز، تغيير
@@ -41,8 +42,8 @@ class _PortalOperationsGuidePageState extends State<PortalOperationsGuidePage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('دليل استخدام البوابة')),
+    return PortalScaffold(
+      title: 'دليل استخدام البوابة',
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),

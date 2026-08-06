@@ -100,7 +100,8 @@ class DocxScheduleParserService {
     // ترتيب الأعمدة الثابت في جدول Word الناتج عن تحويل PDF (تحقّقنا منه
     // يدويًا): فترة الاختبار، جاهزة، المستفيد، المحاضر، رقم المحاضر، إلى،
     // من، الأيام، المسجلين، اعلى حد، التسلسل، النشاط، س، اسم المقرر، المقرر، الشعبة.
-    const colTo = 5, colFrom = 6, colDay = 7, colSequence = 10, colActivity = 11;
+    const colTo = 5, colFrom = 6, colDay = 7, colRegistered = 8, colMaxCapacity = 9;
+    const colSequence = 10, colActivity = 11;
     const colHours = 12, colCourseName = 13, colCourseCode = 14, colSection = 15;
     const colInstructor = 3;
 
@@ -117,6 +118,8 @@ class DocxScheduleParserService {
         final sectionNumber = cells[colSection];
         final sequence = int.tryParse(cells[colSequence]) ?? 0;
         final hours = int.tryParse(cells[colHours]) ?? 0;
+        final registered = int.tryParse(cells[colRegistered]) ?? 0;
+        final maxCapacity = int.tryParse(cells[colMaxCapacity]) ?? 0;
         final meetings = <CourseMeeting>[];
         final day = int.tryParse(cells[colDay]);
         final from = cells[colFrom];
@@ -136,6 +139,8 @@ class DocxScheduleParserService {
           meetings: meetings,
           instructorName: instructorName,
           hours: hours,
+          registered: registered,
+          maxCapacity: maxCapacity,
         );
         activityRows.add(row);
         lastRow = row;
@@ -182,6 +187,10 @@ class DocxScheduleParserService {
         practicalInstructorName: practical?.instructorName,
         theoryHours: theoryHours,
         practicalHours: practicalHours,
+        theoryMaxCapacity: theory.maxCapacity,
+        theoryRegistered: theory.registered,
+        practicalMaxCapacity: practical?.maxCapacity,
+        practicalRegistered: practical?.registered,
       ));
     }
 
@@ -208,6 +217,8 @@ class _RawActivityRow {
   final List<CourseMeeting> meetings;
   final String? instructorName;
   final int hours;
+  final int registered;
+  final int maxCapacity;
 
   _RawActivityRow({
     required this.courseCode,
@@ -218,5 +229,7 @@ class _RawActivityRow {
     required this.meetings,
     required this.instructorName,
     required this.hours,
+    required this.registered,
+    required this.maxCapacity,
   });
 }

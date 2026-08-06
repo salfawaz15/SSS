@@ -9,29 +9,41 @@ class CourseTablePdfRow {
   final String department;
   final String courseCode;
   final String courseName;
-  final String plans;
   final String? shatrLabel; // يُعرض فقط عند اختيار "كل الشطرين"
   final String theorySection;
   final String? practicalSection;
-  final String meetingsText;
-  final String? practicalMeetingsText;
+  final int theoryHours;
+  final int practicalHours;
+  final int theoryMaxCapacity;
+  final int? practicalMaxCapacity;
+  final int theoryRegistered;
+  final int? practicalRegistered;
+  final String dayText;
+  final String? practicalDayText;
+  final String timeText;
+  final String? practicalTimeText;
   final String instructorName;
   final String? practicalInstructorName;
-  final String note;
 
   const CourseTablePdfRow({
     required this.department,
     required this.courseCode,
     required this.courseName,
-    required this.plans,
     this.shatrLabel,
     required this.theorySection,
     this.practicalSection,
-    required this.meetingsText,
-    this.practicalMeetingsText,
+    required this.theoryHours,
+    required this.practicalHours,
+    required this.theoryMaxCapacity,
+    this.practicalMaxCapacity,
+    required this.theoryRegistered,
+    this.practicalRegistered,
+    required this.dayText,
+    this.practicalDayText,
+    required this.timeText,
+    this.practicalTimeText,
     required this.instructorName,
     this.practicalInstructorName,
-    required this.note,
   });
 }
 
@@ -58,6 +70,7 @@ class CourseTablePdfService {
   static Future<Uint8List> build({
     required List<CourseTablePdfRow> rows,
     required bool showShatrColumn,
+    required String title,
     String term = 'الفصل الدراسي الأول 1448هـ',
   }) async {
     final (regularBytes, boldBytes) = await _loadFontBytes();
@@ -66,20 +79,27 @@ class CourseTablePdfService {
     final logoBytes = await _loadLogoBytes();
     final logo = pw.MemoryImage(logoBytes);
 
-    // ترتيب الأعمدة معكوس (RTL) بحيث يظهر "القسم" أول عمود من اليمين.
+    // ترتيب الأعمدة بصيغة LTR (بحيث يظهر آخر عنصر أول عمود من اليمين فعليًا)،
+    // مطابق للتنسيق المعتمد للنظري/العملي: اسم المقرر، الشعبة، المقرر، عدد
+    // الساعات، النشاط، اعلى حد، المسجلين، اليوم، الوقت، المحاضر (بلا رقم
+    // محاضر)، ثم الشطر والملاحظات. القسم لا يظهر كعمود لأن العنوان الديناميكي
+    // (title) يذكره أصلاً عند تصفية قسم واحد.
     final headers = [
-      'ملاحظات',
-      'المحاضر',
-      'الأيام والوقت',
-      'الشعبة',
       if (showShatrColumn) 'الشطر',
-      'نوع الخطة',
+      'المحاضر',
+      'الوقت',
+      'اليوم',
+      'المسجلين',
+      'اعلى حد',
+      'النشاط',
+      'عدد الساعات',
+      'المقرر',
+      'الشعبة',
       'اسم المقرر',
-      'رمز المقرر',
-      'القسم',
-    ].reversed.toList();
+    ];
 
     String twoLine(String top, String? bottom) => bottom == null ? top : '$top\n$bottom';
+    String twoLineInt(int top, int? bottom) => bottom == null ? '$top' : '$top\n$bottom';
 
     final doc = pw.Document(theme: pw.ThemeData.withFont(base: regularFont, bold: boldFont));
 
@@ -100,8 +120,7 @@ class CourseTablePdfService {
                   pw.Expanded(
                     child: pw.Column(
                       children: [
-                        pw.Text('دليل مقررات الحذف والإضافة',
-                            style: pw.TextStyle(font: boldFont, fontSize: 15, color: _green)),
+                        pw.Text(title, style: pw.TextStyle(font: boldFont, fontSize: 15, color: _green)),
                         pw.SizedBox(height: 3),
                         pw.Text(term, style: const pw.TextStyle(fontSize: 11)),
                       ],
@@ -118,18 +137,20 @@ class CourseTablePdfService {
           pw.TableHelper.fromTextArray(
             headers: headers,
             data: rows.map((r) {
-              final cells = [
-                r.note,
-                twoLine(r.instructorName, r.practicalInstructorName),
-                twoLine(r.meetingsText, r.practicalMeetingsText),
-                twoLine(r.theorySection, r.practicalSection),
+              final hasPractical = r.practicalSection != null;
+              return [
                 if (showShatrColumn) r.shatrLabel ?? '',
-                r.plans,
-                r.courseName,
+                twoLine(r.instructorName, r.practicalInstructorName),
+                twoLine(r.timeText, hasPractical ? r.practicalTimeText : null),
+                twoLine(r.dayText, hasPractical ? r.practicalDayText : null),
+                twoLineInt(r.theoryRegistered, hasPractical ? r.practicalRegistered : null),
+                twoLineInt(r.theoryMaxCapacity, hasPractical ? r.practicalMaxCapacity : null),
+                hasPractical ? 'نظري\nعملي' : 'نظري',
+                twoLineInt(r.theoryHours, hasPractical ? r.practicalHours : null),
                 r.courseCode,
-                r.department,
+                twoLine(r.theorySection, r.practicalSection),
+                r.courseName,
               ];
-              return cells.reversed.toList();
             }).toList(),
             headerStyle: pw.TextStyle(font: boldFont, fontSize: 9, color: PdfColors.black),
             headerDecoration: pw.BoxDecoration(color: _lightGray),

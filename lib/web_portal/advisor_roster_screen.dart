@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 
-import '../data/faculty_directory.dart';
-import '../data/official_coordinators.dart';
 import '../models/advisor_roster_entry.dart';
+import '../models/college_roster_member.dart';
 import '../services/advisor_name_matching.dart';
 import '../services/advisor_roster_service.dart';
+import '../services/college_roster_repository.dart';
 import '../services/excel_parser_service.dart';
 import '../theme/app_theme.dart';
+import 'admin_nav.dart';
+import 'portal_header.dart';
 
 /// شاشة إدارة "قائمة مرشدي القسم" الرسمية (مجموعة advisor_roster) - تحدد
 /// أعضاء كل قسم/شطر ومن هو المنسّق فيه، حتى يعمل توزيع حالات المنسّق على
@@ -23,6 +25,30 @@ class AdvisorRosterScreen extends StatefulWidget {
 class _AdvisorRosterScreenState extends State<AdvisorRosterScreen> {
   String _shatr = ExcelParserService.shatrMale;
   String _department = ExcelParserService.departments.first;
+
+  // المصدر الوحيد لاقتراحات الأسماء/الإيميلات وقائمة المنسّقين هو ملف
+  // أعضاء هيئة التدريس المعتمد المرفوع عبر الموقع - لا قوائم ثابتة بالكود.
+  List<CollegeRosterMember> _roster = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRoster();
+  }
+
+  Future<void> _loadRoster() async {
+    final roster = await CollegeRosterRepository.load();
+    if (mounted) setState(() => _roster = roster);
+  }
+
+  Iterable<(String name, String email)> _searchRoster(String query) {
+    final words = normalizeAdvisorNameForMatch(query);
+    if (words.isEmpty) return const [];
+    return _roster
+        .where((m) => normalizeAdvisorNameForMatch(m.name).contains(words))
+        .map((m) => (m.name, m.email))
+        .take(15);
+  }
 
   Future<void> _openEditor({AdvisorRosterEntry? entry}) async {
     final nameController = TextEditingController(text: entry?.name ?? '');
@@ -45,7 +71,7 @@ class _AdvisorRosterScreenState extends State<AdvisorRosterScreen> {
               children: [
                 Autocomplete<(String name, String email)>(
                   displayStringForOption: (o) => o.$1,
-                  optionsBuilder: (value) => FacultyDirectory.search(value.text),
+                  optionsBuilder: (value) => _searchRoster(value.text),
                   onSelected: (o) {
                     nameFieldController?.text = o.$1;
                     setDialogState(() => emailController.text = o.$2);
@@ -166,8 +192,9 @@ class _AdvisorRosterScreenState extends State<AdvisorRosterScreen> {
       builder: (context) => AlertDialog(
         title: const Text('استيراد المنسّقين الرسميين'),
         content: const Text(
-          'سيتم إضافة منسّقي الإرشاد الرسميين العشرة (حسب ملف التكاليف) لكل قسم/شطر، '
-          'مع تخطّي أي اسم مطابق لمرشد مُدرَج مسبقًا في نفس القسم/الشطر. متابعة؟',
+          'سيتم إضافة كل من مسمّاه الوظيفي "منسّق قسم"/"منسّقة قسم" في ملف أعضاء '
+          'هيئة التدريس المعتمد المرفوع عبر الموقع، مع تخطّي أي اسم مطابق لمرشد '
+          'مُدرَج مسبقًا في نفس القسم/الشطر. متابعة؟',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('إلغاء')),
@@ -183,16 +210,18 @@ class _AdvisorRosterScreenState extends State<AdvisorRosterScreen> {
         .toSet();
 
     var added = 0;
-    for (final c in officialCoordinators) {
-      final shatr = c.male ? ExcelParserService.shatrMale : ExcelParserService.shatrFemale;
-      final key = '${c.department}|$shatr|${normalizeAdvisorNameForMatch(c.name)}';
+    for (final m in _roster) {
+      final positions = [m.position, m.position2, m.position3];
+      final isCoordinator = positions.any((p) => p.contains('منسق قسم') || p.contains('منسقة قسم'));
+      if (!isCoordinator || m.department.isEmpty || m.shatr.isEmpty) continue;
+      final key = '${m.department}|${m.shatr}|${normalizeAdvisorNameForMatch(m.name)}';
       if (existingKeys.contains(key)) continue;
       await AdvisorRosterService.add(
-        name: c.name,
-        department: c.department,
-        shatr: shatr,
+        name: m.name,
+        department: m.department,
+        shatr: m.shatr,
         isCoordinator: true,
-        email: c.email,
+        email: m.email,
       );
       added++;
     }
@@ -222,17 +251,16 @@ class _AdvisorRosterScreenState extends State<AdvisorRosterScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('قائمة مرشدي القسم'),
-        actions: [
+    return PortalScaffold(
+      title: 'قائمة مرشدي القسم',
+      navItems: buildAdminNavItems(context, current: 'tools'),
+      actions: [
           IconButton(
             tooltip: 'استيراد المنسّقين الرسميين',
             icon: const Icon(Icons.playlist_add_check_rounded),
             onPressed: _importOfficialCoordinators,
           ),
-        ],
-      ),
+      ],
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _openEditor(),
         icon: const Icon(Icons.person_add_alt_1),
