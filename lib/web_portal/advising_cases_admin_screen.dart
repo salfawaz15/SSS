@@ -11,6 +11,7 @@ import '../services/advising_case_analyzer.dart';
 import '../services/advising_case_pdf_service.dart';
 import '../services/advising_report_parser_service.dart';
 import '../services/advising_report_repository.dart';
+import '../services/advisor_name_matching.dart';
 import '../services/college_roster_repository.dart';
 import '../services/course_schedule_repository.dart' show Shatr, ShatrLabel;
 import '../theme/app_theme.dart';
@@ -20,6 +21,15 @@ import 'portal_header.dart';
 
 const String _kAllShatr = 'كل الشطرين';
 const String _kAllDepartments = 'كل الأقسام';
+
+/// عمود "الشطر" في ملف منسوبي الكلية نص حر تكتبه العمادة (لا قيمة ثابتة
+/// مضمونة) - نتحقق من الكلمة المفتاحية بدل المطابقة التامة، والفحص عن
+/// "طالبات" أولًا لأنها تحتوي حروف "طلاب" لكن بترتيب مختلف فلا تلتبس بها.
+String? _shatrLabelFromFreeText(String raw) {
+  if (raw.contains('طالبات')) return Shatr.female.label;
+  if (raw.contains('طلاب')) return Shatr.male.label;
+  return null;
+}
 
 /// صفحة "متابعة حالات الإرشاد" - قلب مشروع وحدة الإرشاد الأكاديمي: تدمج ثلاثة
 /// تقارير من المنظومة الداخلية (بيانات الطلبة الأكاديمية + طلاب تابعين لمرشد
@@ -52,6 +62,11 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
 
   Map<String, CollegeRosterMember> _facultyByKey = {};
   List<String> _departments = [];
+
+  /// خريطة اسم المرشد المطبَّع ← شطره، من قائمة منسوبي الكلية - تُستخدم
+  /// لاستنتاج شطر الطالب تلقائيًا في تقارير ربط المرشد التي لا تحوي عمود
+  /// "الجنس" ولا عنوان صفحة يفرّق الشطرين (انظر توثيق [AdvisingReportParserService.parse]).
+  Map<String, String> _advisorShatrByName = {};
 
   bool _loading = true;
   bool _showAll = false;
@@ -128,6 +143,11 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
         _facultyByKey = {
           for (final m in roster) AdvisingCaseAnalyzer.nameKey(displayName(m.name)): m,
         };
+        _advisorShatrByName = {
+          for (final m in roster)
+            if (_shatrLabelFromFreeText(m.shatr) != null)
+              normalizeAdvisorNameForMatch(m.name): _shatrLabelFromFreeText(m.shatr)!,
+        };
         _departments = roster.map((m) => m.department).toSet().toList()..sort();
       });
     } catch (e) {
@@ -159,7 +179,11 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
     try {
       List<AdvisingCaseRecord> records;
       try {
-        records = AdvisingReportParserService.parse(bytes, requireDepartment: requireDepartment);
+        records = AdvisingReportParserService.parse(
+          bytes,
+          requireDepartment: requireDepartment,
+          advisorShatrByName: _advisorShatrByName,
+        );
       } on ShatrRequiredException {
         // الملف لا يحوي عمود "الجنس" فلا يمكن فرزه تلقائيًا - يُطلَب من
         // المستخدم تحديد الشطر الذي يمثّله الملف بالكامل مرة واحدة فقط.

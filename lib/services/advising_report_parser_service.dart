@@ -4,6 +4,7 @@ import 'package:archive/archive.dart';
 import 'package:xml/xml.dart';
 
 import '../models/advising_case_record.dart';
+import 'advisor_name_matching.dart';
 import 'course_schedule_repository.dart' show Shatr, ShatrLabel;
 
 const String _wNs = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
@@ -86,6 +87,12 @@ class AdvisingReportParserService {
   static const List<String> _maleGenderWords = ['ذكر', 'طالب'];
   static const List<String> _femaleGenderWords = ['انثي', 'انثى', 'طالبه'];
 
+  /// صف "بيانات المرشد" الذي يسبق جدول طلابه في تقارير ربط المرشد (اسم
+  /// المرشد، رقمه، ثم خلية تسمية "رقم المرشد" - نفس الترتيب دائمًا في هذه
+  /// التقارير المحوَّلة من PDF).
+  static bool _isAdvisorHeaderRow(List<String> row) =>
+      row.length == 3 && _normalize(row.last).contains(_normalize('رقم المرشد'));
+
   /// إن كان الملف فارغًا (لا جدول فيه أصلاً - كملف "مرشدين ليس لهم طلاب" حين
   /// لا توجد حالة واحدة) تُرجَع قائمة فارغة بدل رمي استثناء، لأن هذه حالة
   /// طبيعية متوقَّعة وليست خطأً في الملف.
@@ -94,44 +101,26 @@ class AdvisingReportParserService {
   /// (القاعدة) الذي يحوي عمود "التخصص" فعليًا - تقارير ربط المرشد لا تحتاجه
   /// (قسم الطالب فيها عنوان صفحة، ويُستكمَل من القاعدة عند الدمج).
   ///
-  /// [shatr] اختياري الآن: إن وُجد عمود "الجنس" في الملف يُستنتَج شطر كل صف
-  /// منه تلقائيًا (فيُرفع ملف واحد موحَّد بدل ملفين منفصلين لكل شطر)، متجاوزًا
-  /// [shatr] كليًا. إن لم يوجد العمود ولم يُمرَّر [shatr] يُرمى
+  /// صف العناوين يُعاد اكتشافه في كل مرة يظهر فيها (تقارير ربط المرشد تكرره
+  /// لكل مرشد، وترتيب الأعمدة قد يختلف قليلًا بين كتلة وأخرى بسبب تحويل PDF).
+  ///
+  /// [shatr] اختياري: إن وُجد عمود "الجنس" في الملف يُستنتَج شطر كل صف منه
+  /// تلقائيًا، متجاوزًا [shatr] كليًا. إن لم يوجد العمود، يُحاوَل الاستنتاج من
+  /// شطر مرشد كل صف عبر [advisorShatrByName] (خريطة اسم المرشد المطبَّع عبر
+  /// [normalizeAdvisorNameForMatch] ← تسمية الشطر، من قائمة مرشدي القسم - لا
+  /// يوجد رقم مرشد مشترك بين هذا التقرير وقائمة المرشدين فالمطابقة بالاسم لا
+  /// بالرقم) - مفيد لتقارير ربط المرشد التي لا تحوي عمود الجنس ولا حتى عنوان
+  /// صفحة يفرّق الشطرين، فيُرفع ملف واحد موحَّد يضم الشطرين معًا ويُفرز
+  /// تلقائيًا حسب شطر كل مرشد. إن تعذّرت كل الطرق ولم يُمرَّر [shatr] يُرمى
   /// [ShatrRequiredException] لتطلب الشاشة من المستخدم تحديد الشطر يدويًا.
   static List<AdvisingCaseRecord> parse(
     List<int> docxBytes, {
     Shatr? shatr,
     bool requireDepartment = true,
+    Map<String, String>? advisorShatrByName,
   }) {
     final rows = _readTableRows(docxBytes);
     if (rows.isEmpty) return const [];
-
-    // صف العناوين هو أول صف يحتوي على نص يشبه "اسم" (بعض التقارير المحوَّلة
-    // من PDF تضيف صفوف عنوان/تاريخ فارغة قبل صف العناوين الفعلي).
-    var headerRowIndex = rows.indexWhere((r) => r.any((c) => _normalize(c).contains(_normalize('اسم'))));
-    if (headerRowIndex == -1) return const [];
-
-    final headers = rows[headerRowIndex].map(_normalize).toList();
-
-    final nameCol = _findColumn(headers, ['اسم الطالب', 'اسم الطالبة', 'الاسم']);
-    final idCol = _findColumn(headers, ['رقم الطالب', 'الرقم الجامعي', 'الرقم الاكاديمي']);
-    final deptCol = _findColumn(headers, ['التخصص', 'القسم العلمي']);
-    final advisorNameCol = _findColumn(headers, ['اسم المرشد', 'المرشد الاكاديمي']);
-    final advisorIdCol = _findColumn(headers, ['رقم المرشد']);
-    final advisorDeptCol = _findColumn(headers, ['قسم المرشد']);
-    final gpaCol = _findColumn(headers, ['المعدل التراكمي', 'المعدل']);
-    final conditionCol = _findColumn(headers, ['الحالة الصحية', 'الحالة']);
-    final genderCol = _findColumn(headers, ['الجنس']);
-
-    if (nameCol == -1 || idCol == -1 || (requireDepartment && deptCol == -1)) {
-      throw Exception(
-        'تعذّر التعرّف على الأعمدة المطلوبة في الملف. '
-        'العناوين الموجودة فعليًا في صف العناوين: ${rows[headerRowIndex].join(" | ")}',
-      );
-    }
-    if (genderCol == -1 && shatr == null) {
-      throw const ShatrRequiredException();
-    }
 
     String? resolveShatrLabel(String genderText) {
       final n = _normalize(genderText);
@@ -140,9 +129,47 @@ class AdvisingReportParserService {
       return null;
     }
 
+    int nameCol = -1, idCol = -1, deptCol = -1;
+    int advisorNameCol = -1, advisorIdCol = -1, advisorDeptCol = -1;
+    int gpaCol = -1, conditionCol = -1, genderCol = -1;
+    var sawHeader = false;
+    var missingRequiredColumns = false;
+    var firstHeaderRaw = '';
+
+    String? currentAdvisorId;
+    String? currentAdvisorName;
+
     final result = <AdvisingCaseRecord>[];
-    for (var r = headerRowIndex + 1; r < rows.length; r++) {
-      final row = rows[r];
+
+    for (final row in rows) {
+      if (_isAdvisorHeaderRow(row)) {
+        currentAdvisorName = row[0].trim();
+        currentAdvisorId = row[1].trim();
+        continue;
+      }
+
+      final isHeaderRow = row.any((c) => _normalize(c).contains(_normalize('اسم')));
+      if (isHeaderRow) {
+        final headers = row.map(_normalize).toList();
+        nameCol = _findColumn(headers, ['اسم الطالب', 'اسم الطالبة', 'الاسم']);
+        idCol = _findColumn(headers, ['رقم الطالب', 'الرقم الجامعي', 'الرقم الاكاديمي']);
+        deptCol = _findColumn(headers, ['التخصص', 'القسم العلمي']);
+        advisorNameCol = _findColumn(headers, ['اسم المرشد', 'المرشد الاكاديمي']);
+        advisorIdCol = _findColumn(headers, ['رقم المرشد']);
+        advisorDeptCol = _findColumn(headers, ['قسم المرشد']);
+        gpaCol = _findColumn(headers, ['المعدل التراكمي', 'المعدل']);
+        conditionCol = _findColumn(headers, ['الحالة الصحية', 'الحالة']);
+        genderCol = _findColumn(headers, ['الجنس']);
+        if (!sawHeader) {
+          firstHeaderRaw = row.join(' | ');
+          missingRequiredColumns = nameCol == -1 || idCol == -1 || (requireDepartment && deptCol == -1);
+        }
+        sawHeader = true;
+        continue;
+      }
+
+      if (!sawHeader) continue;
+
       final name = _cell(row, nameCol).trim();
       final id = _cell(row, idCol).trim();
       if (name.isEmpty || id.isEmpty) continue;
@@ -150,8 +177,13 @@ class AdvisingReportParserService {
       final gpaText = _cell(row, gpaCol).trim();
       final gpa = gpaText.isEmpty ? null : double.tryParse(gpaText);
 
-      final rowShatrLabel =
-          (genderCol != -1 ? resolveShatrLabel(_cell(row, genderCol)) : null) ?? shatr?.label;
+      String? advisorShatrLabel;
+      if (currentAdvisorName != null && advisorShatrByName != null) {
+        advisorShatrLabel = advisorShatrByName[normalizeAdvisorNameForMatch(currentAdvisorName)];
+      }
+      final rowShatrLabel = (genderCol != -1 ? resolveShatrLabel(_cell(row, genderCol)) : null) ??
+          advisorShatrLabel ??
+          shatr?.label;
       if (rowShatrLabel == null) continue; // تعذّر تحديد شطر هذا الصف تحديدًا - يُتجاهَل بدل تخمينه
 
       result.add(AdvisingCaseRecord(
@@ -159,12 +191,23 @@ class AdvisingReportParserService {
         studentName: name,
         department: _cell(row, deptCol).trim(),
         shatr: rowShatrLabel,
-        advisorNameRaw: _cell(row, advisorNameCol).trim(),
-        advisorId: _cell(row, advisorIdCol).trim(),
+        advisorNameRaw: advisorNameCol != -1 ? _cell(row, advisorNameCol).trim() : (currentAdvisorName ?? ''),
+        advisorId: advisorIdCol != -1 ? _cell(row, advisorIdCol).trim() : (currentAdvisorId ?? ''),
         advisorDepartment: _cell(row, advisorDeptCol).trim(),
         gpa: gpa,
         healthCondition: _cell(row, conditionCol).trim(),
       ));
+    }
+
+    if (!sawHeader) return const [];
+    if (missingRequiredColumns) {
+      throw Exception(
+        'تعذّر التعرّف على الأعمدة المطلوبة في الملف. '
+        'العناوين الموجودة فعليًا في صف العناوين: $firstHeaderRaw',
+      );
+    }
+    if (result.isEmpty && genderCol == -1 && shatr == null && (advisorShatrByName?.isEmpty ?? true)) {
+      throw const ShatrRequiredException();
     }
 
     return result;
