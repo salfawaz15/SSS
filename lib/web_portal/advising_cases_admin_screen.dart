@@ -8,11 +8,13 @@ import 'package:printing/printing.dart';
 import '../models/advising_case_record.dart';
 import '../models/college_roster_member.dart';
 import '../services/advising_case_analyzer.dart';
+import '../services/advising_case_excel_service.dart';
 import '../services/advising_case_pdf_service.dart';
 import '../services/advising_report_parser_service.dart';
 import '../services/advising_report_repository.dart';
 import '../services/advisor_name_matching.dart';
 import '../services/college_roster_repository.dart';
+import '../services/web_download.dart';
 import '../services/course_schedule_repository.dart' show Shatr, ShatrLabel;
 import '../theme/app_theme.dart';
 import '../utils/name_display.dart';
@@ -51,7 +53,9 @@ class _UploadSlot {
   bool uploading = false;
 }
 
-class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
+class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _sectionTab = TabController(length: 2, vsync: this);
   final _base = _UploadSlot();
   final _assigned = _UploadSlot();
   final _unassigned = _UploadSlot();
@@ -78,6 +82,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
   @override
   void dispose() {
     _searchCtrl.dispose();
+    _sectionTab.dispose();
     super.dispose();
   }
 
@@ -365,12 +370,15 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       studentsWithoutAdvisor: [...a.studentsWithoutAdvisor, ...b.studentsWithoutAdvisor]
         ..sort((x, y) => cmp(x.shatr, x.department, y.shatr, y.department)),
       studentsWithWrongDeptAdvisor: [...a.studentsWithWrongDeptAdvisor, ...b.studentsWithWrongDeptAdvisor]
-        ..sort((x, y) => cmp(x.student.shatr, x.student.department, y.student.shatr, y.student.department)),
+        ..sort((x, y) => cmpWithMember(x.student.shatr, x.student.department, x.student.advisorNameRaw,
+            y.student.shatr, y.student.department, y.student.advisorNameRaw)),
       exemptAdvisorsWithStudents: [...a.exemptAdvisorsWithStudents, ...b.exemptAdvisorsWithStudents]
         ..sort((x, y) => cmp(x.advisor.shatr, x.advisor.department, y.advisor.shatr, y.advisor.department)),
       advisorsWithNoStudents: [...a.advisorsWithNoStudents, ...b.advisorsWithNoStudents]
         ..sort((x, y) => cmp(x.shatr, x.department, y.shatr, y.department)),
       overloadedAdvisors: [...a.overloadedAdvisors, ...b.overloadedAdvisors]
+        ..sort((x, y) => cmp(x.advisor.shatr, x.advisor.department, y.advisor.shatr, y.advisor.department)),
+      quotaReport: [...a.quotaReport, ...b.quotaReport]
         ..sort((x, y) => cmp(x.advisor.shatr, x.advisor.department, y.advisor.shatr, y.advisor.department)),
       atRiskStudents: [...a.atRiskStudents, ...b.atRiskStudents]
         ..sort((x, y) => cmpWithMember(
@@ -416,16 +424,46 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       navItems: buildAdminNavItems(context, current: 'advising-cases'),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(16),
+          : Column(
               children: [
-                _buildUploadBar(),
-                const SizedBox(height: 16),
-                _buildFilterBar(),
-                const SizedBox(height: 16),
-                _buildStatCards(),
-                const SizedBox(height: 16),
-                _buildAtRiskSection(),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  child: Column(
+                    children: [
+                      _buildUploadBar(),
+                      const SizedBox(height: 16),
+                      _buildFilterBar(),
+                    ],
+                  ),
+                ),
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                    border: Border.all(color: AppColors.green.withValues(alpha: 0.25)),
+                  ),
+                  child: TabBar(
+                    controller: _sectionTab,
+                    labelColor: AppColors.green,
+                    unselectedLabelColor: Colors.grey.shade600,
+                    indicatorColor: AppColors.green,
+                    labelStyle: const TextStyle(fontWeight: FontWeight.bold),
+                    tabs: const [
+                      Tab(text: 'ضبط عملية الإرشاد'),
+                      Tab(text: 'النتائج والإحصائيات'),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: TabBarView(
+                    controller: _sectionTab,
+                    children: [
+                      ListView(padding: const EdgeInsets.fromLTRB(16, 0, 16, 16), children: [_buildFixSection()]),
+                      ListView(padding: const EdgeInsets.fromLTRB(16, 0, 16, 16), children: [_buildResultsSection()]),
+                    ],
+                  ),
+                ),
               ],
             ),
     );
@@ -631,7 +669,11 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
     );
   }
 
-  Widget _buildStatCards() {
+  /// قسم 1 من 2: "ضبط عملية الإرشاد" - كل عيوب التوزيع التي تحتاج معالجة
+  /// فعلية (طلاب بلا مرشد/على غير مرشدهم، حالات صحية موزَّعة خطأ، مرشدون
+  /// معفَون لديهم طلاب أو بلا طلاب رغم وجوب ذلك، تقرير النصاب) مع آلية
+  /// إعادة توزيع (مرشده السابق ورقم منسوبه، والمرشد المقترح ورقم منسوبه).
+  Widget _buildFixSection() {
     final a = _analysis;
     final cards = [
       (
@@ -659,16 +701,10 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
         () => _showAdvisorsDialog('مرشدون بلا طلاب', a.advisorsWithNoStudents),
       ),
       (
-        'مرشدون فوق الحصة العادلة',
+        'تقرير النصاب (فوق/دون الحصة العادلة)',
         Icons.balance_outlined,
-        a.overloadedAdvisors.length,
-        () => _showOverloadDialog(a.overloadedAdvisors),
-      ),
-      (
-        'طلاب بحاجة متابعة (المعدل)',
-        Icons.warning_amber_outlined,
-        a.atRiskStudents.length,
-        () => _showStudentsDialog('طلاب بحاجة متابعة أكاديمية', a.atRiskStudents),
+        a.quotaReport.where((q) => q.status != QuotaStatus.balanced).length,
+        () => _showQuotaReportDialog(a.quotaReport),
       ),
       (
         'تقرير إعادة التوزيع',
@@ -677,73 +713,17 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
         () => _showTransferDialog(a.transferSuggestions),
       ),
       (
-        'إجمالي حالات ذوي الإعاقة (طلاب ${a.healthCaseStudents.where((s) => s.shatr == Shatr.male.label).length} / '
-            'طالبات ${a.healthCaseStudents.where((s) => s.shatr == Shatr.female.label).length})',
-        Icons.accessible_outlined,
-        a.healthCaseStudents.length,
-        () => _showStudentsDialog('كل حالات ذوي الإعاقة', a.healthCaseStudents),
-      ),
-      (
-        'حالات صحية ليست لدى أمين/منسّق القسم',
+        'حالات صحية غير موزَّعة بشكل صحيح',
         Icons.medical_services_outlined,
         a.healthCasesNotWithAmin.length,
         () => _showHealthMismatchDialog(a.healthCasesNotWithAmin),
       ),
-      (
-        'طلاب مفصولون أكاديميًا',
-        Icons.block_outlined,
-        a.dismissedStudents.length,
-        () => _showStudentsDialog('طلاب مفصولون أكاديميًا', a.dismissedStudents),
-      ),
     ];
-
-    const crossAxisCount = 4;
-    const spacing = 12.0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final itemWidth = (constraints.maxWidth - spacing * (crossAxisCount - 1)) / crossAxisCount;
-            return Wrap(
-              spacing: spacing,
-              runSpacing: spacing,
-              children: cards.map((c) {
-                final (label, icon, count, onTap) = c;
-                final alert = count > 0;
-                return InkWell(
-                  onTap: onTap,
-                  borderRadius: BorderRadius.circular(AppRadius.md),
-                  child: Container(
-                    width: itemWidth,
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(AppRadius.md),
-                      border: Border.all(color: alert ? Colors.red.shade300 : AppColors.green.withValues(alpha: 0.25)),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(icon, color: alert ? Colors.red.shade700 : AppColors.green, size: 30),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('$count', style: AppTextStyles.h2(color: alert ? Colors.red.shade700 : AppColors.greenDark)),
-                              Text(label, style: AppTextStyles.caption(), maxLines: 2),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }).toList(),
-            );
-          },
-        ),
+        _buildCardsGrid(cards),
         if (_showAll && (a.exemptAdvisorsNoIssue.isNotEmpty || _officialMismatchReconciliation.excusedBySecondment.isNotEmpty)) ...[
           const SizedBox(height: 12),
           Wrap(
@@ -821,6 +801,89 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
     );
   }
 
+  /// قسم 2 من 2: "النتائج والإحصائيات" - أرقام النطاقات (المعدل)، إجمالي
+  /// ذوي الإعاقة، الطلاب المفصولون أكاديميًا، وكشف كل الطلاب في النطاق
+  /// الحالي - نتائج للاطلاع لا تحتاج إجراء تصحيح فوري.
+  Widget _buildResultsSection() {
+    final a = _analysis;
+    final cards = [
+      (
+        'طلاب بحاجة متابعة (المعدل)',
+        Icons.warning_amber_outlined,
+        a.atRiskStudents.length,
+        () => _showStudentsDialog('طلاب بحاجة متابعة أكاديمية', a.atRiskStudents),
+      ),
+      (
+        'إجمالي حالات ذوي الإعاقة (طلاب ${a.healthCaseStudents.where((s) => s.shatr == Shatr.male.label).length} / '
+            'طالبات ${a.healthCaseStudents.where((s) => s.shatr == Shatr.female.label).length})',
+        Icons.accessible_outlined,
+        a.healthCaseStudents.length,
+        () => _showStudentsDialog('كل حالات ذوي الإعاقة', a.healthCaseStudents),
+      ),
+      (
+        'طلاب مفصولون أكاديميًا',
+        Icons.block_outlined,
+        a.dismissedStudents.length,
+        () => _showStudentsDialog('طلاب مفصولون أكاديميًا', a.dismissedStudents),
+      ),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildCardsGrid(cards),
+        const SizedBox(height: 16),
+        _buildAtRiskSection(),
+      ],
+    );
+  }
+
+  Widget _buildCardsGrid(List<(String, IconData, int, VoidCallback)> cards) {
+    const crossAxisCount = 4;
+    const spacing = 12.0;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final itemWidth = (constraints.maxWidth - spacing * (crossAxisCount - 1)) / crossAxisCount;
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: cards.map((c) {
+            final (label, icon, count, onTap) = c;
+            final alert = count > 0;
+            return InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              child: Container(
+                width: itemWidth,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                  border: Border.all(color: alert ? Colors.red.shade300 : AppColors.green.withValues(alpha: 0.25)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(icon, color: alert ? Colors.red.shade700 : AppColors.green, size: 30),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('$count', style: AppTextStyles.h2(color: alert ? Colors.red.shade700 : AppColors.greenDark)),
+                          Text(label, style: AppTextStyles.caption(), maxLines: 2),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }).toList(),
+        );
+      },
+    );
+  }
+
   Widget _buildAtRiskSection() {
     final students = _scopedStudents;
     return Container(
@@ -837,6 +900,14 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
             children: [
               Text('كل الطلاب في النطاق الحالي (${students.length})', style: AppTextStyles.h3(color: AppColors.greenDark)),
               const Spacer(),
+              TextButton.icon(
+                onPressed: students.isEmpty
+                    ? null
+                    : () => _exportExcel('كشف بيانات الطلبة والحالة الأكاديمية', _studentsExportHeaders(),
+                        _studentsExportRows(students)),
+                icon: const Icon(Icons.table_chart_outlined, size: 18),
+                label: const Text('Excel'),
+              ),
               TextButton.icon(
                 onPressed: students.isEmpty ? null : () => _exportPdf('كشف بيانات الطلبة والحالة الأكاديمية', students),
                 icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
@@ -919,20 +990,32 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
     );
   }
 
+  static List<String> _studentsExportHeaders() =>
+      ['الاسم', 'الرقم الجامعي', 'القسم', 'الشطر', 'المرشد', 'المعدل'];
+
+  static List<List<String>> _studentsExportRows(List<AdvisingCaseRecord> students) => students
+      .map((s) => [
+            s.studentName,
+            s.studentId,
+            s.department,
+            s.shatr,
+            s.advisorNameRaw.isEmpty ? '—' : s.advisorNameRaw,
+            s.gpa == null ? '—' : s.gpa!.toStringAsFixed(2),
+          ])
+      .toList();
+
   Future<void> _exportPdf(String title, List<AdvisingCaseRecord> students) async {
-    final headers = ['الاسم', 'الرقم الجامعي', 'القسم', 'الشطر', 'المرشد', 'المعدل'];
-    final rows = students
-        .map((s) => [
-              s.studentName,
-              s.studentId,
-              s.department,
-              s.shatr,
-              s.advisorNameRaw.isEmpty ? '—' : s.advisorNameRaw,
-              s.gpa == null ? '—' : s.gpa!.toStringAsFixed(2),
-            ])
-        .toList();
-    final bytes = await AdvisingCasePdfService.build(title: title, headers: headers, rows: rows);
+    final bytes = await AdvisingCasePdfService.build(
+      title: title,
+      headers: _studentsExportHeaders(),
+      rows: _studentsExportRows(students),
+    );
     await Printing.sharePdf(bytes: bytes, filename: '$title.pdf');
+  }
+
+  void _exportExcel(String title, List<String> headers, List<List<String>> rows) {
+    final bytes = AdvisingCaseExcelService.build(title: title, headers: headers, rows: rows);
+    downloadBytes(bytes, '$title.xlsx');
   }
 
   void _showStudentsDialog(String title, List<AdvisingCaseRecord> students) {
@@ -942,6 +1025,13 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
         title: Text('$title (${students.length})'),
         content: SizedBox(width: 700, child: _studentsTable(students)),
         actions: [
+          TextButton.icon(
+            onPressed: students.isEmpty
+                ? null
+                : () => _exportExcel(title, _studentsExportHeaders(), _studentsExportRows(students)),
+            icon: const Icon(Icons.table_chart_outlined),
+            label: const Text('Excel'),
+          ),
           TextButton.icon(
             onPressed: students.isEmpty ? null : () => _exportPdf(title, students),
             icon: const Icon(Icons.picture_as_pdf_outlined),
@@ -953,42 +1043,89 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
     );
   }
 
+  /// مجمَّعة حسب المرشد (اسمه + رقم منسوبه المسجَّل في التقرير) بدل جدول
+  /// مسطَّح - حتى يسهل معالجة كل مرشد على حدة (خصوصًا المرشدين غير الموجودين
+  /// في ملف منسوبي الكلية، الذين يحتاجون تحققًا يدويًا من المنظومة الجامعية).
   void _showMismatchDialog(List<MismatchedAdvisorCase> cases, {String title = 'طلاب على غير مرشدهم', bool gray = false}) {
+    final groups = <String, List<MismatchedAdvisorCase>>{};
+    for (final c in cases) {
+      final key = c.student.advisorNameRaw.isEmpty ? '(بلا اسم مرشد)' : c.student.advisorNameRaw;
+      groups.putIfAbsent(key, () => []).add(c);
+    }
+    final advisorNames = groups.keys.toList()..sort();
+
     showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text('$title (${cases.length})'),
         content: SizedBox(
           width: 760,
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: DataTable(
-              headingRowColor: WidgetStateProperty.all(gray ? Colors.grey.shade600 : AppColors.green),
-              headingTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-              columns: const [
-                DataColumn(label: Text('الطالب')),
-                DataColumn(label: Text('قسم الطالب')),
-                DataColumn(label: Text('الشطر')),
-                DataColumn(label: Text('المرشد')),
-                DataColumn(label: Text('قسم المرشد')),
-              ],
-              rows: [
-                for (var i = 0; i < cases.length; i++)
-                  DataRow(
-                    color: WidgetStateProperty.all(i.isEven ? Colors.white : const Color(0xFFF7F5EF)),
-                    cells: [
-                      DataCell(Text(cases[i].student.studentName)),
-                      DataCell(Text(cases[i].student.department)),
-                      DataCell(Text(cases[i].student.shatr)),
-                      DataCell(Text(cases[i].student.advisorNameRaw)),
-                      DataCell(Text(cases[i].advisor?.department ?? '—')),
+          height: 520,
+          child: ListView(
+            children: [
+              for (final advisorName in advisorNames) ...[
+                Container(
+                  margin: const EdgeInsets.only(top: 10, bottom: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: (gray ? Colors.grey.shade600 : AppColors.green).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.person_outline, size: 18, color: gray ? Colors.grey.shade700 : AppColors.greenDark),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'المرشد: $advisorName'
+                          '${groups[advisorName]!.first.student.advisorId.isNotEmpty ? "  -  رقم المنسوب: ${groups[advisorName]!.first.student.advisorId}" : ""}'
+                          '${groups[advisorName]!.first.advisor == null ? "  ⚠️ غير موجود في ملف منسوبي الكلية" : ""}',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: groups[advisorName]!.first.advisor == null ? Colors.red.shade700 : null,
+                          ),
+                        ),
+                      ),
+                      Text('(${groups[advisorName]!.length})'),
                     ],
                   ),
+                ),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: DataTable(
+                    headingRowHeight: 32,
+                    dataRowMinHeight: 32,
+                    dataRowMaxHeight: 36,
+                    columns: const [
+                      DataColumn(label: Text('الطالب')),
+                      DataColumn(label: Text('الرقم الجامعي')),
+                      DataColumn(label: Text('قسم الطالب')),
+                      DataColumn(label: Text('الشطر')),
+                    ],
+                    rows: [
+                      for (final c in groups[advisorName]!)
+                        DataRow(cells: [
+                          DataCell(Text(c.student.studentName)),
+                          DataCell(Text(c.student.studentId)),
+                          DataCell(Text(c.student.department)),
+                          DataCell(Text(c.student.shatr)),
+                        ]),
+                    ],
+                  ),
+                ),
               ],
-            ),
+            ],
           ),
         ),
         actions: [
+          TextButton.icon(
+            onPressed: cases.isEmpty
+                ? null
+                : () => _exportExcel(title, _studentsExportHeaders(),
+                    _studentsExportRows(cases.map((c) => c.student).toList())),
+            icon: const Icon(Icons.table_chart_outlined),
+            label: const Text('Excel'),
+          ),
           TextButton.icon(
             onPressed: cases.isEmpty
                 ? null
@@ -1043,6 +1180,21 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
           ),
         ),
         actions: [
+          TextButton.icon(
+            onPressed: cases.isEmpty
+                ? null
+                : () => _exportExcel(
+                      'مرشدون معفَون ولديهم طلاب',
+                      ['الطالب', 'الرقم الجامعي', 'القسم', 'المرشد المعفى', 'قسم المرشد'],
+                      [
+                        for (final c in cases)
+                          for (final s in c.students)
+                            [s.studentName, s.studentId, s.department, c.advisor.name, c.advisor.department],
+                      ],
+                    ),
+            icon: const Icon(Icons.table_chart_outlined),
+            label: const Text('Excel'),
+          ),
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق')),
         ],
       ),
@@ -1085,19 +1237,44 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
           ),
         ),
         actions: [
+          TextButton.icon(
+            onPressed: advisors.isEmpty
+                ? null
+                : () => _exportExcel(
+                      title,
+                      ['الاسم', 'القسم', 'الشطر', 'السبب'],
+                      advisors.map((a) => [a.name, a.department, a.shatr, a.advisingReason]).toList(),
+                    ),
+            icon: const Icon(Icons.table_chart_outlined),
+            label: const Text('Excel'),
+          ),
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق')),
         ],
       ),
     );
   }
 
-  void _showOverloadDialog(List<OverloadedAdvisorCase> cases) {
+  static String _quotaStatusLabel(QuotaStatus s) => switch (s) {
+        QuotaStatus.over => 'فوق النصاب',
+        QuotaStatus.under => 'دون النصاب',
+        QuotaStatus.balanced => 'متوازن',
+      };
+
+  static Color _quotaStatusColor(QuotaStatus s) => switch (s) {
+        QuotaStatus.over => Colors.red.shade700,
+        QuotaStatus.under => Colors.orange.shade800,
+        QuotaStatus.balanced => Colors.grey.shade600,
+      };
+
+  /// تقرير النصاب الكامل لكل مرشدي النطاق الحالي - يشمل الفائضين والناقصين
+  /// والمتوازنين معًا، بخلاف البطاقة السابقة التي كانت تقتصر على الفائضين.
+  void _showQuotaReportDialog(List<AdvisorQuotaCase> cases) {
     showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('مرشدون فوق الحصة العادلة (${cases.length})'),
+        title: Text('تقرير النصاب (${cases.length} مرشد)'),
         content: SizedBox(
-          width: 700,
+          width: 760,
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: DataTable(
@@ -1108,7 +1285,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
                 DataColumn(label: Text('القسم')),
                 DataColumn(label: Text('العدد الحالي')),
                 DataColumn(label: Text('الحصة العادلة')),
-                DataColumn(label: Text('يُقترح نقل')),
+                DataColumn(label: Text('الحالة')),
               ],
               rows: [
                 for (var i = 0; i < cases.length; i++)
@@ -1119,7 +1296,10 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
                       DataCell(Text(cases[i].advisor.department)),
                       DataCell(Text('${cases[i].actualCount}')),
                       DataCell(Text(cases[i].fairShare.toStringAsFixed(1))),
-                      DataCell(Text('${cases[i].suggestedTransferCount}', style: const TextStyle(fontWeight: FontWeight.bold))),
+                      DataCell(Text(
+                        _quotaStatusLabel(cases[i].status),
+                        style: TextStyle(fontWeight: FontWeight.bold, color: _quotaStatusColor(cases[i].status)),
+                      )),
                     ],
                   ),
               ],
@@ -1127,6 +1307,45 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
           ),
         ),
         actions: [
+          TextButton.icon(
+            onPressed: cases.isEmpty
+                ? null
+                : () => _exportExcel(
+                      'تقرير النصاب',
+                      ['المرشد', 'القسم', 'العدد الحالي', 'الحصة العادلة', 'الحالة'],
+                      cases
+                          .map((c) => [
+                                c.advisor.name,
+                                c.advisor.department,
+                                '${c.actualCount}',
+                                c.fairShare.toStringAsFixed(1),
+                                _quotaStatusLabel(c.status),
+                              ])
+                          .toList(),
+                    ),
+            icon: const Icon(Icons.table_chart_outlined),
+            label: const Text('Excel'),
+          ),
+          TextButton.icon(
+            onPressed: cases.isEmpty
+                ? null
+                : () async {
+                    final headers = ['المرشد', 'القسم', 'العدد الحالي', 'الحصة العادلة', 'الحالة'];
+                    final rows = cases
+                        .map((c) => [
+                              c.advisor.name,
+                              c.advisor.department,
+                              '${c.actualCount}',
+                              c.fairShare.toStringAsFixed(1),
+                              _quotaStatusLabel(c.status),
+                            ])
+                        .toList();
+                    final bytes = await AdvisingCasePdfService.build(title: 'تقرير النصاب', headers: headers, rows: rows);
+                    await Printing.sharePdf(bytes: bytes, filename: 'تقرير_النصاب.pdf');
+                  },
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+            label: const Text('PDF/طباعة'),
+          ),
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق')),
         ],
       ),
@@ -1162,8 +1381,8 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
                       DataCell(Text(suggestions[i].student.studentName)),
                       DataCell(Text(suggestions[i].student.studentId)),
                       DataCell(Text(suggestions[i].student.department)),
-                      DataCell(Text(suggestions[i].fromAdvisor.name)),
-                      DataCell(Text(suggestions[i].fromAdvisor.staffNumber.isEmpty ? '—' : suggestions[i].fromAdvisor.staffNumber)),
+                      DataCell(Text(suggestions[i].fromAdvisorNameRaw)),
+                      DataCell(Text(suggestions[i].fromAdvisor?.staffNumber.ifEmptyDash() ?? '—')),
                       DataCell(Text(suggestions[i].toAdvisor?.name ?? 'لم يُحدَّد آليًا - يلزم قرار يدوي',
                           style: TextStyle(color: suggestions[i].toAdvisor == null ? Colors.red.shade700 : null))),
                       DataCell(Text(suggestions[i].toAdvisor?.staffNumber.ifEmptyDash() ?? '—')),
@@ -1177,6 +1396,27 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
           TextButton.icon(
             onPressed: suggestions.isEmpty
                 ? null
+                : () => _exportExcel(
+                      'تقرير إعادة التوزيع',
+                      ['الطالب', 'رقمه', 'تخصصه', 'المرشد السابق', 'رقمه', 'المرشد الموصى به', 'رقمه'],
+                      suggestions
+                          .map((s) => [
+                                s.student.studentName,
+                                s.student.studentId,
+                                s.student.department,
+                                s.fromAdvisorNameRaw,
+                                s.fromAdvisor?.staffNumber.ifEmptyDash() ?? '—',
+                                s.toAdvisor?.name ?? 'يلزم قرار يدوي',
+                                s.toAdvisor?.staffNumber.ifEmptyDash() ?? '—',
+                              ])
+                          .toList(),
+                    ),
+            icon: const Icon(Icons.table_chart_outlined),
+            label: const Text('Excel'),
+          ),
+          TextButton.icon(
+            onPressed: suggestions.isEmpty
+                ? null
                 : () async {
                     final headers = ['الطالب', 'رقمه', 'تخصصه', 'المرشد السابق', 'رقمه', 'المرشد الموصى به', 'رقمه'];
                     final rows = suggestions
@@ -1184,8 +1424,8 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
                               s.student.studentName,
                               s.student.studentId,
                               s.student.department,
-                              s.fromAdvisor.name,
-                              s.fromAdvisor.staffNumber.ifEmptyDash(),
+                              s.fromAdvisorNameRaw,
+                              s.fromAdvisor?.staffNumber.ifEmptyDash() ?? '—',
                               s.toAdvisor?.name ?? 'يلزم قرار يدوي',
                               s.toAdvisor?.staffNumber.ifEmptyDash() ?? '—',
                             ])
@@ -1206,7 +1446,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
     showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('حالات صحية ليست لدى أمين القسم (${cases.length})'),
+        title: Text('حالات صحية غير موزَّعة بشكل صحيح (${cases.length})'),
         content: SizedBox(
           width: 780,
           child: SingleChildScrollView(
@@ -1219,8 +1459,11 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
                 DataColumn(label: Text('رقمه')),
                 DataColumn(label: Text('تخصصه')),
                 DataColumn(label: Text('الحالة الصحية')),
+                DataColumn(label: Text('التوزيع')),
                 DataColumn(label: Text('المرشد الحالي')),
-                DataColumn(label: Text('أمين القسم (المفترض)')),
+                DataColumn(label: Text('رقمه')),
+                DataColumn(label: Text('المرشد المفترض')),
+                DataColumn(label: Text('رقمه')),
               ],
               rows: [
                 for (var i = 0; i < cases.length; i++)
@@ -1231,9 +1474,13 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
                       DataCell(Text(cases[i].student.studentId)),
                       DataCell(Text(cases[i].student.department)),
                       DataCell(Text(cases[i].student.healthCondition)),
-                      DataCell(Text(cases[i].currentAdvisor?.name ?? (cases[i].student.hasAdvisor ? cases[i].student.advisorNameRaw : 'بلا مرشد'))),
-                      DataCell(Text(cases[i].departmentAmin?.name ?? 'لا يوجد أمين قسم مسجَّل',
+                      const DataCell(Text('خاطئ', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red))),
+                      DataCell(Text(cases[i].currentAdvisor?.name ??
+                          (cases[i].student.hasAdvisor ? cases[i].student.advisorNameRaw : 'بلا مرشد'))),
+                      DataCell(Text(cases[i].currentAdvisor?.staffNumber.ifEmptyDash() ?? '—')),
+                      DataCell(Text(cases[i].departmentAmin?.name ?? 'غير معروف',
                           style: TextStyle(color: cases[i].departmentAmin == null ? Colors.red.shade700 : null))),
+                      DataCell(Text(cases[i].departmentAmin?.staffNumber.ifEmptyDash() ?? '—')),
                     ],
                   ),
               ],
@@ -1244,20 +1491,67 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
           TextButton.icon(
             onPressed: cases.isEmpty
                 ? null
+                : () => _exportExcel(
+                      'حالات صحية غير موزَّعة بشكل صحيح',
+                      [
+                        'الطالب',
+                        'رقمه',
+                        'تخصصه',
+                        'الحالة الصحية',
+                        'التوزيع',
+                        'المرشد الحالي',
+                        'رقمه',
+                        'المرشد المفترض',
+                        'رقمه',
+                      ],
+                      cases
+                          .map((c) => [
+                                c.student.studentName,
+                                c.student.studentId,
+                                c.student.department,
+                                c.student.healthCondition,
+                                'خاطئ',
+                                c.currentAdvisor?.name ??
+                                    (c.student.hasAdvisor ? c.student.advisorNameRaw : 'بلا مرشد'),
+                                c.currentAdvisor?.staffNumber.ifEmptyDash() ?? '—',
+                                c.departmentAmin?.name ?? 'غير معروف',
+                                c.departmentAmin?.staffNumber.ifEmptyDash() ?? '—',
+                              ])
+                          .toList(),
+                    ),
+            icon: const Icon(Icons.table_chart_outlined),
+            label: const Text('Excel'),
+          ),
+          TextButton.icon(
+            onPressed: cases.isEmpty
+                ? null
                 : () async {
-                    final headers = ['الطالب', 'رقمه', 'تخصصه', 'الحالة الصحية', 'المرشد الحالي', 'أمين القسم'];
+                    final headers = [
+                      'الطالب',
+                      'رقمه',
+                      'تخصصه',
+                      'الحالة الصحية',
+                      'التوزيع',
+                      'المرشد الحالي',
+                      'رقمه',
+                      'المرشد المفترض',
+                      'رقمه',
+                    ];
                     final rows = cases
                         .map((c) => [
                               c.student.studentName,
                               c.student.studentId,
                               c.student.department,
                               c.student.healthCondition,
+                              'خاطئ',
                               c.currentAdvisor?.name ?? (c.student.hasAdvisor ? c.student.advisorNameRaw : 'بلا مرشد'),
-                              c.departmentAmin?.name ?? 'لا يوجد أمين قسم مسجَّل',
+                              c.currentAdvisor?.staffNumber.ifEmptyDash() ?? '—',
+                              c.departmentAmin?.name ?? 'غير معروف',
+                              c.departmentAmin?.staffNumber.ifEmptyDash() ?? '—',
                             ])
                         .toList();
                     final bytes = await AdvisingCasePdfService.build(
-                        title: 'حالات صحية ليست لدى أمين القسم', headers: headers, rows: rows);
+                        title: 'حالات صحية غير موزَّعة بشكل صحيح', headers: headers, rows: rows);
                     await Printing.sharePdf(bytes: bytes, filename: 'الحالات_الصحية.pdf');
                   },
             icon: const Icon(Icons.picture_as_pdf_outlined),

@@ -35,14 +35,46 @@ class OverloadedAdvisorCase {
   });
 }
 
+enum QuotaStatus { over, under, balanced }
+
+/// سطر واحد في "تقرير النصاب" لمرشد واحد - يشمل كل مرشدي القسم (فوق الحصة
+/// العادلة أو دونها أو متوازن)، بخلاف [OverloadedAdvisorCase] الذي يقتصر على
+/// الفائضين فقط.
+class AdvisorQuotaCase {
+  final CollegeRosterMember advisor;
+  final int actualCount;
+  final double fairShare;
+  final QuotaStatus status;
+  const AdvisorQuotaCase({
+    required this.advisor,
+    required this.actualCount,
+    required this.fairShare,
+    required this.status,
+  });
+}
+
 /// توصية نقل طالب محدَّد بالاسم من مرشده الحالي إلى مرشد آخر أقل حملاً في
 /// نفس القسم - toAdvisor يكون null إن تعذَّر إيجاد مرشد مناسب آليًا (لا سعة
 /// كافية لدى أي مرشد آخر في القسم)، فيُترك القرار للمنسّق يدويًا.
 class TransferSuggestion {
   final AdvisingCaseRecord student;
-  final CollegeRosterMember fromAdvisor;
+
+  /// null حين يكون المرشد الحالي غير موجود إطلاقًا في ملف منسوبي الكلية
+  /// (طالب "طلاب على غير مرشدهم" بمرشد مجهول) - استخدم [fromAdvisorNameRaw]
+  /// للعرض في هذه الحالة.
+  final CollegeRosterMember? fromAdvisor;
+
+  /// اسم المرشد الحالي كما ورد في التقرير - يُستخدم للعرض دائمًا (سواء عُرف
+  /// المرشد في ملف منسوبي الكلية أم لا).
+  final String fromAdvisorNameRaw;
+
   final CollegeRosterMember? toAdvisor;
-  const TransferSuggestion({required this.student, required this.fromAdvisor, this.toAdvisor});
+  const TransferSuggestion({
+    required this.student,
+    required this.fromAdvisor,
+    required this.fromAdvisorNameRaw,
+    this.toAdvisor,
+  });
 }
 
 /// طالب له حالة صحية/إعاقة مسجَّلة لكنه غير مسنَد للجهة المسؤولة عن الحالات
@@ -81,6 +113,10 @@ class AdvisingCaseAnalysis {
   final List<ExemptAdvisorWithStudentsCase> exemptAdvisorsWithStudents;
   final List<CollegeRosterMember> advisorsWithNoStudents;
   final List<OverloadedAdvisorCase> overloadedAdvisors;
+
+  /// تقرير النصاب الكامل - كل مرشدي القسم (فوق الحصة العادلة أو دونها أو
+  /// متوازن)، بخلاف [overloadedAdvisors] الذي يقتصر على الفائضين.
+  final List<AdvisorQuotaCase> quotaReport;
   final List<AdvisingCaseRecord> atRiskStudents; // GPA يستدعي متابعة (مقبول/ضعيف)
 
   /// طلاب مفصولون أكاديميًا - مستبعَدون من كل القوائم أعلاه تمامًا (بلا مرشد/
@@ -110,6 +146,7 @@ class AdvisingCaseAnalysis {
     required this.exemptAdvisorsWithStudents,
     required this.advisorsWithNoStudents,
     required this.overloadedAdvisors,
+    required this.quotaReport,
     required this.atRiskStudents,
     required this.dismissedStudents,
     required this.exemptAdvisorsNoIssue,
@@ -265,7 +302,11 @@ class AdvisingCaseAnalyzer {
         continue;
       }
       final advisor = advisorOf(s);
-      if (advisor != null && advisor.department != s.department) {
+      // حل مؤقت: المرشد غير الموجود إطلاقًا في ملف منسوبي الكلية (اسمه لا
+      // يطابق أي عضو) يُعامَل معاملة "خطأ قسم" أيضًا (يظهر ضمن "طلاب على غير
+      // مرشدهم") حتى يُتحقَّق منه يدويًا من المنظومة الجامعية ويُضاف/يُصحَّح
+      // في ملف منسوبي الكلية - بدل تجاهل حالته بصمت.
+      if (advisor == null || advisor.department != s.department) {
         wrongDept.add(MismatchedAdvisorCase(student: s, advisor: advisor));
       }
       final key = _key(displayName(s.advisorNameRaw));
@@ -276,6 +317,7 @@ class AdvisingCaseAnalyzer {
     final exemptNoIssue = <CollegeRosterMember>[];
     final noStudents = <CollegeRosterMember>[];
     final overloaded = <OverloadedAdvisorCase>[];
+    final quotaReport = <AdvisorQuotaCase>[];
     final transfers = <TransferSuggestion>[];
 
     // مجموعة أعضاء هيئة التدريس الفريدة الظاهرة في نطاق هذا الشطر/الأقسام
@@ -341,6 +383,14 @@ class AdvisingCaseAnalyzer {
         } else if (fairShare - actual >= 0.5) {
           remainingCapacity[_key(displayName(m.name))] = (fairShare - actual).round();
         }
+        quotaReport.add(AdvisorQuotaCase(
+          advisor: m,
+          actualCount: actual,
+          fairShare: fairShare,
+          status: over >= 1
+              ? QuotaStatus.over
+              : (fairShare - actual >= 0.5 ? QuotaStatus.under : QuotaStatus.balanced),
+        ));
       }
 
       CollegeRosterMember? pickReceiver() {
@@ -361,7 +411,8 @@ class AdvisingCaseAnalyzer {
         for (final s in c.students) {
           final receiver = pickReceiver();
           if (receiver != null) consumeCapacity(receiver);
-          transfers.add(TransferSuggestion(student: s, fromAdvisor: c.advisor, toAdvisor: receiver));
+          transfers.add(TransferSuggestion(
+              student: s, fromAdvisor: c.advisor, fromAdvisorNameRaw: c.advisor.name, toAdvisor: receiver));
         }
       }
 
@@ -372,8 +423,24 @@ class AdvisingCaseAnalyzer {
         for (final s in sorted.take(o.suggestedTransferCount)) {
           final receiver = pickReceiver();
           if (receiver != null) consumeCapacity(receiver);
-          transfers.add(TransferSuggestion(student: s, fromAdvisor: o.advisor, toAdvisor: receiver));
+          transfers.add(TransferSuggestion(
+              student: s, fromAdvisor: o.advisor, fromAdvisorNameRaw: o.advisor.name, toAdvisor: receiver));
         }
+      }
+
+      // 3) طلاب "على غير مرشدهم" (قسم المرشد يخالف قسمهم، أو المرشد غير
+      // معروف إطلاقًا في ملف منسوبي الكلية) - يُقترح لهم مرشد من قسمهم
+      // الصحيح بنفس آلية الحصة العادلة، ليعرف المنسّق فورًا لمن يُحوَّل
+      // الطالب بدل البحث يدويًا.
+      for (final c in wrongDept.where((c) => c.student.department == dept)) {
+        final receiver = pickReceiver();
+        if (receiver != null) consumeCapacity(receiver);
+        transfers.add(TransferSuggestion(
+          student: c.student,
+          fromAdvisor: c.advisor,
+          fromAdvisorNameRaw: c.student.advisorNameRaw,
+          toAdvisor: receiver,
+        ));
       }
     }
 
@@ -419,6 +486,7 @@ class AdvisingCaseAnalyzer {
       exemptAdvisorsWithStudents: exemptWithStudents,
       advisorsWithNoStudents: noStudents,
       overloadedAdvisors: overloaded,
+      quotaReport: quotaReport,
       atRiskStudents: atRisk,
       dismissedStudents: dismissed,
       exemptAdvisorsNoIssue: exemptNoIssue,
