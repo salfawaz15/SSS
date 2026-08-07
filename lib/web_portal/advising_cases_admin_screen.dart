@@ -191,6 +191,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
           bytes,
           requireDepartment: requireDepartment,
           advisorShatrByName: _advisorShatrByName,
+          isHealthReport: kind == AdvisingReportKind.health,
         );
       } on ShatrRequiredException {
         // الملف لا يحوي عمود "الجنس" فلا يمكن فرزه تلقائيًا - يُطلَب من
@@ -209,7 +210,12 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
           ),
         );
         if (chosen == null) return;
-        records = AdvisingReportParserService.parse(bytes, shatr: chosen, requireDepartment: requireDepartment);
+        records = AdvisingReportParserService.parse(
+          bytes,
+          shatr: chosen,
+          requireDepartment: requireDepartment,
+          isHealthReport: kind == AdvisingReportKind.health,
+        );
       }
 
       final male = records.where((r) => r.shatr == Shatr.male.label).toList();

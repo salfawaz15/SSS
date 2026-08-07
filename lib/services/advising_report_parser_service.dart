@@ -114,11 +114,18 @@ class AdvisingReportParserService {
   /// صفحة يفرّق الشطرين، فيُرفع ملف واحد موحَّد يضم الشطرين معًا ويُفرز
   /// تلقائيًا حسب شطر كل مرشد. إن تعذّرت كل الطرق ولم يُمرَّر [shatr] يُرمى
   /// [ShatrRequiredException] لتطلب الشاشة من المستخدم تحديد الشطر يدويًا.
+  ///
+  /// [isHealthReport] يُفعَّل فقط لتقرير "الحالة الصحية للطلبة" - عموده
+  /// الوحيد المتاح لهذا الغرض اسمه أيضًا "الحالة" حرفيًا (نفس اسم عمود الحالة
+  /// الدراسية في تقرير القاعدة)، فلا يمكن تمييز الحالة الصحية الحقيقية
+  /// (مثال: "بتر بالقدم") عن الحالة الدراسية العادية ("منتظم") بالاسم وحده -
+  /// دون هذا العلم كانت كل الحالات الدراسية العادية تُحتسَب خطأً كحالات صحية.
   static List<AdvisingCaseRecord> parse(
     List<int> docxBytes, {
     Shatr? shatr,
     bool requireDepartment = true,
     Map<String, String>? advisorShatrByName,
+    bool isHealthReport = false,
   }) {
     final rows = _readTableRows(docxBytes);
     if (rows.isEmpty) return const [];
@@ -219,8 +226,8 @@ class AdvisingReportParserService {
         advisorId: advisorIdCol != -1 ? _cell(row, advisorIdCol).trim() : (currentAdvisorId ?? ''),
         advisorDepartment: _cell(row, advisorDeptCol).trim(),
         gpa: gpa,
-        healthCondition: _cell(row, conditionCol).trim(),
-        enrollmentStatus: _cell(row, conditionCol).trim(),
+        healthCondition: isHealthReport ? _cell(row, conditionCol).trim() : '',
+        enrollmentStatus: isHealthReport ? '' : _cell(row, conditionCol).trim(),
       ));
     }
 
