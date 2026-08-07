@@ -45,13 +45,17 @@ class TransferSuggestion {
   const TransferSuggestion({required this.student, required this.fromAdvisor, this.toAdvisor});
 }
 
-/// طالب له حالة صحية/إعاقة مسجَّلة لكنه غير مسنَد لأمين قسمه (المسؤول
-/// الوحيد عن الحالات الخاصة حسب [AdvisingLoad.specialCasesOnly]) - إما مسنَد
-/// لمرشد عادي، أو بلا مرشد أصلاً.
+/// طالب له حالة صحية/إعاقة مسجَّلة لكنه غير مسنَد للجهة المسؤولة عن الحالات
+/// الخاصة في قسمه - إما مسنَد لمرشد عادي، أو بلا مرشد أصلاً. الجهة المسؤولة
+/// هي أمين/ة القسم عادةً، أو منسّق/ة القسم إن كان أمين القسم من خارج القسم
+/// (تخصصه مختلف عن قسم الطلاب) - انظر توثيق [AdvisingCaseAnalyzer.analyze].
 class HealthCaseMismatch {
   final AdvisingCaseRecord student;
   final CollegeRosterMember? currentAdvisor;
-  final CollegeRosterMember? departmentAmin; // null إن لم يوجد أمين قسم مسجَّل لهذا القسم
+
+  /// الجهة المسؤولة المفترضة (أمين القسم إن كان من داخل القسم، وإلا منسّق
+  /// القسم) - null إن لم يوجد أي منهما مسجَّلًا لهذا القسم.
+  final CollegeRosterMember? departmentAmin;
   const HealthCaseMismatch({required this.student, required this.currentAdvisor, required this.departmentAmin});
 }
 
@@ -371,17 +375,32 @@ class AdvisingCaseAnalyzer {
 
     // حالات صحية/إعاقة: يجب أن يكون مرشد الطالب هو أمين قسمه (حالات خاصة
     // فقط) - أي طالب له حالة صحية ومرشده الحالي غير أمين القسم (أو بلا مرشد
-    // أصلاً) يُسجَّل هنا.
+    // أصلاً) يُسجَّل هنا. استثناء: إن كان أمين القسم من خارج القسم (تخصصه
+    // مختلف - عندها لا يُصنَّف specialCasesOnly أصلاً لهذا القسم في
+    // [AdvisingLoadRules.classify]، فيغيب من aminByDept)، تُقبَل حالاته لدى
+    // منسّق/ة القسم بدلًا منه.
     final aminByDept = {
       for (final m in facultyInScope.where((m) => m.advisingLoad == AdvisingLoad.specialCasesOnly)) m.department: m,
     };
+    bool isDeptCoordinator(CollegeRosterMember m) {
+      final text = _key([m.position, m.position2, m.position3].join(' '));
+      return (text.contains(_key('منسق قسم')) || text.contains(_key('منسقة قسم'))) &&
+          !text.contains(_key('منسق الكلية')) &&
+          !text.contains(_key('منسقة الكلية'));
+    }
+
+    final coordinatorByDept = {
+      for (final m in facultyInScope.where(isDeptCoordinator)) m.department: m,
+    };
     final healthMismatches = <HealthCaseMismatch>[];
     for (final s in activeStudents.where((s) => s.hasHealthCondition)) {
-      final amin = aminByDept[s.department];
+      final responsible = aminByDept[s.department] ?? coordinatorByDept[s.department];
       final currentAdvisor = s.hasAdvisor ? advisorOf(s) : null;
-      final isWithAmin = amin != null && currentAdvisor != null && _key(displayName(amin.name)) == _key(displayName(currentAdvisor.name));
-      if (!isWithAmin) {
-        healthMismatches.add(HealthCaseMismatch(student: s, currentAdvisor: currentAdvisor, departmentAmin: amin));
+      final isWithResponsible = responsible != null &&
+          currentAdvisor != null &&
+          _key(displayName(responsible.name)) == _key(displayName(currentAdvisor.name));
+      if (!isWithResponsible) {
+        healthMismatches.add(HealthCaseMismatch(student: s, currentAdvisor: currentAdvisor, departmentAmin: responsible));
       }
     }
 

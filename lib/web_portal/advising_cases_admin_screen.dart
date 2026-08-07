@@ -300,13 +300,36 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
         .where((s) => _deptFilter == _kAllDepartments || s.department == _deptFilter)
         .where((s) => search.isEmpty || s.studentName.contains(search) || s.studentId.contains(search))
         .toList()
-      ..sort((a, b) {
-        final c = a.shatr.compareTo(b.shatr);
-        if (c != 0) return c;
-        final d = a.department.compareTo(b.department);
-        if (d != 0) return d;
-        return a.advisorNameRaw.compareTo(b.advisorNameRaw);
-      });
+      ..sort(_compareStudentsForDisplay);
+  }
+
+  /// ترتيب موحَّد لعرض الطلاب كما طُلب صراحةً: الشطر (الطلاب أولًا) ثم القسم
+  /// (بترتيب الأقسام الخمسة الرسمي) ثم الرقم الجامعي تصاعديًا رقميًا (لا
+  /// أبجديًا، وإلا سبق "9" الرقم "10").
+  static int _compareStudentsForDisplay(AdvisingCaseRecord a, AdvisingCaseRecord b) {
+    final s = _shatrOrder(a.shatr).compareTo(_shatrOrder(b.shatr));
+    if (s != 0) return s;
+    final d = _departmentOrder(a.department).compareTo(_departmentOrder(b.department));
+    if (d != 0) return d;
+    final idA = int.tryParse(a.studentId);
+    final idB = int.tryParse(b.studentId);
+    if (idA != null && idB != null) return idA.compareTo(idB);
+    return a.studentId.compareTo(b.studentId);
+  }
+
+  static int _shatrOrder(String shatr) => shatr == Shatr.male.label ? 0 : 1;
+
+  static const List<String> _departmentDisplayOrder = [
+    'قسم الادارة',
+    'قسم المحاسبة',
+    'قسم التسويق',
+    'قسم الاقتصاد و التمويل',
+    'قسم نظم المعلومات الادارية',
+  ];
+
+  static int _departmentOrder(String department) {
+    final i = _departmentDisplayOrder.indexOf(department);
+    return i == -1 ? _departmentDisplayOrder.length : i;
   }
 
   /// التحليل يُبنى لكل شطر على حدة دومًا (حتى مع اختيار "كل الشطرين") لأن
@@ -327,8 +350,8 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
     // التحليل، وليس فقط جدول الطلاب. مقارنة مركّبة (شطر ثم قسم) بدل الاعتماد
     // على استقرار الترتيب، لأن الدمج بين قائمتي الشطرين لا يضمن تجميعهما.
     int cmp(String shatrX, String deptX, String shatrY, String deptY) {
-      final c = shatrX.compareTo(shatrY);
-      return c != 0 ? c : deptX.compareTo(deptY);
+      final c = _shatrOrder(shatrX).compareTo(_shatrOrder(shatrY));
+      return c != 0 ? c : _departmentOrder(deptX).compareTo(_departmentOrder(deptY));
     }
 
     // حالات النطاق (المعدل) تحديدًا تُرتَّب بمستوى ثالث إضافي: العضو
@@ -813,7 +836,11 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
             ],
           ),
           const SizedBox(height: 10),
-          _studentsTable(students, showDepartment: _deptFilter == _kAllDepartments),
+          _studentsTable(
+            students,
+            showDepartment: _deptFilter == _kAllDepartments,
+            showShatr: _shatrFilter == _kAllShatr,
+          ),
         ],
       ),
     );
@@ -839,37 +866,46 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
     );
   }
 
-  Widget _studentsTable(List<AdvisingCaseRecord> students, {bool showDepartment = true, bool showAdvisor = true}) {
+  Widget _studentsTable(
+    List<AdvisingCaseRecord> students, {
+    bool showDepartment = true,
+    bool showShatr = true,
+    bool showAdvisor = true,
+  }) {
     if (students.isEmpty) return const Center(child: Padding(padding: EdgeInsets.all(20), child: Text('لا توجد بيانات')));
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: DataTable(
-        headingRowColor: WidgetStateProperty.all(AppColors.green),
-        headingTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        columns: [
-          const DataColumn(label: Text('الاسم')),
-          const DataColumn(label: Text('الرقم الجامعي')),
-          if (showDepartment) const DataColumn(label: Text('القسم')),
-          const DataColumn(label: Text('الشطر')),
-          if (showAdvisor) const DataColumn(label: Text('المرشد')),
-          const DataColumn(label: Text('النطاق السابق')),
-          const DataColumn(label: Text('النطاق الحالي')),
-        ],
-        rows: [
-          for (var i = 0; i < students.length; i++)
-            DataRow(
-              color: WidgetStateProperty.all(i.isEven ? Colors.white : const Color(0xFFF7F5EF)),
-              cells: [
-                DataCell(Text(students[i].studentName)),
-                DataCell(Text(students[i].studentId)),
-                if (showDepartment) DataCell(Text(students[i].department)),
-                DataCell(Text(students[i].shatr)),
-                if (showAdvisor) DataCell(Text(students[i].advisorNameRaw.isEmpty ? '—' : students[i].advisorNameRaw)),
-                DataCell(_gpaChip(students[i].previousGpa)),
-                DataCell(_gpaChip(students[i].gpa)),
-              ],
-            ),
-        ],
+    return Center(
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          headingRowColor: WidgetStateProperty.all(AppColors.green),
+          headingTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          columns: [
+            const DataColumn(label: Center(child: Text('الاسم'))),
+            const DataColumn(label: Center(child: Text('الرقم الجامعي'))),
+            if (showDepartment) const DataColumn(label: Center(child: Text('القسم'))),
+            if (showShatr) const DataColumn(label: Center(child: Text('الشطر'))),
+            if (showAdvisor) const DataColumn(label: Center(child: Text('المرشد'))),
+            const DataColumn(label: Center(child: Text('النطاق السابق'))),
+            const DataColumn(label: Center(child: Text('النطاق الحالي'))),
+          ],
+          rows: [
+            for (var i = 0; i < students.length; i++)
+              DataRow(
+                color: WidgetStateProperty.all(i.isEven ? Colors.white : const Color(0xFFF7F5EF)),
+                cells: [
+                  DataCell(Center(child: Text(students[i].studentName))),
+                  DataCell(Center(child: Text(students[i].studentId))),
+                  if (showDepartment) DataCell(Center(child: Text(students[i].department))),
+                  if (showShatr) DataCell(Center(child: Text(students[i].shatr))),
+                  if (showAdvisor)
+                    DataCell(Center(
+                        child: Text(students[i].advisorNameRaw.isEmpty ? '—' : students[i].advisorNameRaw))),
+                  DataCell(Center(child: _gpaChip(students[i].previousGpa))),
+                  DataCell(Center(child: _gpaChip(students[i].gpa))),
+                ],
+              ),
+          ],
+        ),
       ),
     );
   }

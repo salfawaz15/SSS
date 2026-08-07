@@ -201,7 +201,10 @@ class AdvisingReportParserService {
       final normalizedDept = deptCol != -1 ? normalizeDepartmentName(_cell(row, deptCol)) : '';
       if (requireDepartment && !isKnownBachelorDepartment(normalizedDept)) continue;
 
-      final gpaText = _cell(row, gpaCol).trim();
+      // بعض التقارير تكتب المعدل بالفاصلة العشرية العربية "٫" (U+066B) بدل
+      // النقطة العادية - double.tryParse لا يتعرف عليها فتفشل قراءة أغلب
+      // المعدلات بصمت (تصير null) دون هذا الاستبدال.
+      final gpaText = _cell(row, gpaCol).trim().replaceAll('٫', '.');
       final gpa = gpaText.isEmpty ? null : double.tryParse(gpaText);
 
       // اسم المرشد المرجعي لهذا الصف: من عمود بالجدول نفسه إن وُجد (تقرير
