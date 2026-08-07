@@ -62,8 +62,18 @@ class CollegeRosterParserService {
   static String _looseKey(String s) =>
       s.trim().replaceAll(RegExp(r'\s+'), '').replaceAll(RegExp('[أإآ]'), 'ا');
 
+  /// بعض الصفوف (خاصة الإداريين) تكتب عبارة الشطر ملتصقة بنص القسم/الجهة
+  /// نفسه ("قسم الإدارة - شطر الطلاب") بدل الاكتفاء بعمود "الشطر" المخصص لذلك
+  /// - فيظهر القسم نفسه عدة مرات في قوائم الفلترة (مرة عادية ومرتين بشطر
+  /// ملتصق). تُزال هذه العبارة قبل التوحيد.
+  static String _stripAttachedShatr(String s) {
+    return s
+        .replaceAll(RegExp(r'\s*[-–]?\s*ب?شطر\s*(الطلاب|الطالبات)\s*'), '')
+        .trim();
+  }
+
   static String _normalizeDepartment(String raw) {
-    final trimmed = raw.trim();
+    final trimmed = _stripAttachedShatr(raw.trim());
     final loose = _looseKey(trimmed);
     for (final entry in _canonicalDepartments.entries) {
       if (_looseKey(entry.key) == loose) return entry.value;

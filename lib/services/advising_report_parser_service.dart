@@ -131,7 +131,7 @@ class AdvisingReportParserService {
 
     int nameCol = -1, idCol = -1, deptCol = -1;
     int advisorNameCol = -1, advisorIdCol = -1, advisorDeptCol = -1;
-    int gpaCol = -1, conditionCol = -1, genderCol = -1;
+    int gpaCol = -1, conditionCol = -1, genderCol = -1, degreeCol = -1;
     var sawHeader = false;
     var missingRequiredColumns = false;
     var firstHeaderRaw = '';
@@ -160,6 +160,7 @@ class AdvisingReportParserService {
         gpaCol = _findColumn(headers, ['المعدل التراكمي', 'المعدل']);
         conditionCol = _findColumn(headers, ['الحالة الصحية', 'الحالة']);
         genderCol = _findColumn(headers, ['الجنس']);
+        degreeCol = _findColumn(headers, ['الدرجة العلمية']);
         if (!sawHeader) {
           firstHeaderRaw = row.join(' | ');
           missingRequiredColumns = nameCol == -1 || idCol == -1 || (requireDepartment && deptCol == -1);
@@ -173,6 +174,15 @@ class AdvisingReportParserService {
       final name = _cell(row, nameCol).trim();
       final id = _cell(row, idCol).trim();
       if (name.isEmpty || id.isEmpty) continue;
+
+      // وحدة الإرشاد الأكاديمي تُعنى بطلبة البكالوريوس فقط - أي درجة أعلى
+      // (ماجستير/دكتوراه) تُستبعَد إن وُجد عمود "الدرجة العلمية" في الملف.
+      if (degreeCol != -1) {
+        final degreeText = _normalize(_cell(row, degreeCol));
+        final isGraduate =
+            degreeText.contains(_normalize('ماجستير')) || degreeText.contains(_normalize('دكتوراه'));
+        if (isGraduate) continue;
+      }
 
       final gpaText = _cell(row, gpaCol).trim();
       final gpa = gpaText.isEmpty ? null : double.tryParse(gpaText);
