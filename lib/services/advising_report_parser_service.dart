@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:archive/archive.dart';
 import 'package:xml/xml.dart';
 
+import '../data/academic_department_names.dart';
 import '../models/advising_case_record.dart';
 import 'advisor_name_matching.dart';
 import 'course_schedule_repository.dart' show Shatr, ShatrLabel;
@@ -184,6 +185,15 @@ class AdvisingReportParserService {
         if (isGraduate) continue;
       }
 
+      // القسم يُوحَّد لنفس صيغة ملف منسوبي الكلية (انظر
+      // academic_department_names.dart) وإلا فشلت مقارنته بقسم المرشد/فلتر
+      // القسم لمجرد اختلاف نصي شكلي (مثال: "الإدارة" من هذا التقرير مقابل
+      // "قسم الادارة" من ملف منسوبي الكلية). برامج الدراسات العليا الخاصة
+      // (مثال: "إدارة الأعمال التنفيذي") ليست من الأقسام الخمسة المعروفة
+      // فتُستبعَد هنا تلقائيًا حتى لو لم يُفصح عمود "الدرجة العلمية" عنها.
+      final normalizedDept = deptCol != -1 ? normalizeDepartmentName(_cell(row, deptCol)) : '';
+      if (requireDepartment && !isKnownBachelorDepartment(normalizedDept)) continue;
+
       final gpaText = _cell(row, gpaCol).trim();
       final gpa = gpaText.isEmpty ? null : double.tryParse(gpaText);
 
@@ -203,7 +213,7 @@ class AdvisingReportParserService {
       result.add(AdvisingCaseRecord(
         studentId: id,
         studentName: name,
-        department: _cell(row, deptCol).trim(),
+        department: normalizedDept.isNotEmpty ? normalizedDept : _cell(row, deptCol).trim(),
         shatr: rowShatrLabel,
         advisorNameRaw: rowAdvisorName ?? '',
         advisorId: advisorIdCol != -1 ? _cell(row, advisorIdCol).trim() : (currentAdvisorId ?? ''),
