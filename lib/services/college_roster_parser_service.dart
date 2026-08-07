@@ -72,9 +72,15 @@ class CollegeRosterParserService {
         .trim();
   }
 
+  /// بعض الصفوف تكتب اسم القسم مسبوقًا بكلمة "قسم" ("قسم الإدارة") وبعضها
+  /// بدونها ("الإدارة") - نزيلها دائمًا قبل المطابقة مع [_canonicalDepartments]
+  /// (مفاتيحها كلها بلا "قسم")، وإلا فشلت المطابقة لأي صف يكتبها بالفعل
+  /// فمرّ بلا توحيد همزة/مسافات، فظهر القسم نفسه مكررًا بصيغتين مختلفتين.
+  static String _stripLeadingQism(String s) => s.trim().replaceFirst(RegExp(r'^قسم\s+'), '').trim();
+
   static String _normalizeDepartment(String raw) {
     final trimmed = _stripAttachedShatr(raw.trim());
-    final loose = _looseKey(trimmed);
+    final loose = _looseKey(_stripLeadingQism(trimmed));
     for (final entry in _canonicalDepartments.entries) {
       if (_looseKey(entry.key) == loose) return entry.value;
     }
