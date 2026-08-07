@@ -15,6 +15,17 @@ jobs:
         with:
           channel: master
 
+      - name: Write secrets.dart
+        run: |
+          mkdir -p lib/config
+          cat > lib/config/secrets.dart <<'DARTEOF'
+          class Secrets {
+            static const String sendGridApiKey = "${{ secrets.SENDGRID_API_KEY }}";
+            static const String senderEmail = "${{ secrets.SENDER_EMAIL }}";
+            static const String recipientEmail = "${{ secrets.RECIPIENT_EMAIL }}";
+          }
+          DARTEOF
+
       - run: flutter pub get
       - run: flutter build web --release
 
