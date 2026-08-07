@@ -16,13 +16,20 @@ jobs:
           channel: master
 
       - name: Write secrets.dart
+        env:
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
+          RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
         run: |
           mkdir -p lib/config
-          cat > lib/config/secrets.dart <<'DARTEOF'
+          KEY=$(printf '%s' "$SENDGRID_API_KEY" | tr -d '\r\n')
+          SENDER=$(printf '%s' "$SENDER_EMAIL" | tr -d '\r\n')
+          RECIPIENT=$(printf '%s' "$RECIPIENT_EMAIL" | tr -d '\r\n')
+          cat > lib/config/secrets.dart <<DARTEOF
           class Secrets {
-            static const String sendGridApiKey = "${{ secrets.SENDGRID_API_KEY }}";
-            static const String senderEmail = "${{ secrets.SENDER_EMAIL }}";
-            static const String recipientEmail = "${{ secrets.RECIPIENT_EMAIL }}";
+            static const String sendGridApiKey = "$KEY";
+            static const String senderEmail = "$SENDER";
+            static const String recipientEmail = "$RECIPIENT";
           }
           DARTEOF
 
