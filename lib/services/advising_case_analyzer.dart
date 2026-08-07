@@ -99,6 +99,11 @@ class AdvisingCaseAnalysis {
   /// الحالات الخاصة) - إما مسنَدون لمرشد عادي أو بلا مرشد أصلاً.
   final List<HealthCaseMismatch> healthCasesNotWithAmin;
 
+  /// **كل** الطلاب الذين لهم حالة صحية/إعاقة مسجَّلة (سواء كانوا لدى الجهة
+  /// الصحيحة أم لا) - للاطلاع على العدد الفعلي الإجمالي، بخلاف
+  /// [healthCasesNotWithAmin] الذي يعرض فقط حالات الخطأ.
+  final List<AdvisingCaseRecord> healthCaseStudents;
+
   const AdvisingCaseAnalysis({
     required this.studentsWithoutAdvisor,
     required this.studentsWithWrongDeptAdvisor,
@@ -110,6 +115,7 @@ class AdvisingCaseAnalysis {
     required this.exemptAdvisorsNoIssue,
     required this.transferSuggestions,
     required this.healthCasesNotWithAmin,
+    required this.healthCaseStudents,
   });
 }
 
@@ -393,7 +399,8 @@ class AdvisingCaseAnalyzer {
       for (final m in facultyInScope.where(isDeptCoordinator)) m.department: m,
     };
     final healthMismatches = <HealthCaseMismatch>[];
-    for (final s in activeStudents.where((s) => s.hasHealthCondition)) {
+    final healthCaseStudents = activeStudents.where((s) => s.hasHealthCondition).toList();
+    for (final s in healthCaseStudents) {
       final responsible = aminByDept[s.department] ?? coordinatorByDept[s.department];
       final currentAdvisor = s.hasAdvisor ? advisorOf(s) : null;
       final isWithResponsible = responsible != null &&
@@ -408,6 +415,7 @@ class AdvisingCaseAnalyzer {
       studentsWithoutAdvisor: withoutAdvisor,
       studentsWithWrongDeptAdvisor: wrongDept,
       healthCasesNotWithAmin: healthMismatches,
+      healthCaseStudents: healthCaseStudents,
       exemptAdvisorsWithStudents: exemptWithStudents,
       advisorsWithNoStudents: noStudents,
       overloadedAdvisors: overloaded,

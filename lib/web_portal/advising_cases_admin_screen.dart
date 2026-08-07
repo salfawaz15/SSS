@@ -383,6 +383,8 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
         ..sort((x, y) => cmp(x.student.shatr, x.student.department, y.student.shatr, y.student.department)),
       healthCasesNotWithAmin: [...a.healthCasesNotWithAmin, ...b.healthCasesNotWithAmin]
         ..sort((x, y) => cmp(x.student.shatr, x.student.department, y.student.shatr, y.student.department)),
+      healthCaseStudents: [...a.healthCaseStudents, ...b.healthCaseStudents]
+        ..sort((x, y) => cmp(x.shatr, x.department, y.shatr, y.department)),
     );
   }
 
@@ -675,7 +677,14 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
         () => _showTransferDialog(a.transferSuggestions),
       ),
       (
-        'حالات صحية ليست لدى أمين القسم',
+        'إجمالي حالات ذوي الإعاقة (طلاب ${a.healthCaseStudents.where((s) => s.shatr == Shatr.male.label).length} / '
+            'طالبات ${a.healthCaseStudents.where((s) => s.shatr == Shatr.female.label).length})',
+        Icons.accessible_outlined,
+        a.healthCaseStudents.length,
+        () => _showStudentsDialog('كل حالات ذوي الإعاقة', a.healthCaseStudents),
+      ),
+      (
+        'حالات صحية ليست لدى أمين/منسّق القسم',
         Icons.medical_services_outlined,
         a.healthCasesNotWithAmin.length,
         () => _showHealthMismatchDialog(a.healthCasesNotWithAmin),
