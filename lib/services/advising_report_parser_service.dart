@@ -48,7 +48,16 @@ class AdvisingReportParserService {
       .replaceAll(RegExp('[أإآ]'), 'ا')
       .replaceAll('ة', 'ه');
 
+  /// يفضّل التطابق التام أولًا قبل الاحتواء الجزئي - وإلا فعمود "الجنسية"
+  /// (سعودي/يمني...) يُلتقَط خطأً كعمود "الجنس" لأن "الجنسية" تبدأ بنفس حروف
+  /// "الجنس"، وبالمثل قد تلتبس أعمدة أخرى ببعضها.
   static int _findColumn(List<String> normalizedHeaders, List<String> candidates) {
+    for (final c in candidates) {
+      final nc = _normalize(c);
+      for (var i = 0; i < normalizedHeaders.length; i++) {
+        if (normalizedHeaders[i] == nc) return i;
+      }
+    }
     for (final c in candidates) {
       final nc = _normalize(c);
       for (var i = 0; i < normalizedHeaders.length; i++) {
