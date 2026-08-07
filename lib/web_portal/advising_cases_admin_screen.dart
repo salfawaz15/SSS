@@ -148,7 +148,15 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
             if (_shatrLabelFromFreeText(m.shatr) != null)
               normalizeAdvisorNameForMatch(m.name): _shatrLabelFromFreeText(m.shatr)!,
         };
-        _departments = roster.map((m) => m.department).toSet().toList()..sort();
+        // فلتر القسم هنا لفرز الطلاب حسب قسمهم العلمي فقط - لا معنى لظهور
+        // جهات الإداريين (مكتب العميد، مركز الخدمات...) بينها، فالطلاب لا
+        // ينتمون لأي منها أصلاً.
+        _departments = roster
+            .where((m) => m.type == CollegeMemberType.faculty)
+            .map((m) => m.department)
+            .toSet()
+            .toList()
+          ..sort();
       });
     } catch (e) {
       if (!mounted) return;
