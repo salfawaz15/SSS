@@ -177,9 +177,13 @@ class AdvisingReportParserService {
       final gpaText = _cell(row, gpaCol).trim();
       final gpa = gpaText.isEmpty ? null : double.tryParse(gpaText);
 
+      // اسم المرشد المرجعي لهذا الصف: من عمود بالجدول نفسه إن وُجد (تقرير
+      // "طلاب على غير مرشدهم")، وإلا من آخر صف "بيانات مرشد" منفصل صودف
+      // (تقرير "طلاب تابعين لمرشد").
+      final rowAdvisorName = advisorNameCol != -1 ? _cell(row, advisorNameCol).trim() : currentAdvisorName;
       String? advisorShatrLabel;
-      if (currentAdvisorName != null && advisorShatrByName != null) {
-        advisorShatrLabel = advisorShatrByName[normalizeAdvisorNameForMatch(currentAdvisorName)];
+      if (rowAdvisorName != null && rowAdvisorName.isNotEmpty && advisorShatrByName != null) {
+        advisorShatrLabel = advisorShatrByName[normalizeAdvisorNameForMatch(rowAdvisorName)];
       }
       final rowShatrLabel = (genderCol != -1 ? resolveShatrLabel(_cell(row, genderCol)) : null) ??
           advisorShatrLabel ??
@@ -191,7 +195,7 @@ class AdvisingReportParserService {
         studentName: name,
         department: _cell(row, deptCol).trim(),
         shatr: rowShatrLabel,
-        advisorNameRaw: advisorNameCol != -1 ? _cell(row, advisorNameCol).trim() : (currentAdvisorName ?? ''),
+        advisorNameRaw: rowAdvisorName ?? '',
         advisorId: advisorIdCol != -1 ? _cell(row, advisorIdCol).trim() : (currentAdvisorId ?? ''),
         advisorDepartment: _cell(row, advisorDeptCol).trim(),
         gpa: gpa,
