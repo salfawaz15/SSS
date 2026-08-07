@@ -241,7 +241,10 @@ class AdvisingReportParserService {
         'العناوين الموجودة فعليًا في صف العناوين: $firstHeaderRaw',
       );
     }
-    if (result.isEmpty && genderCol == -1 && shatr == null && (advisorShatrByName?.isEmpty ?? true)) {
+    // لا يوجد عمود جنس، ولا نجح تحديد الشطر عبر أي مرشد لأي صف (خريطة
+    // المرشدين قد تكون غير فارغة لكن غير مفيدة هنا - مثال: تقرير "الحالة
+    // الصحية" لا يذكر أي مرشد أصلاً) - يُطلَب من المستخدم تحديد الشطر يدويًا.
+    if (result.isEmpty && genderCol == -1 && shatr == null) {
       throw const ShatrRequiredException();
     }
 
