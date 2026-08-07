@@ -17,6 +17,12 @@ class AdvisingCaseRecord {
   /// لمرشد عادي.
   final String healthCondition;
 
+  /// عمود "الحالة" في تقرير "بيانات الطلبة الأكاديمية" (منتظم/مفصول
+  /// أكاديميًا/موقوف...) - حقل مستقل عن [healthCondition] (الذي مصدره تقرير
+  /// آخر مختلف تمامًا: "الحالة الصحية للطلبة")، رغم تشابه الاسم، حتى لا
+  /// يختلط مفهوم الحالة الدراسية بالحالة الصحية/الإعاقة.
+  final String enrollmentStatus;
+
   /// المعدل من آخر رفعة سابقة قبل هذه (النطاق السابق) - null إن كانت هذه أول
   /// رفعة للطالب (لا يوجد نطاق سابق بعد، يظهر تلقائيًا من الفصل الذي يليه).
   final double? previousGpa;
@@ -31,11 +37,16 @@ class AdvisingCaseRecord {
     this.advisorDepartment = '',
     this.gpa,
     this.healthCondition = '',
+    this.enrollmentStatus = '',
     this.previousGpa,
   });
 
   bool get hasAdvisor => advisorNameRaw.trim().isNotEmpty;
   bool get hasHealthCondition => healthCondition.trim().isNotEmpty;
+
+  /// طالب مفصول أكاديميًا - يُستبعَد من كل قوائم متابعة الإرشاد العادية
+  /// ويُعرَض في قائمة منفصلة (انظر [AdvisingCaseAnalyzer.analyze]).
+  bool get isAcademicallyDismissed => enrollmentStatus.contains('مفصول');
 
   AdvisingCaseRecord copyWith({
     String? advisorNameRaw,
@@ -55,6 +66,7 @@ class AdvisingCaseRecord {
         advisorDepartment: advisorDepartment ?? this.advisorDepartment,
         gpa: gpa ?? this.gpa,
         healthCondition: healthCondition ?? this.healthCondition,
+        enrollmentStatus: enrollmentStatus,
         previousGpa: previousGpa ?? this.previousGpa,
       );
 
@@ -68,6 +80,7 @@ class AdvisingCaseRecord {
         'advisorDepartment': advisorDepartment,
         'gpa': gpa,
         'healthCondition': healthCondition,
+        'enrollmentStatus': enrollmentStatus,
         'previousGpa': previousGpa,
       };
 
@@ -81,6 +94,7 @@ class AdvisingCaseRecord {
         advisorDepartment: json['advisorDepartment'] as String? ?? '',
         gpa: (json['gpa'] as num?)?.toDouble(),
         healthCondition: json['healthCondition'] as String? ?? '',
+        enrollmentStatus: json['enrollmentStatus'] as String? ?? '',
         previousGpa: (json['previousGpa'] as num?)?.toDouble(),
       );
 }

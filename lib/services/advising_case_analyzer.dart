@@ -79,6 +79,10 @@ class AdvisingCaseAnalysis {
   final List<OverloadedAdvisorCase> overloadedAdvisors;
   final List<AdvisingCaseRecord> atRiskStudents; // GPA يستدعي متابعة (مقبول/ضعيف)
 
+  /// طلاب مفصولون أكاديميًا - مستبعَدون من كل القوائم أعلاه تمامًا (بلا مرشد/
+  /// خطأ قسم/نطاق معدل...)، ويُعرَضون هنا فقط كقائمة منفصلة.
+  final List<AdvisingCaseRecord> dismissedStudents;
+
   /// مرشدون معفَون/حالات خاصة بلا أي خلل (بلا طلاب كما هو متوقَّع منهم) -
   /// حالة طبيعية، تُخفى افتراضيًا وتظهر رمادية فقط عند تفعيل "إظهار الكل".
   final List<CollegeRosterMember> exemptAdvisorsNoIssue;
@@ -98,6 +102,7 @@ class AdvisingCaseAnalysis {
     required this.advisorsWithNoStudents,
     required this.overloadedAdvisors,
     required this.atRiskStudents,
+    required this.dismissedStudents,
     required this.exemptAdvisorsNoIssue,
     required this.transferSuggestions,
     required this.healthCasesNotWithAmin,
@@ -235,11 +240,16 @@ class AdvisingCaseAnalyzer {
     CollegeRosterMember? advisorOf(AdvisingCaseRecord s) =>
         facultyByNameKey[_key(displayName(s.advisorNameRaw))];
 
+    // الطلاب المفصولون أكاديميًا يُستبعَدون كليًا من كل التحليل أدناه (بلا
+    // مرشد/خطأ قسم/توازن توزيع/نطاق معدل...) ويُعرَضون في قائمتهم الخاصة فقط.
+    final dismissed = students.where((s) => s.isAcademicallyDismissed).toList();
+    final activeStudents = students.where((s) => !s.isAcademicallyDismissed).toList();
+
     final withoutAdvisor = <UnassignedStudent>[];
     final wrongDept = <MismatchedAdvisorCase>[];
     final byAdvisorKey = <String, List<AdvisingCaseRecord>>{};
 
-    for (final s in students) {
+    for (final s in activeStudents) {
       if (!s.hasAdvisor) {
         withoutAdvisor.add(s);
         continue;
@@ -262,8 +272,8 @@ class AdvisingCaseAnalyzer {
     // المرفوعة (لا كل منسوبي الكلية) - نحصرها من المرشدين الظاهرين فعليًا في
     // بيانات الطلاب زائد كل عضو يحمل عبء إرشاد (كامل/جزئي) في نفس الأقسام،
     // حتى يظهر "مرشد بلا طلاب" حتى لو لم يُذكر اسمه إطلاقًا في التقرير.
-    final departmentsInScope = students.map((s) => s.department).toSet();
-    final shatrInScope = students.isEmpty ? null : students.first.shatr;
+    final departmentsInScope = activeStudents.map((s) => s.department).toSet();
+    final shatrInScope = activeStudents.isEmpty ? null : activeStudents.first.shatr;
     final facultyInScope = facultyByNameKey.values
         .where((m) => departmentsInScope.contains(m.department) && (shatrInScope == null || m.shatr == shatrInScope))
         .toSet()
@@ -357,7 +367,7 @@ class AdvisingCaseAnalyzer {
       }
     }
 
-    final atRisk = students.where((s) => gpaStatusOf(s.gpa).needsAttention).toList();
+    final atRisk = activeStudents.where((s) => gpaStatusOf(s.gpa).needsAttention).toList();
 
     // حالات صحية/إعاقة: يجب أن يكون مرشد الطالب هو أمين قسمه (حالات خاصة
     // فقط) - أي طالب له حالة صحية ومرشده الحالي غير أمين القسم (أو بلا مرشد
@@ -366,7 +376,7 @@ class AdvisingCaseAnalyzer {
       for (final m in facultyInScope.where((m) => m.advisingLoad == AdvisingLoad.specialCasesOnly)) m.department: m,
     };
     final healthMismatches = <HealthCaseMismatch>[];
-    for (final s in students.where((s) => s.hasHealthCondition)) {
+    for (final s in activeStudents.where((s) => s.hasHealthCondition)) {
       final amin = aminByDept[s.department];
       final currentAdvisor = s.hasAdvisor ? advisorOf(s) : null;
       final isWithAmin = amin != null && currentAdvisor != null && _key(displayName(amin.name)) == _key(displayName(currentAdvisor.name));
@@ -383,6 +393,7 @@ class AdvisingCaseAnalyzer {
       advisorsWithNoStudents: noStudents,
       overloadedAdvisors: overloaded,
       atRiskStudents: atRisk,
+      dismissedStudents: dismissed,
       exemptAdvisorsNoIssue: exemptNoIssue,
       transferSuggestions: transfers,
     );

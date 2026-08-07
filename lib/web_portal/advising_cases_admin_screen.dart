@@ -338,6 +338,8 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       atRiskStudents: [...a.atRiskStudents, ...b.atRiskStudents]
         ..sort((x, y) => cmpWithMember(
             x.shatr, x.department, x.advisorNameRaw, y.shatr, y.department, y.advisorNameRaw)),
+      dismissedStudents: [...a.dismissedStudents, ...b.dismissedStudents]
+        ..sort((x, y) => cmp(x.shatr, x.department, y.shatr, y.department)),
       exemptAdvisorsNoIssue: [...a.exemptAdvisorsNoIssue, ...b.exemptAdvisorsNoIssue]
         ..sort((x, y) => cmp(x.shatr, x.department, y.shatr, y.department)),
       transferSuggestions: [...a.transferSuggestions, ...b.transferSuggestions]
@@ -640,6 +642,12 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
         Icons.medical_services_outlined,
         a.healthCasesNotWithAmin.length,
         () => _showHealthMismatchDialog(a.healthCasesNotWithAmin),
+      ),
+      (
+        'طلاب مفصولون أكاديميًا',
+        Icons.block_outlined,
+        a.dismissedStudents.length,
+        () => _showStudentsDialog('طلاب مفصولون أكاديميًا', a.dismissedStudents),
       ),
     ];
 

@@ -210,6 +210,7 @@ class AdvisingReportParserService {
         advisorDepartment: _cell(row, advisorDeptCol).trim(),
         gpa: gpa,
         healthCondition: _cell(row, conditionCol).trim(),
+        enrollmentStatus: _cell(row, conditionCol).trim(),
       ));
     }
 
