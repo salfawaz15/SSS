@@ -130,10 +130,12 @@ class AdvisingSchedulePdfService {
 
     final doc = pw.Document(theme: pw.ThemeData.withFont(base: regular, bold: bold));
 
-    // ترتيب ثابت للأقسام/الأشطر (لا يعتمد على ترتيب مفاتيح الخريطة الممرَّرة)
+    // ترتيب ثابت: الشطر أولاً (كل الأقسام لشطر الطلاب من الإدارة إلى نظم
+    // المعلومات، ثم كل الأقسام لشطر الطالبات) لا القسم أولاً - بطلب سليمان
+    // صراحةً (2026-08-10) بعد أن ظهر الترتيب معكوسًا بالنشر الأول.
     final pairs = [
-      for (final d in AdvisingScheduleExcelService.departmentOptions)
-        for (final s in AdvisingScheduleExcelService.shatrOptions) (d, s),
+      for (final s in AdvisingScheduleExcelService.shatrOptions)
+        for (final d in AdvisingScheduleExcelService.departmentOptions) (d, s),
     ];
 
     var anyDataAtAll = false;

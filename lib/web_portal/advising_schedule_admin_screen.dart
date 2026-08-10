@@ -482,14 +482,16 @@ class _AdvisingScheduleAdminScreenState extends State<AdvisingScheduleAdminScree
     }
     final sortedDays = byDay.keys.toList()..sort((a, b) => _dayOrder(a).compareTo(_dayOrder(b)));
     for (final list in byDay.values) {
+      // الشطر أولاً (كل الأقسام لشطر الطلاب من الإدارة إلى نظم المعلومات، ثم
+      // كل الأقسام لشطر الطالبات) لا القسم أولاً - نفس ترتيب PDF الشامل.
       list.sort((a, b) {
+        final shatrCompare =
+            AdvisingScheduleExcelService.shatrOptions.indexOf(a.$2).compareTo(AdvisingScheduleExcelService.shatrOptions.indexOf(b.$2));
+        if (shatrCompare != 0) return shatrCompare;
         final deptCompare = AdvisingScheduleExcelService.departmentOptions
             .indexOf(a.$1)
             .compareTo(AdvisingScheduleExcelService.departmentOptions.indexOf(b.$1));
         if (deptCompare != 0) return deptCompare;
-        final shatrCompare =
-            AdvisingScheduleExcelService.shatrOptions.indexOf(a.$2).compareTo(AdvisingScheduleExcelService.shatrOptions.indexOf(b.$2));
-        if (shatrCompare != 0) return shatrCompare;
         return _periodOrder(a.$3.periodLabel).compareTo(_periodOrder(b.$3.periodLabel));
       });
     }
