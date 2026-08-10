@@ -151,13 +151,11 @@ class AdvisingSchedulePdfService {
         final coordinatorLabel = coordinatorMatch == null
             ? null
             : '${coordinatorMatch.male ? 'منسّق القسم' : 'منسّقة القسم'}: ${coordinatorMatch.name}';
-        // نسخة شاشات العرض (أفقي + خطوط كبيرة جدًا): كل قسم × شطر يبدأ صفحة
-        // مستقلة دائمًا - تجميع عدة أقسام بنفس صفحة اليوم مع "الكل" كان
-        // يُنتج أحيانًا كتلة واحدة أطول من الصفحة (غير قابلة للتقسيم لأنها
-        // ملفوفة بـContainer)، فيعلّق محرّك التخطيط بلا نهاية (سليمان
-        // 2026-08-10: "في حال تنزيل تقرير تتجمد الصفحة" - فقط مع "الكل" +
-        // شاشات العرض). غير مطلوب لغير شاشات العرض (يتدفّق تلقائيًا بأمان).
-        if (signage && sections.isNotEmpty) sections.add(pw.NewPage());
+        // لا نفرض pw.NewPage() بين الأقسام - جُرِّب سابقًا مع "الكل" + شاشات
+        // العرض وزاد عدد الصفحات كثيرًا (حتى 30 صفحة أفقية بخط ضخم) بدل
+        // تدفّق طبيعي، فبقي التجمّد نفسه على الأرجح بسبب تضخّم حجم/تكلفة
+        // المستند لا خلل تقسيم (سليمان 2026-08-10). التدفّق التلقائي الآن
+        // آمن بعد إزالة كل pw.Container اللافّة للجداول (انظر _periodTable).
         sections.add(_deptShatrSection(department, shatr, coordinatorLabel, daySlots, signage: signage));
       }
       if (sections.isEmpty) continue;
