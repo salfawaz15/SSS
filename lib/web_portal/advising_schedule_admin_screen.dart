@@ -18,15 +18,33 @@ import '../theme/app_theme.dart';
 import 'admin_nav.dart';
 import 'portal_header.dart';
 
-String _normalizeArabic(String s) =>
-    s.trim().replaceAll('أ', 'ا').replaceAll('إ', 'ا').replaceAll('آ', 'ا').replaceAll(RegExp(r'\s+'), ' ');
+// دمج "عبد" مع الكلمة التالية بلا مسافة ("عبد الرحمن" -> "عبدالرحمن") قبل
+// تقسيم الكلمات - وإلا تفشل المطابقة صامتًا بين ملف مصدر يكتبها بمسافة
+// وملف آخر (منسوبي الكلية) يكتبها بلا مسافة، فيبقى المرشد في ترتيبه الأصلي
+// غير المرتَّب بدل رتبته العلمية الصحيحة (سليمان 2026-08-10: "مازن عبد
+// الرحمن المنجومي" لم يُطابَق فبقي بمكانه العشوائي رغم كونه معيدًا).
+String _normalizeArabic(String s) => s
+    .trim()
+    .replaceAll('أ', 'ا')
+    .replaceAll('إ', 'ا')
+    .replaceAll('آ', 'ا')
+    .replaceAll(RegExp(r'\s+'), ' ')
+    .replaceAll(RegExp(r'عبد\s+'), 'عبد');
+
+// كلمات صلة قد تُذكر بمصدر وتُحذَف بآخر لنفس الشخص تمامًا ("عبد الله بن
+// مداري الحربي" بملف الإرشاد مقابل "عبد الله مداري عبدالله الحربي" بملف
+// منسوبي الكلية بلا "بن") - تُستبعَد من كلا الجانبين قبل المطابقة، وإلا
+// تفشل المطابقة صامتًا فيبقى المرشد بترتيب عشوائي بدل رتبته العلمية
+// الصحيحة (سليمان 2026-08-10).
+const _nameFillerWords = {'بن', 'بنت', 'ابن', 'آل', 'ال'};
 
 // اسم جدول الإرشاد غالبًا مختصر مقارنة بالاسم الكامل في قاعدة بيانات
-// المنسوبين - نعتبر تطابقًا لو كانت كل كلمات الاسم المختصر موجودة ضمن
-// كلمات الاسم الكامل.
+// المنسوبين - نعتبر تطابقًا لو كانت كل كلمات الاسم المختصر (بلا كلمات
+// الصلة) موجودة ضمن كلمات الاسم الكامل.
 bool _isSubsetMatch(String shortName, String fullName) {
-  final shortWords = shortName.split(' ').where((w) => w.isNotEmpty);
-  final fullWords = fullName.split(' ').where((w) => w.isNotEmpty).toSet();
+  final shortWords = shortName.split(' ').where((w) => w.isNotEmpty && !_nameFillerWords.contains(w));
+  final fullWords =
+      fullName.split(' ').where((w) => w.isNotEmpty && !_nameFillerWords.contains(w)).toSet();
   if (shortWords.isEmpty) return false;
   return shortWords.every(fullWords.contains);
 }
