@@ -249,28 +249,29 @@ class AdvisingSchedulePdfService {
     required bool signage,
   }) {
     final titleFontSize = signage ? 16.0 : 11.0;
-    return pw.Container(
-      margin: const pw.EdgeInsets.only(bottom: 14),
-      child: pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-        children: [
-          pw.Container(
-            padding: pw.EdgeInsets.symmetric(horizontal: signage ? 14 : 10, vertical: signage ? 8 : 6),
-            decoration: pw.BoxDecoration(color: _greenDark, borderRadius: pw.BorderRadius.circular(6)),
-            child: pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-              children: [
-                pw.Text('${department.replaceFirst(RegExp(r'^قسم\s+'), '')} - $shatr',
-                    style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: titleFontSize)),
-                if (coordinatorLabel != null)
-                  pw.Text(coordinatorLabel, style: pw.TextStyle(color: PdfColors.white, fontSize: titleFontSize - 2)),
-              ],
-            ),
+    // بلا pw.Container خارجي يلفّ الكل - راجع الملاحظة أعلى _periodTableSignage
+    // بخصوص خطر التجمّد اللانهائي لأي كتلة متغيّرة الطول مغلَّفة بحاوية.
+    return pw.Column(
+      mainAxisSize: pw.MainAxisSize.min,
+      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+      children: [
+        pw.Container(
+          padding: pw.EdgeInsets.symmetric(horizontal: signage ? 14 : 10, vertical: signage ? 8 : 6),
+          decoration: pw.BoxDecoration(color: _greenDark, borderRadius: pw.BorderRadius.circular(6)),
+          child: pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text('${department.replaceFirst(RegExp(r'^قسم\s+'), '')} - $shatr',
+                  style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: titleFontSize)),
+              if (coordinatorLabel != null)
+                pw.Text(coordinatorLabel, style: pw.TextStyle(color: PdfColors.white, fontSize: titleFontSize - 2)),
+            ],
           ),
-          pw.SizedBox(height: 6),
-          ...daySlots.map(signage ? _periodTableSignage : _periodTable),
-        ],
-      ),
+        ),
+        pw.SizedBox(height: 6),
+        ...daySlots.map(signage ? _periodTableSignage : _periodTable),
+        pw.SizedBox(height: 14),
+      ],
     );
   }
 
@@ -418,120 +419,120 @@ class AdvisingSchedulePdfService {
   }
 
   static pw.Widget _daySection(String dayLabel, List<AdvisingScheduleSlot> periods) {
-    return pw.Container(
-      margin: const pw.EdgeInsets.only(bottom: 14),
-      child: pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-        children: [
-          pw.Container(
-            padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: pw.BoxDecoration(color: _greenDark, borderRadius: pw.BorderRadius.circular(6)),
-            child: pw.Text(dayLabel, style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 12)),
-          ),
-          pw.SizedBox(height: 6),
-          ...periods.map(_periodTable),
-        ],
-      ),
+    return pw.Column(
+      mainAxisSize: pw.MainAxisSize.min,
+      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+      children: [
+        pw.Container(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: pw.BoxDecoration(color: _greenDark, borderRadius: pw.BorderRadius.circular(6)),
+          child: pw.Text(dayLabel, style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 12)),
+        ),
+        pw.SizedBox(height: 6),
+        ...periods.map(_periodTable),
+        pw.SizedBox(height: 14),
+      ],
     );
   }
 
   /// نسخة شاشات العرض من قسم اليوم: خطوط أكبر بكثير وصفوف أوسع كي تُقرأ من
   /// مسافة على شاشة إسياب، وجدول واحد بلا تقسيم فترات متعدد الحدود الدقيقة.
   static pw.Widget _daySectionSignage(String dayLabel, List<AdvisingScheduleSlot> periods) {
-    return pw.Container(
-      margin: const pw.EdgeInsets.only(bottom: 22),
-      child: pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-        children: [
-          pw.Container(
-            padding: const pw.EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            decoration: pw.BoxDecoration(color: _greenDark, borderRadius: pw.BorderRadius.circular(8)),
-            child: pw.Text(dayLabel, style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 20)),
-          ),
-          pw.SizedBox(height: 10),
-          ...periods.map(_periodTableSignage),
-        ],
-      ),
+    return pw.Column(
+      mainAxisSize: pw.MainAxisSize.min,
+      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+      children: [
+        pw.Container(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: pw.BoxDecoration(color: _greenDark, borderRadius: pw.BorderRadius.circular(8)),
+          child: pw.Text(dayLabel, style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 20)),
+        ),
+        pw.SizedBox(height: 10),
+        ...periods.map(_periodTableSignage),
+        pw.SizedBox(height: 22),
+      ],
     );
   }
 
+  // ملاحظة مهمة: لا تُغلَّف جداول متغيّرة الطول (قد تحوي عشرات الصفوف) بـ
+  // pw.Container - فالحاوية كتلة واحدة غير قابلة للتقسيم بين الصفحات
+  // بمكتبة pdf، بخلاف pw.Column/pw.Table اللذين يدعمان التدفّق التلقائي.
+  // تجاهُل هذا سبّب تجمّد الصفحة بلا نهاية عند توليد تقرير "شاشات العرض"
+  // لقسم كبير (سليمان 2026-08-10) - أُزيلت كل الحاويات اللافّة للجداول هنا،
+  // وبقيت فقط حول العناصر الصغيرة ثابتة الارتفاع (شريط العنوان/اليوم).
   static pw.Widget _periodTableSignage(AdvisingScheduleSlot slot) {
-    return pw.Container(
-      margin: const pw.EdgeInsets.only(bottom: 14),
-      decoration: pw.BoxDecoration(border: pw.Border.all(color: _gold, width: 1), borderRadius: pw.BorderRadius.circular(8)),
-      child: pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-        children: [
-          pw.Container(
-            padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            color: _lightGray,
-            child: pw.Text('الفترة: ${slot.periodLabel}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 16, color: _green)),
-          ),
-          pw.Table(
-            border: pw.TableBorder(horizontalInside: pw.BorderSide(color: PdfColors.grey300)),
-            defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
-            columnWidths: const {0: pw.FlexColumnWidth(1), 1: pw.FlexColumnWidth(3)},
-            children: [
+    return pw.Column(
+      mainAxisSize: pw.MainAxisSize.min,
+      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+      children: [
+        pw.Container(
+          margin: const pw.EdgeInsets.only(top: 8),
+          padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          color: _lightGray,
+          child: pw.Text('الفترة: ${slot.periodLabel}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 16, color: _green)),
+        ),
+        pw.Table(
+          border: pw.TableBorder(horizontalInside: pw.BorderSide(color: PdfColors.grey300)),
+          defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
+          columnWidths: const {0: pw.FlexColumnWidth(1), 1: pw.FlexColumnWidth(3)},
+          children: [
+            pw.TableRow(
+              decoration: pw.BoxDecoration(color: _green),
+              children: [
+                _cell('رقم المكتب', bold: true, color: PdfColors.white, fontSize: 15),
+                _cell('اسم المرشد الأكاديمي', bold: true, color: PdfColors.white, fontSize: 15),
+              ],
+            ),
+            for (var i = 0; i < slot.entries.length; i++)
               pw.TableRow(
-                decoration: pw.BoxDecoration(color: _green),
+                decoration: pw.BoxDecoration(color: i.isEven ? PdfColors.white : _lightGray),
                 children: [
-                  _cell('رقم المكتب', bold: true, color: PdfColors.white, fontSize: 15),
-                  _cell('اسم المرشد الأكاديمي', bold: true, color: PdfColors.white, fontSize: 15),
+                  _cell(slot.entries[i].office, fontSize: 14),
+                  _cell(slot.entries[i].advisorName, fontSize: 14),
                 ],
               ),
-              for (var i = 0; i < slot.entries.length; i++)
-                pw.TableRow(
-                  decoration: pw.BoxDecoration(color: i.isEven ? PdfColors.white : _lightGray),
-                  children: [
-                    _cell(slot.entries[i].office, fontSize: 14),
-                    _cell(slot.entries[i].advisorName, fontSize: 14),
-                  ],
-                ),
-            ],
-          ),
-        ],
-      ),
+          ],
+        ),
+      ],
     );
   }
 
   static pw.Widget _periodTable(AdvisingScheduleSlot slot) {
-    return pw.Container(
-      margin: const pw.EdgeInsets.only(bottom: 8),
-      decoration: pw.BoxDecoration(border: pw.Border.all(color: _gold, width: 0.7), borderRadius: pw.BorderRadius.circular(6)),
-      child: pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-        children: [
-          pw.Container(
-            padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            color: _lightGray,
-            child: pw.Text('الفترة: ${slot.periodLabel}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: _green)),
-          ),
-          // ترتيب الأعمدة معكوس عمدًا (رقم المكتب أولاً..الاسم أخيرًا) لأن
-          // pw.Table يرتّب أعمدته فعليًا من يسار الصفحة لا حسب اتجاه النص.
-          pw.Table(
-            border: pw.TableBorder(horizontalInside: pw.BorderSide(color: PdfColors.grey300)),
-            defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
-            columnWidths: const {0: pw.FlexColumnWidth(1), 1: pw.FlexColumnWidth(3)},
-            children: [
+    return pw.Column(
+      mainAxisSize: pw.MainAxisSize.min,
+      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+      children: [
+        pw.Container(
+          margin: const pw.EdgeInsets.only(top: 6),
+          padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          color: _lightGray,
+          child: pw.Text('الفترة: ${slot.periodLabel}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: _green)),
+        ),
+        // ترتيب الأعمدة معكوس عمدًا (رقم المكتب أولاً..الاسم أخيرًا) لأن
+        // pw.Table يرتّب أعمدته فعليًا من يسار الصفحة لا حسب اتجاه النص.
+        pw.Table(
+          border: pw.TableBorder(horizontalInside: pw.BorderSide(color: PdfColors.grey300)),
+          defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
+          columnWidths: const {0: pw.FlexColumnWidth(1), 1: pw.FlexColumnWidth(3)},
+          children: [
+            pw.TableRow(
+              decoration: pw.BoxDecoration(color: _green),
+              children: [
+                _cell('رقم المكتب', bold: true, color: PdfColors.white),
+                _cell('اسم المرشد الأكاديمي', bold: true, color: PdfColors.white),
+              ],
+            ),
+            for (var i = 0; i < slot.entries.length; i++)
               pw.TableRow(
-                decoration: pw.BoxDecoration(color: _green),
+                decoration: pw.BoxDecoration(color: i.isEven ? PdfColors.white : _lightGray),
                 children: [
-                  _cell('رقم المكتب', bold: true, color: PdfColors.white),
-                  _cell('اسم المرشد الأكاديمي', bold: true, color: PdfColors.white),
+                  _cell(slot.entries[i].office),
+                  _cell(slot.entries[i].advisorName),
                 ],
               ),
-              for (var i = 0; i < slot.entries.length; i++)
-                pw.TableRow(
-                  decoration: pw.BoxDecoration(color: i.isEven ? PdfColors.white : _lightGray),
-                  children: [
-                    _cell(slot.entries[i].office),
-                    _cell(slot.entries[i].advisorName),
-                  ],
-                ),
-            ],
-          ),
-        ],
-      ),
+          ],
+        ),
+      ],
     );
   }
 

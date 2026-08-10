@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
 
 import '../data/course_catalog.dart';
+import '../data/faculty_sort_order.dart';
 import '../models/advising_schedule.dart';
 import '../models/college_roster_member.dart';
 import '../services/advising_schedule_excel_service.dart';
@@ -180,6 +181,36 @@ class _AdvisingScheduleAdminScreenState extends State<AdvisingScheduleAdminScree
     }
   }
 
+  /// يرتّب مرشدي كل فترة حسب الرتبة العلمية ثم تاريخ التعيين (الأقدم أولاً)
+  /// - يطابق اسم كل مرشد بملف منسوبي الكلية (مطابقة مرنة تتحمّل اختلاف
+  /// صياغة الاسم، بنفس منطق `_isSubsetMatch` المستخدَم لمطابقة رقم المكتب).
+  /// من لا يُطابَق له عضو بالروستر يُدفَع لنهاية قائمة فترته (لا يُستبعَد).
+  List<AdvisingScheduleSlot> _sortSlotsByRank(List<AdvisingScheduleSlot> slots, List<CollegeRosterMember> roster) {
+    CollegeRosterMember? memberFor(String name) {
+      final normalized = _normalizeArabic(name);
+      for (final m in roster) {
+        if (_normalizeArabic(m.name) == normalized) return m;
+      }
+      for (final m in roster) {
+        if (_isSubsetMatch(normalized, _normalizeArabic(m.name))) return m;
+      }
+      return null;
+    }
+
+    return slots.map((slot) {
+      final sortedEntries = [...slot.entries]
+        ..sort((a, b) {
+          final ma = memberFor(a.advisorName);
+          final mb = memberFor(b.advisorName);
+          if (ma != null && mb != null) return FacultySortOrder.compareByRankThenAppointment(ma, mb);
+          if (ma != null) return -1;
+          if (mb != null) return 1;
+          return 0;
+        });
+      return AdvisingScheduleSlot(dayLabel: slot.dayLabel, periodLabel: slot.periodLabel, entries: sortedEntries);
+    }).toList();
+  }
+
   /// رفع ملف واحد أو عدة ملفات دفعة واحدة - كل ملف يحدَّد قسمه/شطره من
   /// محتواه نفسه (الصف الثاني أعلى النموذج)، فلا حاجة لاختيار قسم/شطر
   /// مسبقًا بالشاشة قبل الرفع الجماعي (بطلب سليمان صراحةً 2026-08-10، بعد
@@ -215,6 +246,22 @@ class _AdvisingScheduleAdminScreenState extends State<AdvisingScheduleAdminScree
           okItems.add((fileName: file.name, department: parsed.department, shatr: parsed.shatr, slots: parsed.slots));
         } catch (e) {
           failedItems.add((fileName: file.name, error: '$e'));
+        }
+      }
+
+      // ترتيب كل قائمة مرشدين بكل فترة حسب الرتبة العلمية ثم تاريخ التعيين
+      // (الأقدم أولاً) - بطلب سليمان صراحةً 2026-08-10، بدل ترتيب ورودهم
+      // العشوائي بالملف المرفوع. يُطبَّق مرة واحدة هنا وقت الاعتماد فينحفظ
+      // بالترتيب الصحيح دائمًا (لا حاجة لإعادة الترتيب بكل شاشة عرض/PDF).
+      if (okItems.isNotEmpty) {
+        final roster = await CollegeRosterRepository.load();
+        for (var i = 0; i < okItems.length; i++) {
+          okItems[i] = (
+            fileName: okItems[i].fileName,
+            department: okItems[i].department,
+            shatr: okItems[i].shatr,
+            slots: _sortSlotsByRank(okItems[i].slots, roster),
+          );
         }
       }
 

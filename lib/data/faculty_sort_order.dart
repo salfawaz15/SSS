@@ -95,6 +95,22 @@ class FacultySortOrder {
     return _departmentKeywords.length;
   }
 
+  /// ترتيب مبسّط بالرتبة العلمية فقط ثم تاريخ التعيين عند تساوي الرتبة
+  /// (الأقدم تعيينًا أولاً) - بلا اعتبار المنصب/النصاب مثل [compareMembers]
+  /// الكامل (المصمَّم لقائمة منسوبي الكلية الإدارية). يُستخدم لعرض قوائم
+  /// المرشدين بجدول توزيع فترات الإرشاد، حيث الرتبة والأقدمية العلمية فقط
+  /// هما المعيار المطلوب هناك - بطلب سليمان صراحةً 2026-08-10.
+  static int compareByRankThenAppointment(CollegeRosterMember a, CollegeRosterMember b) {
+    final r = academicRankOrder(a.academicRank).compareTo(academicRankOrder(b.academicRank));
+    if (r != 0) return r;
+    final aDate = _parseHijriDate(a.appointmentDate);
+    final bDate = _parseHijriDate(b.appointmentDate);
+    if (aDate != null && bDate != null) return aDate.compareTo(bDate);
+    if (aDate != null) return -1;
+    if (bDate != null) return 1;
+    return 0;
+  }
+
   static int academicRankOrder(String academicRank) {
     final words = _normalize(academicRank)
         .split(RegExp(r'\s+'))
