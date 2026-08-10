@@ -180,60 +180,94 @@ class _AdvisingScheduleAdminScreenState extends State<AdvisingScheduleAdminScree
     }
   }
 
+  /// رفع ملف واحد أو عدة ملفات دفعة واحدة - كل ملف يحدَّد قسمه/شطره من
+  /// محتواه نفسه (الصف الثاني أعلى النموذج)، فلا حاجة لاختيار قسم/شطر
+  /// مسبقًا بالشاشة قبل الرفع الجماعي (بطلب سليمان صراحةً 2026-08-10، بعد
+  /// أن احتاج رفع 10 ملفات جاهزة دفعة واحدة كحالة استثنائية أولى).
   Future<void> _uploadTemplate() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['xlsx'],
       withData: true,
+      allowMultiple: true,
     );
-    if (result == null || result.files.single.bytes == null) return;
-    final Uint8List bytes = result.files.single.bytes!;
+    if (result == null || result.files.isEmpty) return;
 
     setState(() => _uploadingTemplate = true);
     try {
-      final parsed = AdvisingScheduleExcelService.parseTemplate(bytes);
-      if (parsed.department.isEmpty || parsed.shatr.isEmpty) {
-        throw Exception('لم يتم اختيار القسم/الشطر أعلى النموذج - عبّئهما قبل الرفع.');
+      final okItems = <({String fileName, String department, String shatr, List<AdvisingScheduleSlot> slots})>[];
+      final failedItems = <({String fileName, String error})>[];
+
+      for (final file in result.files) {
+        final bytes = file.bytes;
+        if (bytes == null) {
+          failedItems.add((fileName: file.name, error: 'تعذّرت قراءة محتوى الملف.'));
+          continue;
+        }
+        try {
+          final parsed = AdvisingScheduleExcelService.parseTemplate(bytes);
+          if (parsed.department.isEmpty || parsed.shatr.isEmpty) {
+            throw Exception('لم يتم اختيار القسم/الشطر أعلى النموذج.');
+          }
+          if (parsed.slots.isEmpty) {
+            throw Exception('لم يتم العثور على أي فترة إرشاد بالملف.');
+          }
+          okItems.add((fileName: file.name, department: parsed.department, shatr: parsed.shatr, slots: parsed.slots));
+        } catch (e) {
+          failedItems.add((fileName: file.name, error: '$e'));
+        }
       }
-      if (parsed.slots.isEmpty) {
-        throw Exception('لم يتم العثور على أي فترة إرشاد في النموذج - تأكد من اختيار فترة لعضو واحد على الأقل.');
-      }
+
       if (!mounted) return;
-      final total = parsed.slots.fold<int>(0, (s, slot) => s + slot.entries.length);
-      final conflicts = _findOfficeConflicts(parsed.slots);
+      if (okItems.isEmpty) {
+        throw Exception('تعذّرت قراءة كل الملفات المختارة:\n${failedItems.map((f) => '- ${f.fileName}: ${f.error}').join('\n')}');
+      }
+
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('تأكيد الاعتماد'),
+          title: Text(okItems.length > 1 ? 'تأكيد اعتماد ${okItems.length} ملفات' : 'تأكيد الاعتماد'),
           content: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  'تم استخراج ${parsed.slots.length} فترة إرشاد بإجمالي $total مرشدًا لـ ${parsed.department} '
-                  '(${parsed.shatr}).\n\nسيستبدل هذا الجدول السابق لنفس القسم/الشطر بالكامل. هل تريد الاعتماد؟',
-                ),
-                if (conflicts.isNotEmpty) ...[
-                  const SizedBox(height: 14),
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.amber.shade50,
-                      border: Border.all(color: Colors.amber.shade400),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('⚠ اختلاف رقم مكتب نفس المرشد بين يوم وآخر:',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5)),
-                        const SizedBox(height: 6),
-                        for (final c in conflicts)
-                          Text('- ${c.name}: ${c.offices.join(' / ')}', style: const TextStyle(fontSize: 12)),
-                      ],
-                    ),
-                  ),
+                const Text('سيستبدل هذا الجدول السابق لنفس القسم/الشطر بالكامل لكل ملف أدناه:'),
+                const SizedBox(height: 10),
+                for (final item in okItems) ...[
+                  Builder(builder: (context) {
+                    final total = item.slots.fold<int>(0, (s, slot) => s + slot.entries.length);
+                    final conflicts = _findOfficeConflicts(item.slots);
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('${item.department} (${item.shatr}): ${item.slots.length} فترة، $total مرشدًا — ${item.fileName}',
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5)),
+                          if (conflicts.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4, right: 12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('⚠ اختلاف رقم مكتب نفس المرشد بين يوم وآخر:',
+                                      style: TextStyle(color: Colors.orange, fontSize: 11.5)),
+                                  for (final c in conflicts)
+                                    Text('- ${c.name}: ${c.offices.join(' / ')}', style: const TextStyle(fontSize: 11.5)),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
+                if (failedItems.isNotEmpty) ...[
+                  const Divider(),
+                  Text('تعذّرت قراءة ${failedItems.length} ملف(ات) (لن تُرفَع):',
+                      style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12.5)),
+                  for (final f in failedItems) Text('- ${f.fileName}: ${f.error}', style: const TextStyle(fontSize: 11.5)),
                 ],
               ],
             ),
@@ -246,10 +280,15 @@ class _AdvisingScheduleAdminScreenState extends State<AdvisingScheduleAdminScree
       );
       if (confirmed != true) return;
 
-      await AdvisingScheduleRepository.save(parsed.department, parsed.shatr, parsed.slots);
+      for (final item in okItems) {
+        await AdvisingScheduleRepository.save(item.department, item.shatr, item.slots);
+      }
       await _load();
       if (!mounted) return;
-      AppNotice.success(context, 'تم اعتماد جدول ${parsed.department} (${parsed.shatr}) بنجاح.');
+      AppNotice.success(
+        context,
+        okItems.length > 1 ? 'تم اعتماد ${okItems.length} جداول بنجاح.' : 'تم اعتماد جدول ${okItems.first.department} (${okItems.first.shatr}) بنجاح.',
+      );
     } catch (e) {
       if (!mounted) return;
       AppNotice.error(context, 'تعذّر قراءة النموذج: $e');
@@ -354,7 +393,7 @@ class _AdvisingScheduleAdminScreenState extends State<AdvisingScheduleAdminScree
                 onPressed: _uploadingTemplate ? null : _uploadTemplate,
                 loading: _uploadingTemplate,
                 icon: Icons.upload_file,
-                label: 'رفع نموذج معبّأ',
+                label: 'رفع نموذج معبّأ (يقبل عدة ملفات)',
                 color: AppColors.green,
                 filled: false,
               ),
