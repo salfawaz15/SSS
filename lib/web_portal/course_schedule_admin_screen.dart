@@ -75,7 +75,14 @@ int _practicalMax(int maxHours) => ((maxHours + 2) ~/ 3) * 3;
 
 /// يبني ملاحظة احترافية بناءً على مقارنة الساعات الفعلية بالحد النظامي -
 /// null يعني لا فرق (النصاب مطابق تمامًا) فلا تظهر أي ملاحظة.
-({_QuotaStatus status, String? note}) _quotaCompare(int actualHours, int? maxHours) {
+///
+/// [fullRankMaxHours] هو نصاب الدرجة العلمية الكامل بدون أي تخفيض - يُستخدم
+/// حصرًا لحساب "الساعات الزائدة" الحقيقية (التي تُصرف ماليًا)، لأن تخفيض
+/// النصاب لمنصب إداري يعفي العضو من جزء من العبء لكنه لا يخفّض السقف الذي
+/// تُحسب الزيادة المدفوعة بعده. عضو نصابه المخفّض 7 (50% من 14) وله 9 ساعات
+/// فعلية "مكتمل النصاب" فقط، وليس له أي ساعات زائدة لأن 9 لم تتجاوز الـ14.
+/// إن كان null (درجة غير معروفة) يُستخدم [maxHours] نفسه كبديل.
+({_QuotaStatus status, String? note}) _quotaCompare(int actualHours, int? maxHours, {int? fullRankMaxHours}) {
   if (maxHours == null) return (status: _QuotaStatus.unknown, note: null);
   if (actualHours == maxHours) return (status: _QuotaStatus.ok, note: null);
   if (actualHours < maxHours) {
@@ -86,9 +93,14 @@ int _practicalMax(int maxHours) => ((maxHours + 2) ~/ 3) * 3;
     );
   }
 
-  final extra = actualHours - maxHours;
+  final overtimeBase = fullRankMaxHours ?? maxHours;
+  if (actualHours <= overtimeBase) {
+    return (status: _QuotaStatus.ok, note: null);
+  }
+
+  final extra = actualHours - overtimeBase;
   final note = 'ساعات زائدة عن النصاب التدريسي بمقدار ${_hoursLabel(extra)}.';
-  final status = actualHours <= _practicalMax(maxHours) ? _QuotaStatus.overWithinRounding : _QuotaStatus.over;
+  final status = actualHours <= _practicalMax(overtimeBase) ? _QuotaStatus.overWithinRounding : _QuotaStatus.over;
   return (status: status, note: note);
 }
 
@@ -180,7 +192,7 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
     _loadAll();
   }
 
-  static const _tabTitles = ['تسكين المقررات وشعبها', 'الجدول الدراسي لأعضاء هيئة التدريس'];
+  static const _tabTitles = ['تسكين المقررات الدراسية', 'الجدول الدراسي'];
 
   @override
   void dispose() {
@@ -429,7 +441,7 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
     if (widget.singleTab) {
       return PortalScaffold(
         title: _tabTitles[widget.initialTabIndex],
-        navItems: buildAdminNavItems(context, current: 'tools'),
+        navItems: buildAdminNavItems(context, current: 'academic-services'),
         body: _loading
             ? const Center(child: CircularProgressIndicator())
             : (widget.initialTabIndex == 0 ? _buildTableTab() : _buildFacultyTab()),
@@ -437,7 +449,7 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
     }
     return PortalScaffold(
       title: _tabTitles[_tabController.index],
-      navItems: buildAdminNavItems(context, current: 'tools'),
+      navItems: buildAdminNavItems(context, current: 'academic-services'),
       bottom: _GreenTabBar(
         TabBar(
           controller: _tabController,
@@ -1338,7 +1350,11 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
     final tableRows = InstructorScheduleTable.buildRows(records);
     final totalHours = InstructorScheduleTable.totalCreditHours(records);
     final department = _departmentFor(name, _facultyDept ?? '');
-    final quota = _quotaCompare(totalHours, _effectiveMaxHoursFor(name));
+    final quota = _quotaCompare(
+      totalHours,
+      _effectiveMaxHoursFor(name),
+      fullRankMaxHours: TeachingLoadRegulation.maxHoursFor(_rosterFor(name)?.academicRank),
+    );
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -1452,7 +1468,11 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
       final department = _departmentFor(name, _facultyDept ?? '');
       final staffNumber = _rosterFor(name)?.staffNumber ?? '';
       final maxHours = _effectiveMaxHoursFor(name);
-      final compare = _quotaCompare(actualHours, maxHours);
+      final compare = _quotaCompare(
+        actualHours,
+        maxHours,
+        fullRankMaxHours: TeachingLoadRegulation.maxHoursFor(rank),
+      );
       quotaRows.add(_QuotaRow(
         name: name,
         department: FacultySortOrder.displayDepartment(department),
@@ -1486,8 +1506,8 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
             alignment: WrapAlignment.center,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              _quotaCountChip(_kQuotaUnder, underCount, Colors.amber.shade800),
-              _quotaCountChip(_kQuotaOver, overCount, Colors.red.shade700),
+              _quotaCountChip(_kQuotaUnder, underCount, Colors.red.shade700),
+              _quotaCountChip(_kQuotaOver, overCount, Colors.orange.shade800),
               SegmentedButton<String>(
                 segments: const [
                   ButtonSegment(value: _kQuotaAll, label: Text(_kQuotaAll)),
@@ -1552,8 +1572,10 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
                                   DataCell(
                                     Center(
                                       child: filtered[i].note == null
-                                          ? const Text('مطابق للنصاب', style: TextStyle(color: Colors.green))
-                                          : Text(filtered[i].note!, style: TextStyle(color: _quotaColor(filtered[i].status))),
+                                          ? Text('مطابق للنصاب', style: TextStyle(color: AppColors.green))
+                                          : filtered[i].status == _QuotaStatus.over
+                                              ? _optionalOverageBadge(filtered[i].note!)
+                                              : Text(filtered[i].note!, style: TextStyle(color: _quotaColor(filtered[i].status))),
                                     ),
                                   ),
                                 ],
@@ -1581,23 +1603,39 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
     );
   }
 
-  /// لون كل حالة نصاب: أخضر مطابق، كهرماني دون النصاب، أسود زائد ضمن هامش
-  /// تقريب المقررات (3 ساعات)، أحمر زائد فعلي يستدعي معالجة.
+  /// لون كل حالة نصاب - بطلب سليمان: أحمر = دون النصاب، أخضر = مطابق،
+  /// برتقالي = زائد إجباري (فارق تقريب لا يمكن التحكم به، المقررات 3
+  /// ساعات فلا يمكن تحقيق نصاب كـ10 بالضبط)، وأرجواني مميز = زائد اختياري
+  /// (زيادة حقيقية فوق ذلك الهامش، يستحق شارة مستقلة كعبء الإرشاد بدل لون
+  /// عادي حتى لا يختلط بحالة الزيادة الإجبارية).
   Color _quotaColor(_QuotaStatus status) => switch (status) {
-        _QuotaStatus.over => Colors.red.shade700,
-        _QuotaStatus.overWithinRounding => Colors.black87,
-        _QuotaStatus.under => Colors.amber.shade800,
-        _ => Colors.green.shade700,
+        _QuotaStatus.over => Colors.purple.shade700,
+        _QuotaStatus.overWithinRounding => Colors.orange.shade800,
+        _QuotaStatus.under => Colors.red.shade700,
+        _ => AppColors.green,
       };
+
+  /// شارة "زائد اختياري" بنفس تصميم شارة عبء الإرشاد (`_loadChip` بملف
+  /// college_roster_admin_screen.dart) - حبة مستقلة بخلفية وحدود بلون مميز،
+  /// بدل نص ملوّن عادي، لتمييزها بصريًا عن باقي حالات النصاب.
+  Widget _optionalOverageBadge(String note) {
+    final color = _quotaColor(_QuotaStatus.over);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.6)),
+      ),
+      child: Text(note, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12.5)),
+    );
+  }
 
   /// صندوق ملاحظة النصاب - يظهر فقط في عرض الموقع (لا في PDF ولا الطباعة).
   Widget _quotaNoteBox(_QuotaStatus status, String note) {
+    if (status == _QuotaStatus.over) return _optionalOverageBadge(note);
     final color = _quotaColor(status);
-    final icon = status == _QuotaStatus.over
-        ? Icons.error_outline
-        : status == _QuotaStatus.overWithinRounding
-            ? Icons.remove_circle_outline
-            : Icons.info_outline;
+    final icon = status == _QuotaStatus.overWithinRounding ? Icons.remove_circle_outline : Icons.info_outline;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),

@@ -2,6 +2,17 @@
 /// لائحة أعضاء هيئة التدريس الرسمية (المادة الرابعة عشرة) - قاعدة تنظيمية
 /// ثابتة، لا بيانات أشخاص، فلا تخضع لسياسة "الاعتماد فقط على ملفات مرفوعة".
 class TeachingLoadRegulation {
+  /// القيم الصحيحة الوحيدة المعتمدة لعمود "النصاب التدريسي" - تُستخدم عند
+  /// رفع الملف لتنبيه المستخدم بأي قيمة مكتوبة يدويًا خارج هذه القائمة (خطأ
+  /// إملائي محتمل) بدل قائمة منسدلة داخل الإكسل نفسه (تكسر قراءة مكتبة
+  /// `excel` المستخدَمة بالموقع - انظر lib/data/advising_load_rules.dart).
+  static const List<String> validQuotaReductionValues = [
+    'بدون تخفيض نصاب',
+    '50%',
+    'الحد الأدنى',
+    'معفي من الارشاد',
+  ];
+
   // المفاتيح مطبَّعة بلا "ال" التعريف وبلا همزة (نفس صيغة عمود "الدرجة
   // العلمية" الفعلية في ملف أعضاء هيئة التدريس المرفوع، مثل "محاضر" و"استاذ
   // مشارك" بلا "ال") - المطابقة تمر عبر [_normalize] فتتحمّل أي صيغة واردة
@@ -48,6 +59,26 @@ class TeachingLoadRegulation {
     'مكلف بالحد الأدنى',
     'مستشار',
   ];
+
+  /// نفس مناصب [_fixedThreeHourPositions] لكن تُطابَق ببداية النص لا تطابقًا
+  /// تامًا فقط - لأن الصياغة الطبيعية تكتب "الدور + الجهة" (مثل "وكيل كلية
+  /// إدارة الأعمال" أو "عميد كلية...")، فالتطابق التام وحده كان يُفوِّت هذه
+  /// الحالات (صالح قاضي - وكيل كلية - ظهر نصابه بالأحمر خطأً رغم مطابقته
+  /// فعليًا للحد الأدنى 3 ساعات، سليمان 2026-08-09). **"مستشار" مستثناة
+  /// عمدًا** من هذه القائمة وتبقى تطابقًا تامًا فقط - هي الحالة الموثَّقة
+  /// بالتعليق أعلاه (`_isFixedThreeHour`) حيث "مستشار عميد شؤون الطلاب" لقب
+  /// شرفي ثانوي لا يستحق التخفيض، والبادئة نفسها ("مستشار") تشترك بين
+  /// الحالتين فلا يمكن تمييزهما ببادئة النص وحدها.
+  static const List<String> _prefixMatchThreeHourPositions = [
+    'عميد',
+    'عميدة',
+    'وكيل',
+    'وكيلة',
+    'رئيس قسم',
+    'رئيسة قسم',
+    'رئيس مركز البحوث والاستشارات',
+    'مكلف بالحد الأدنى',
+  ];
   // ملاحظة: "رئيس وحدة"/"نائب رئيس وحدة" الإرشاد الأكاديمي **معفيان من
   // الإرشاد فقط** (advising_load_rules.dart) لكن لا يستحقان أي تخفيض في
   // النصاب التدريسي - تعليمات صريحة، فالإعفاء الإرشادي والتخفيض التدريسي
@@ -82,7 +113,10 @@ class TeachingLoadRegulation {
   /// lib/data/faculty_sort_order.dart وlib/services/college_roster_lookup_service.dart.
   static bool _isFixedThreeHour(List<String> positions) => positions
       .where((p) => p.trim().isNotEmpty)
-      .any((p) => _fixedThreeHourPositions.contains(_normalizePosition(p).trim()));
+      .map((p) => _normalizePosition(p).trim())
+      .any((p) =>
+          _fixedThreeHourPositions.contains(p) ||
+          _prefixMatchThreeHourPositions.any((prefix) => p.startsWith(prefix)));
 
   static final RegExp _hoursNotePattern = RegExp(r'(\d{1,2})\s*ساع');
   static final RegExp _percentNotePattern = RegExp(r'(\d{1,3})\s*%');
@@ -93,6 +127,12 @@ class TeachingLoadRegulation {
   /// مفهومًا (تعليق حر بلا رقم) يُتجاهَل رقميًا فيُكمَل بالمنطق العادي.
   static int? _parseNote(String note, int? rankBase) {
     if (note.trim().isEmpty) return null;
+    // "الحد الأدنى" نص ثابت بلا رقم صريح (مثل "3 ساعات") لكنه قرار إداري
+    // صريح بأدنى نصاب ممكن (3 ساعات) - أوثق مصدر متاح، فلا يجوز تجاهله فقط
+    // لأنه بلا رقم. كان يُتجاهَل سابقًا فيسقط لحساب الدرجة العلمية الكامل
+    // خطأً (حالة فؤاد عمر يحيى جعماني - "مستشار وكيل الجامعة..." - منصبه لا
+    // يطابق أي كلمة بالقائمة الثابتة، لكن ملاحظته صريحة "الحد الأدنى").
+    if (_normalizePosition(note).contains(_normalizePosition('الحد الأدنى'))) return 3;
     final hoursMatch = _hoursNotePattern.firstMatch(note);
     if (hoursMatch != null) return int.parse(hoursMatch.group(1)!);
     final percentMatch = _percentNotePattern.firstMatch(note);

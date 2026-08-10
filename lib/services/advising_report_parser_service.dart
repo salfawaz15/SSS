@@ -126,8 +126,46 @@ class AdvisingReportParserService {
     bool requireDepartment = true,
     Map<String, String>? advisorShatrByName,
     bool isHealthReport = false,
+    List<String>? unresolvedShatrRows,
+    Map<String, int>? exclusionCounts,
   }) {
-    final rows = _readTableRows(docxBytes);
+    return parseRows(
+      _readTableRows(docxBytes),
+      shatr: shatr,
+      requireDepartment: requireDepartment,
+      advisorShatrByName: advisorShatrByName,
+      isHealthReport: isHealthReport,
+      unresolvedShatrRows: unresolvedShatrRows,
+      exclusionCounts: exclusionCounts,
+    );
+  }
+
+  /// نفس منطق [parse] لكن على صفوف جاهزة (كل صف قائمة نصوص الأعمدة) بدل
+  /// بايتات docx - يتيح تغذيته من مصادر أخرى بنفس بنية الجدول (مثال: قارئ
+  /// PDF مباشر في [AdvisingReportPdfParserService] لتقرير "طلاب تابعين
+  /// لمرشد") دون تكرار منطق الأعمدة/الفرز/الاستبعاد.
+  ///
+  /// [unresolvedShatrRows] اختياري: قائمة يمرّرها المستدعي فارغة، تُعبَّأ
+  /// بأسماء/مرشدي كل صف تعذّر تحديد شطره (فأُضيف لكلا الشطرين معًا كي لا
+  /// يختفي - انظر التعليق عند نقطة الإضافة أدناه لتفصيل الآلية) - للتنبيه
+  /// فقط، لا يُستبعَد من [result]. الحالة الشائعة: مرشد الصف غير موجود بملف
+  /// منسوبي الكلية،
+  /// فلا توجد وسيلة لمعرفة شطره لا من عمود جنس (غير موجود بهذا التقرير) ولا
+  /// من خريطة شطر المرشدين.
+  ///
+  /// [exclusionCounts] اختياري: خريطة يمرّرها المستدعي فارغة، تُعبَّأ بعدد
+  /// الصفوف المستبعَدة نهائيًا من [result] لكل سبب (بلا اسم/رقم، دراسات عليا،
+  /// قسم غير معروف) - ليعرف المستخدم لماذا عدد السجلات المعتمَد أقل من عدد
+  /// صفوف الملف الخام، بدل استبعاد صامت بلا تفسير.
+  static List<AdvisingCaseRecord> parseRows(
+    List<List<String>> rows, {
+    Shatr? shatr,
+    bool requireDepartment = true,
+    Map<String, String>? advisorShatrByName,
+    bool isHealthReport = false,
+    List<String>? unresolvedShatrRows,
+    Map<String, int>? exclusionCounts,
+  }) {
     if (rows.isEmpty) return const [];
 
     String? resolveShatrLabel(String genderText) {
@@ -156,32 +194,45 @@ class AdvisingReportParserService {
         continue;
       }
 
-      final isHeaderRow = row.any((c) => _normalize(c).contains(_normalize('اسم')));
-      if (isHeaderRow) {
+      // فحص أوّلي رخيص فقط (تجاهل صفوف لا علاقة لها بالعناوين إطلاقًا) - لا
+      // يُعتمَد وحده. أسماء طلاب حقيقية قد تحوي "اسم" كجزء منها (مثال:
+      // "اسماعيل") فتُلبِس هذا الفحص الجزئي، فتُعامَل خطأً كصف عناوين جديد
+      // يُصفّر فهارس الأعمدة (نتيجة _findColumn تفشل فتُرجِع -1 للجميع)،
+      // فتختفي كل الصفوف التالية بصمت (name/id يصيران فارغين). الحسم الفعلي
+      // أدناه: لا يُعتمَد الصف كعناوين إلا إذا نجح فعلًا في تحديد عمودي
+      // الاسم والرقم معًا - وإلا يُعامَل كصف بيانات عادي.
+      if (row.any((c) => _normalize(c).contains(_normalize('اسم')))) {
         final headers = row.map(_normalize).toList();
-        nameCol = _findColumn(headers, ['اسم الطالب', 'اسم الطالبة', 'الاسم']);
-        idCol = _findColumn(headers, ['رقم الطالب', 'الرقم الجامعي', 'الرقم الاكاديمي']);
-        deptCol = _findColumn(headers, ['التخصص', 'القسم العلمي']);
-        advisorNameCol = _findColumn(headers, ['اسم المرشد', 'المرشد الاكاديمي']);
-        advisorIdCol = _findColumn(headers, ['رقم المرشد']);
-        advisorDeptCol = _findColumn(headers, ['قسم المرشد']);
-        gpaCol = _findColumn(headers, ['المعدل التراكمي', 'المعدل']);
-        conditionCol = _findColumn(headers, ['الحالة الصحية', 'الحالة']);
-        genderCol = _findColumn(headers, ['الجنس']);
-        degreeCol = _findColumn(headers, ['الدرجة العلمية']);
-        if (!sawHeader) {
-          firstHeaderRaw = row.join(' | ');
-          missingRequiredColumns = nameCol == -1 || idCol == -1 || (requireDepartment && deptCol == -1);
+        final candidateNameCol = _findColumn(headers, ['اسم الطالب', 'اسم الطالبة', 'الاسم']);
+        final candidateIdCol = _findColumn(headers, ['رقم الطالب', 'الرقم الجامعي', 'الرقم الاكاديمي']);
+        if (candidateNameCol != -1 && candidateIdCol != -1) {
+          nameCol = candidateNameCol;
+          idCol = candidateIdCol;
+          deptCol = _findColumn(headers, ['التخصص', 'القسم العلمي']);
+          advisorNameCol = _findColumn(headers, ['اسم المرشد', 'المرشد الاكاديمي']);
+          advisorIdCol = _findColumn(headers, ['رقم المرشد']);
+          advisorDeptCol = _findColumn(headers, ['قسم المرشد']);
+          gpaCol = _findColumn(headers, ['المعدل التراكمي', 'المعدل']);
+          conditionCol = _findColumn(headers, ['الحالة الصحية', 'الحالة']);
+          genderCol = _findColumn(headers, ['الجنس']);
+          degreeCol = _findColumn(headers, ['الدرجة العلمية']);
+          if (!sawHeader) {
+            firstHeaderRaw = row.join(' | ');
+            missingRequiredColumns = requireDepartment && deptCol == -1;
+          }
+          sawHeader = true;
+          continue;
         }
-        sawHeader = true;
-        continue;
       }
 
       if (!sawHeader) continue;
 
       final name = _cell(row, nameCol).trim();
       final id = _cell(row, idCol).trim();
-      if (name.isEmpty || id.isEmpty) continue;
+      if (name.isEmpty || id.isEmpty) {
+        exclusionCounts?.update('بلا اسم/رقم جامعي', (v) => v + 1, ifAbsent: () => 1);
+        continue;
+      }
 
       // وحدة الإرشاد الأكاديمي تُعنى بطلبة البكالوريوس فقط - أي درجة أعلى
       // (ماجستير/دكتوراه) تُستبعَد إن وُجد عمود "الدرجة العلمية" في الملف.
@@ -189,7 +240,10 @@ class AdvisingReportParserService {
         final degreeText = _normalize(_cell(row, degreeCol));
         final isGraduate =
             degreeText.contains(_normalize('ماجستير')) || degreeText.contains(_normalize('دكتوراه'));
-        if (isGraduate) continue;
+        if (isGraduate) {
+          exclusionCounts?.update('دراسات عليا (ماجستير/دكتوراه)', (v) => v + 1, ifAbsent: () => 1);
+          continue;
+        }
       }
 
       // القسم يُوحَّد لنفس صيغة ملف منسوبي الكلية (انظر
@@ -199,7 +253,15 @@ class AdvisingReportParserService {
       // (مثال: "إدارة الأعمال التنفيذي") ليست من الأقسام الخمسة المعروفة
       // فتُستبعَد هنا تلقائيًا حتى لو لم يُفصح عمود "الدرجة العلمية" عنها.
       final normalizedDept = deptCol != -1 ? normalizeDepartmentName(_cell(row, deptCol)) : '';
-      if (requireDepartment && !isKnownBachelorDepartment(normalizedDept)) continue;
+      if (requireDepartment && !isKnownBachelorDepartment(normalizedDept)) {
+        final rawDept = _cell(row, deptCol).trim();
+        exclusionCounts?.update(
+          'قسم غير معروف (${rawDept.isEmpty ? "فارغ" : rawDept})',
+          (v) => v + 1,
+          ifAbsent: () => 1,
+        );
+        continue;
+      }
 
       // بعض التقارير تكتب المعدل بالفاصلة العشرية العربية "٫" (U+066B) بدل
       // النقطة العادية - double.tryParse لا يتعرف عليها فتفشل قراءة أغلب
@@ -218,20 +280,38 @@ class AdvisingReportParserService {
       final rowShatrLabel = (genderCol != -1 ? resolveShatrLabel(_cell(row, genderCol)) : null) ??
           advisorShatrLabel ??
           shatr?.label;
-      if (rowShatrLabel == null) continue; // تعذّر تحديد شطر هذا الصف تحديدًا - يُتجاهَل بدل تخمينه
 
-      result.add(AdvisingCaseRecord(
-        studentId: id,
-        studentName: name,
-        department: normalizedDept.isNotEmpty ? normalizedDept : _cell(row, deptCol).trim(),
-        shatr: rowShatrLabel,
-        advisorNameRaw: rowAdvisorName ?? '',
-        advisorId: advisorIdCol != -1 ? _cell(row, advisorIdCol).trim() : (currentAdvisorId ?? ''),
-        advisorDepartment: _cell(row, advisorDeptCol).trim(),
-        gpa: gpa,
-        healthCondition: isHealthReport ? _cell(row, conditionCol).trim() : '',
-        enrollmentStatus: isHealthReport ? '' : _cell(row, conditionCol).trim(),
-      ));
+      AdvisingCaseRecord buildRecord(String shatrLabel) => AdvisingCaseRecord(
+            studentId: id,
+            studentName: name,
+            department: normalizedDept.isNotEmpty ? normalizedDept : _cell(row, deptCol).trim(),
+            shatr: shatrLabel,
+            advisorNameRaw: rowAdvisorName ?? '',
+            advisorId: advisorIdCol != -1 ? _cell(row, advisorIdCol).trim() : (currentAdvisorId ?? ''),
+            advisorDepartment: _cell(row, advisorDeptCol).trim(),
+            gpa: gpa,
+            healthCondition: isHealthReport ? _cell(row, conditionCol).trim() : '',
+            enrollmentStatus: isHealthReport ? '' : _cell(row, conditionCol).trim(),
+          );
+
+      if (rowShatrLabel == null) {
+        // تعذّر تحديد شطر هذا الصف (الحالة الشائعة: مرشده غير موجود بملف
+        // منسوبي الكلية فلا تُعرَف صفته منه، ولا عمود جنس بهذا التقرير أصلًا).
+        // بدل استبعاده (فيختفي الطالب من كل تحليل رغم أن له مرشدًا فعليًا -
+        // ولو غير موثَّق)، يُضاف لكلا الشطرين معًا: الدمج لاحقًا يربط برقم
+        // الطالب **داخل شطر واحد فقط** (بيانات الطلبة لنفس الشطر تحديدًا)،
+        // فالنسخة بالشطر الخطأ لا تطابق أي طالب هناك وتُتجاهَل تلقائيًا بلا
+        // أثر، بينما النسخة الصحيحة تكمل مسارها الطبيعي وتظهر تحت "طلاب على
+        // غير مرشدهم" (مرشد موجود لكن غير موثَّق) بدل "بلا مرشد" خطأً.
+        unresolvedShatrRows?.add(
+          '$name (${rowAdvisorName != null && rowAdvisorName.isNotEmpty ? "مرشد: $rowAdvisorName" : "بلا اسم مرشد"})',
+        );
+        result.add(buildRecord(Shatr.male.label));
+        result.add(buildRecord(Shatr.female.label));
+        continue;
+      }
+
+      result.add(buildRecord(rowShatrLabel));
     }
 
     if (!sawHeader) return const [];

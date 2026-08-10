@@ -31,19 +31,25 @@ class ProcessedFileParserService {
     final actionTypeCol = columnIndex[ExcelExportService.actionTypeHeader];
     final courseCol = columnIndex[ExcelExportService.courseHeader];
     final sectionCol = columnIndex[ExcelExportService.requiredSectionHeader];
-    final statusCol = columnIndex[ExcelExportService.statusHeader];
-    final notesCol = columnIndex[ExcelExportService.notesHeader];
-    // عمود اختياري - قد لا يُعبَّأ دائمًا
-    final completedByCol = columnIndex[ExcelExportService.completedByHeader];
+    final advisorStatusCol = columnIndex[ExcelExportService.advisorStatusHeader];
+    final advisorNotesCol = columnIndex[ExcelExportService.advisorNotesHeader];
+    final coordinatorStatusCol = columnIndex[ExcelExportService.coordinatorStatusHeader];
+    final coordinatorNotesCol = columnIndex[ExcelExportService.coordinatorNotesHeader];
+    final collegeStatusCol = columnIndex[ExcelExportService.collegeStatusHeader];
+    final collegeNotesCol = columnIndex[ExcelExportService.collegeNotesHeader];
 
     if (universityIdCol == null ||
         actionTypeCol == null ||
         courseCol == null ||
         sectionCol == null ||
-        statusCol == null ||
-        notesCol == null) {
+        advisorStatusCol == null ||
+        advisorNotesCol == null ||
+        coordinatorStatusCol == null ||
+        coordinatorNotesCol == null ||
+        collegeStatusCol == null ||
+        collegeNotesCol == null) {
       throw const FormatException(
-        'الملف لا يحتوي على كل الأعمدة المتوقعة (الرقم الجامعي، نوع الإجراء، المقرر، رقم الشعبة، حالة الإنجاز، ملاحظات)',
+        'الملف لا يحتوي على كل الأعمدة المتوقعة (الرقم الجامعي، نوع الإجراء، المقرر، رقم الشعبة، وأعمدة حالة/ملاحظات المرشد ومنسق القسم ومنسق الكلية الستة)',
       );
     }
 
@@ -61,11 +67,12 @@ class ProcessedFileParserService {
         'action_type': _cellText(row, actionTypeCol),
         'course': _cellText(row, courseCol),
         'section': _cellText(row, sectionCol),
-        'status': _cellText(row, statusCol),
-        'notes': _cellText(row, notesCol),
-        'completed_by': completedByCol != null
-            ? _cellText(row, completedByCol)
-            : '',
+        'advisor_status': _cellText(row, advisorStatusCol),
+        'advisor_notes': _cellText(row, advisorNotesCol),
+        'coordinator_status': _cellText(row, coordinatorStatusCol),
+        'coordinator_notes': _cellText(row, coordinatorNotesCol),
+        'college_status': _cellText(row, collegeStatusCol),
+        'college_notes': _cellText(row, collegeNotesCol),
       });
     }
 

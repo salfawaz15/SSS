@@ -46,6 +46,13 @@ class SulaimanApp extends StatelessWidget {
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       scrollBehavior: AppScrollBehavior(),
+      // منطقة آمنة عامة أعلى الشاشة لكل صفحة بالموقع بلا استثناء - بدونها
+      // شارة الهوية بـ`PortalHeader` (وأي محتوى آخر يبدأ من Y=0، مثل
+      // `_TopUtilityBar` بالصفحة العامة) تُرسَم تحت شريط حالة الجهاز على
+      // الجوال فتتراكب مع الساعة/الشبكة/البطارية (سليمان 2026-08-08). على
+      // الحاسوب/الويب بلا حزّ (notch) هذا بلا أي أثر مرئي (padding = صفر).
+      // `bottom: false` لأن كل شاشة تُدير حشوتها السفلية بنفسها.
+      builder: (context, child) => SafeArea(bottom: false, child: child!),
       home: kIsWeb
           ? (Uri.base.fragment == _hiddenAdminPath
               ? const HiddenAdminLoginScreen()

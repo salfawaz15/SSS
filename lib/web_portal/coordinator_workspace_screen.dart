@@ -21,15 +21,11 @@ import '../services/report_pdf_service.dart';
 import '../services/stage_snapshot_service.dart';
 import '../services/web_download.dart';
 import '../theme/app_theme.dart';
-import 'change_password_dialog.dart';
 import 'coordinator_nav.dart';
 import 'follow_up_chart.dart';
-import 'hardship_cases_coordinator_screen.dart';
+import 'portal_cards.dart';
 import 'portal_header.dart';
-import 'portal_operations_guide_page.dart';
-import 'round_icon_button.dart';
 import 'stage_progress_chart.dart';
-import 'support_cases_coordinator_screen.dart';
 
 /// شاشة المنسّق في بوابة الويب: تعرض فقط حالات قسمه/شطره (Firestore rules
 /// تمنع أي وصول لغير ذلك بنيويًا)، مع زر تنزيل وزر رفع ملف معالج، وتقرير
@@ -415,10 +411,18 @@ class _CoordinatorBodyState extends State<_CoordinatorBody> {
         allRows.addAll(ProcessedFileParserService.parseProcessedRows(bytes));
       }
 
+      // مهلة 25 ثانية بدل انتظار بلا نهاية - لو تعثّر الاتصال بـFirestore
+      // (بطء شبكة/جانب العميل) يظهر خطأ واضح بدل دوران أبدي بلا أي رسالة
+      // (سليمان 2026-08-09: لاحظ الأيقونة تدور بلا توقف بلا خطأ ولا نجاح).
       final mergeResult = await FirestoreTicketService.mergeProcessedRows(
         allRows,
         shatr: widget.shatr,
         department: widget.department,
+      ).timeout(
+        const Duration(seconds: 25),
+        onTimeout: () => throw Exception(
+          'انتهت مهلة الاتصال بالخادم (25 ثانية بلا استجابة) - تأكد من اتصال الإنترنت وحاول مرة أخرى',
+        ),
       );
 
       setState(() {
@@ -436,38 +440,15 @@ class _CoordinatorBodyState extends State<_CoordinatorBody> {
   @override
   Widget build(BuildContext context) {
     return PortalScaffold(
-      title: '${widget.department} - ${widget.shatr}',
+      title: 'لوحة المنسّق - ${widget.department} (${widget.shatr})',
       showBackButton: false,
       navItems: buildCoordinatorNavItems(
         context,
         current: 'dashboard',
         shatr: widget.shatr,
         department: widget.department,
+        onDeleteAdd: _openDeleteAddSection,
       ),
-      actions: [
-          PopupMenuButton<VoidCallback>(
-            icon: const Icon(Icons.more_vert),
-            tooltip: 'المزيد',
-            onSelected: (action) => action(),
-            itemBuilder: (context) => [
-              PopupMenuItem(
-                value: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const PortalOperationsGuidePage()),
-                ),
-                child: const PortalMenuRow(icon: Icons.menu_book_outlined, label: 'دليل تشغيل البوابة'),
-              ),
-              const PopupMenuDivider(),
-              PopupMenuItem(
-                value: () => showChangePasswordDialog(context),
-                child: const PortalMenuRow(icon: Icons.lock_outline, label: 'تغيير كلمة المرور'),
-              ),
-              PopupMenuItem(
-                value: () => FirebaseAuth.instance.signOut(),
-                child: PortalMenuRow(icon: Icons.logout, label: 'تسجيل خروج', color: Colors.red.shade700),
-              ),
-            ],
-          ),
-      ],
       body: StreamBuilder<List<Map<String, dynamic>>>(
         stream: FirestoreTicketService.watchDepartmentTickets(
           shatr: widget.shatr,
@@ -475,197 +456,538 @@ class _CoordinatorBodyState extends State<_CoordinatorBody> {
         ),
         builder: (context, snapshot) {
           final tickets = snapshot.data ?? [];
-
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 460),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _buildDeadlineReminder(),
-                    const SizedBox(height: 16),
-                    ElevatedButton.icon(
-                      onPressed: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => HardshipCasesCoordinatorScreen(
-                            shatr: widget.shatr,
-                            department: widget.department,
-                          ),
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.gold,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                      ),
-                      icon: const Icon(Icons.volunteer_activism_outlined),
-                      label: const Text(
-                        'تسجيل حالات الظروف الخاصة',
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    ElevatedButton.icon(
-                      onPressed: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => SupportCasesCoordinatorScreen(
-                            shatr: widget.shatr,
-                            department: widget.department,
-                          ),
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.greenDark,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                      ),
-                      icon: const Icon(Icons.favorite_border),
-                      label: const Text(
-                        'تسجيل حالات الدعم النفسي والاجتماعي',
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: Column(
-                          children: [
-                            Icon(Icons.folder_shared_outlined,
-                                size: 40, color: AppColors.green),
-                            const SizedBox(height: 8),
-                            Text(
-                              'عدد الحالات الحالية: ${tickets.length}',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    _buildFollowUpSection(tickets),
-                    const SizedBox(height: 16),
-                    ElevatedButton.icon(
-                      onPressed: (tickets.isEmpty || _isDownloading)
-                          ? null
-                          : () => _download(tickets),
-                      icon: _isDownloading
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(Icons.download),
-                      label: const Text('تنزيل ملف قسمي'),
-                    ),
-                    const SizedBox(height: 12),
-                    ElevatedButton.icon(
-                      onPressed: _isUploading ? null : _pickAndUploadProcessedFile,
-                      icon: _isUploading
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(Icons.upload_file),
-                      label: Text(
-                        _isUploading ? 'جارٍ الرفع...' : 'رفع الملفات المعالجة',
-                      ),
-                    ),
-                    if (DisabilityFileService.filterDisabilityTickets(tickets).isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      _buildDisabilitySection(tickets),
-                    ],
-                    const SizedBox(height: 20),
-                    _buildEscalationSection(tickets),
-                    const SizedBox(height: 20),
-                    OutlinedButton.icon(
-                      onPressed: (tickets.isEmpty || _isResetting)
-                          ? null
-                          : _confirmResetStatus,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.red.shade700,
-                        side: BorderSide(color: Colors.red.shade300),
-                      ),
-                      icon: _isResetting
-                          ? SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.red.shade700,
-                              ),
-                            )
-                          : const Icon(Icons.restart_alt),
-                      label: const Text('تفريغ حالة القسم'),
-                    ),
-                    if (_errorMessage != null) ...[
-                      const SizedBox(height: 16),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.red.shade50,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          _errorMessage!,
-                          style: TextStyle(color: Colors.red.shade800),
-                        ),
-                      ),
-                    ],
-                    if (_lastResult != null) ...[
-                      const SizedBox(height: 16),
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: AppColors.green.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: AppColors.green.withValues(alpha: 0.3),
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'تم الدمج',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'عدد الصفوف المُطابقة: ${_lastResult!.matchedCount}',
-                            ),
-                            if (_lastResult!.unmatchedCount > 0)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 4),
-                                child: Text(
-                                  'صفوف لم تُطابق: ${_lastResult!.unmatchedCount}',
-                                  style: TextStyle(color: Colors.orange.shade800),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-          );
+          return _buildHub(tickets);
         },
       ),
     );
+  }
+
+  /// الصفحة الرئيسية - مطابقة لصفحة الإدارة بالحرف (سليمان 2026-08-09:
+  /// "الأصل والمميّز صفحة الإدارة، عدّل صفحة المنسّقين"): إحصائيات + رسم
+  /// بياني فقط بالجسم، بلا أي أيقونات/بطاقات وصول - كل الوجهات (الحذف
+  /// والإضافة، الإرشاد، حالات الظروف الخاصة، الدعم النفسي، التقارير) صارت
+  /// بشريط التنقّل العلوي حصرًا (`coordinator_nav.dart`)، تمامًا بنفس فلسفة
+  /// admin_workspace_screen.dart.
+  Widget _buildHub(List<Map<String, dynamic>> tickets) {
+    final reportData = ReportDataService.build(tickets, roster: _roster);
+    final rate = (reportData.overall.completionRate * 100).toStringAsFixed(0);
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: PortalStatCard(
+                  icon: Icons.folder_shared_outlined,
+                  value: '${tickets.length}',
+                  label: 'عدد حالات قسمي',
+                  accentColor: AppColors.greenDark,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: PortalStatCard(
+                  icon: Icons.trending_up_rounded,
+                  value: '$rate%',
+                  label: 'نسبة الإنجاز',
+                  accentColor: AppColors.gold,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        FollowUpChart(
+          data: reportData,
+          showCollegePerformance: false,
+        ),
+      ],
+    );
+  }
+
+  /// يفتح صفحة "الحذف والإضافة" (خطوات دورة العمل 1-4) كصفحة فرعية كاملة.
+  void _openDeleteAddSection() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (routeContext) => PortalScaffold(
+          title: 'الحذف والإضافة - ${widget.department} (${widget.shatr})',
+          showBackButton: true,
+          navItems: buildCoordinatorNavItems(
+            routeContext,
+            current: 'delete-add',
+            shatr: widget.shatr,
+            department: widget.department,
+          ),
+          body: StreamBuilder<List<Map<String, dynamic>>>(
+            stream: FirestoreTicketService.watchDepartmentTickets(
+              shatr: widget.shatr,
+              department: widget.department,
+            ),
+            builder: (context, snapshot) {
+              final tickets = snapshot.data ?? [];
+              return _buildHome(tickets);
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// إطار موحَّد لكل صفحة فرعية (تُفتَح من إحدى الأيقونات) - يُبقي نفس عرض
+  /// المحتوى الأقصى المستخدَم سابقًا للتبويبات (460) حتى لا تتمدد
+  /// النصوص/الأزرار بعرض غير مريح على الشاشات الواسعة.
+  Widget _tabBody(List<Widget> children) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: children,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// يفتح صفحة فرعية كاملة (بزر رجوع وشريط تنقّل علوي كامل) لأحد أقسام
+  /// الصفحة السابقة (كانت تبويبات نصية) - نفس المحتوى والمنطق بالضبط، فقط
+  /// الوصول إليه صار عبر أيقونة من الصفحة الرئيسية بدل تبويب (بطلب سليمان
+  /// 2026-08-09). كل صفحة فرعية تراقب بياناتها الحيّة بنفسها حتى تبقى محدَّثة
+  /// أثناء فتحها.
+  void _openSection(String title, Widget Function(List<Map<String, dynamic>> tickets) contentBuilder) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (routeContext) => PortalScaffold(
+          title: title,
+          showBackButton: true,
+          navItems: buildCoordinatorNavItems(
+            routeContext,
+            current: 'dashboard',
+            shatr: widget.shatr,
+            department: widget.department,
+          ),
+          body: StreamBuilder<List<Map<String, dynamic>>>(
+            stream: FirestoreTicketService.watchDepartmentTickets(
+              shatr: widget.shatr,
+              department: widget.department,
+            ),
+            builder: (context, snapshot) {
+              final tickets = snapshot.data ?? [];
+              return _tabBody([contentBuilder(tickets)]);
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// الصفحة الرئيسية - إعادة تصميم كاملة (2026-08-09 بطلب سليمان صراحةً:
+  /// "طريقة التصميم والعرض صعبة عليّ أنا اللي أبني الموقع معك، فما بالك
+  /// بالمنسّق"): دورة العمل الكاملة (تنزيل مرشدين -> رفع + تثبيت مرحلة
+  /// المرشدين -> تنزيل مرحلتي -> تثبيت مرحلتي لمنسّق الكلية) تظهر الآن
+  /// **مباشرة بالصفحة الرئيسية** كخطوات مرقَّمة واضحة بدل تبويب مخفي باسم
+  /// غامض "مسار التصعيد" - بلا أي حذف لأي وظيفة، فقط توضيح الترتيب والتسمية.
+  /// كل خطوة بطاقة `Card` مرقَّمة، بلا أي `Container`/حواف مدوّرة مخصَّصة.
+  Widget _buildHome(List<Map<String, dynamic>> tickets) {
+    final reportData = ReportDataService.build(tickets, roster: _roster);
+    final rate = (reportData.overall.completionRate * 100).toStringAsFixed(0);
+    final hasDisabilityCases = DisabilityFileService.filterDisabilityTickets(tickets).isNotEmpty;
+
+    return StreamBuilder<List<StageSnapshot>>(
+      stream: StageSnapshotService.watchSnapshots(shatr: widget.shatr, department: widget.department),
+      builder: (context, snapshot) {
+        final snapshots = snapshot.data ?? [];
+        final stage1Frozen = snapshots.any((s) => s.stage == 1);
+
+        return ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: PortalStatCard(
+                      icon: Icons.folder_shared_outlined,
+                      value: '${tickets.length}',
+                      label: 'عدد حالات قسمي',
+                      accentColor: AppColors.greenDark,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: PortalStatCard(
+                      icon: Icons.trending_up_rounded,
+                      value: '$rate%',
+                      label: 'نسبة الإنجاز',
+                      accentColor: AppColors.gold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            _stepCard(
+              step: 1,
+              title: 'تنزيل ملف قسمي',
+              description: 'ملف مضغوط بداخله ملف Excel منفصل لكل مرشد أكاديمي - أرسله لكل مرشد بطريقتك.',
+              child: ElevatedButton.icon(
+                onPressed: (tickets.isEmpty || _isDownloading) ? null : () => _download(tickets),
+                icon: _isDownloading
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.download),
+                label: const Text('تنزيل ملف قسمي'),
+              ),
+            ),
+            const SizedBox(height: 14),
+            _stepCard(
+              step: 2,
+              title: 'رفع ملفات المرشدين وتثبيت مرحلتهم',
+              description: 'بعد استلام كل ملفات المرشدين (لا ترفع إلا بعد استلامها كاملة - ملف أي مرشد متأخر يُرفع كما هو فارغًا)، ارفعها هنا ثم ثبّت المرحلة.',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: _isUploading ? null : _pickAndUploadProcessedFile,
+                    icon: _isUploading
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.upload_file),
+                    label: Text(_isUploading ? 'جارٍ الرفع...' : 'رفع ملفات المرشدين المعالَجة'),
+                  ),
+                  if (hasDisabilityCases) ...[
+                    const SizedBox(height: 8),
+                    _buildDisabilitySection(tickets),
+                  ],
+                  if (_errorMessage != null) ...[
+                    const SizedBox(height: 8),
+                    Text(_errorMessage!, style: TextStyle(color: Colors.red.shade700, fontSize: 12.5)),
+                  ],
+                  if (_lastResult != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'تم الدمج - مطابَقة: ${_lastResult!.matchedCount}'
+                      '${_lastResult!.unmatchedCount > 0 ? '، غير مطابَقة: ${_lastResult!.unmatchedCount}' : ''}',
+                      style: TextStyle(color: Colors.green.shade800, fontSize: 12.5),
+                    ),
+                  ],
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: (tickets.isEmpty || _isFreezingStage1) ? null : () => _confirmFreezeStage1(tickets),
+                    icon: _isFreezingStage1
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : Icon(stage1Frozen ? Icons.check_circle : Icons.flag_outlined),
+                    label: Text(stage1Frozen ? 'مرحلة المرشدين مثبَّتة ✓ (اضغط لإعادة التثبيت)' : 'تثبيت مرحلة المرشدين'),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            _stepCard(
+              step: 3,
+              title: 'تنزيل ملفي (بعد تثبيت مرحلة المرشدين)',
+              description: 'ملف مدمج بكل حالات القسم لمعالجة ما تعذّر على المرشدين حلّه أنت شخصيًا.',
+              enabled: stage1Frozen,
+              disabledHint: 'ثبّت مرحلة المرشدين أولًا (الخطوة 2) قبل تنزيل هذا الملف.',
+              child: ElevatedButton.icon(
+                onPressed: (!stage1Frozen || tickets.isEmpty || _isDownloadingStage2) ? null : () => _downloadStage2(tickets),
+                icon: _isDownloadingStage2
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.download),
+                label: const Text('تنزيل الملف المدمج لمرحلتي'),
+              ),
+            ),
+            const SizedBox(height: 14),
+            _stepCard(
+              step: 4,
+              title: 'تثبيت مرحلتي وإرسالها لمنسّق الكلية',
+              description: 'بعد ما تحل ما تقدر عليه وترفعه بنفس زر "رفع ملفات المرشدين" أعلاه، ثبّت مرحلتك هنا لترسلها رسميًا لمنسّق الكلية.',
+              enabled: stage1Frozen,
+              disabledHint: 'ثبّت مرحلة المرشدين أولًا (الخطوة 2).',
+              child: OutlinedButton.icon(
+                onPressed: (!stage1Frozen || tickets.isEmpty || _isFreezingStage2) ? null : () => _confirmFreezeStage2(tickets),
+                icon: _isFreezingStage2
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.flag_circle_outlined),
+                label: const Text('تثبيت مرحلتي'),
+              ),
+            ),
+            const SizedBox(height: 24),
+            FollowUpChart(
+              data: reportData,
+              showCollegePerformance: false,
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// بطاقة خطوة مرقَّمة موحَّدة لكل مراحل دورة العمل - `Card` قياسي بلا أي
+  /// `Container`/حواف مدوّرة مخصَّصة (بديل آمن مؤكَّد على جهاز سليمان). لو
+  /// `enabled` false تظهر معطَّلة بصريًا مع سبب واضح بدل إخفائها بالكامل.
+  Widget _stepCard({
+    required int step,
+    required String title,
+    required String description,
+    required Widget child,
+    bool enabled = true,
+    String? disabledHint,
+  }) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Opacity(
+          opacity: enabled ? 1 : 0.55,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CircleAvatar(
+                    radius: 14,
+                    backgroundColor: AppColors.greenDark,
+                    foregroundColor: Colors.white,
+                    child: Text('$step', style: const TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                        const SizedBox(height: 4),
+                        Text(description, style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700, height: 1.4)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              IgnorePointer(ignoring: !enabled, child: child),
+              if (!enabled && disabledHint != null) ...[
+                const SizedBox(height: 8),
+                Text(disabledHint, style: TextStyle(fontSize: 11.5, color: Colors.orange.shade800)),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// لوحة "متابعة العمل" الثابتة أسفل شبكة الأيقونات مباشرة (بطلب سليمان
+  /// 2026-08-09: "والفراغ المتبقي متابعة العمل اللي فيها رسم بياني") - نفس
+  /// `FollowUpChart` المستخدَم داخل صفحة "متابعة الإنجاز" (بلا شريط
+  /// طباعة/تصدير هنا، فتلك تبقى داخل أيقونتها كما هي) لكن معروضة دائمًا هنا
+  /// بلا حاجة لفتح صفحة منفصلة.
+  Widget _buildFollowUpChartPanel(List<Map<String, dynamic>> tickets) {
+    final reportData = ReportDataService.build(tickets, roster: _roster);
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: AppColors.gold, width: 1.4),
+        borderRadius: BorderRadius.circular(16),
+        color: AppColors.gold.withValues(alpha: 0.06),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.insights_outlined, color: AppColors.greenDark),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'متابعة العمل',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppColors.greenDark),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'رسم بياني يرتّب مرشدي قسمك حسب نسبة الإنجاز، لمتابعة سير العمل من هنا مباشرة.',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade700, height: 1.5),
+          ),
+          const SizedBox(height: 10),
+          FollowUpChart(data: reportData, showCollegePerformance: false),
+        ],
+      ),
+    );
+  }
+
+  /// تبويب "الرفع والتنزيل": كل ما يخص تبادل ملفات Excel بين المنسّق
+  /// والمرشدين/أمين القسم - تنزيل ملف القسم، رفع الملفات المعالجة، تنزيل
+  /// ملف ذوي الإعاقة (إن وُجد)، وأخيرًا تفريغ حالة القسم (إجراء نادر ومقصود
+  /// لذلك وُضع منفصلاً بالأسفل بلون تحذيري).
+  Widget _buildUploadDownloadTab(List<Map<String, dynamic>> tickets) {
+    return _tabBody([
+      _buildActionExplainer(
+        icon: Icons.download,
+        title: 'تنزيل ملف قسمي',
+        description:
+            'ينزّل ملفًا مضغوطًا بداخله ملف Excel منفصل لكل مرشد أكاديمي في قسمك، لإرساله له ليعالج حالاته.',
+        button: ElevatedButton.icon(
+          onPressed: (tickets.isEmpty || _isDownloading) ? null : () => _download(tickets),
+          icon: _isDownloading
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                )
+              : const Icon(Icons.download),
+          label: const Text('تنزيل ملف قسمي'),
+        ),
+      ),
+      const SizedBox(height: 16),
+      _buildActionExplainer(
+        icon: Icons.upload_file,
+        title: 'رفع الملفات المعالجة',
+        description:
+            'بعد أن يعالج المرشدون ملفاتهم ويعيدوها لك، ارفعها هنا (يمكن اختيار أكثر من ملف دفعة واحدة) ليتم تحديث حالة الطلاب تلقائيًا.',
+        button: ElevatedButton.icon(
+          onPressed: _isUploading ? null : _pickAndUploadProcessedFile,
+          icon: _isUploading
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                )
+              : const Icon(Icons.upload_file),
+          label: Text(_isUploading ? 'جارٍ الرفع...' : 'رفع الملفات المعالجة'),
+        ),
+      ),
+      if (DisabilityFileService.filterDisabilityTickets(tickets).isNotEmpty) ...[
+        const SizedBox(height: 16),
+        _buildActionExplainer(
+          icon: Icons.accessible_outlined,
+          title: 'تنزيل حالات ذوي الإعاقة',
+          description:
+              'ينزّل ملف Excel واحدًا بكل حالات ذوي الإعاقة في قسمك، لإرساله لأمين القسم ثم استقبال عودته عبر زر "رفع الملفات المعالجة" أعلاه.',
+          button: _buildDisabilitySection(tickets),
+        ),
+      ],
+      if (_errorMessage != null) ...[
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.red.shade50,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(_errorMessage!, style: TextStyle(color: Colors.red.shade800)),
+        ),
+      ],
+      if (_lastResult != null) ...[
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.green.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.green.withValues(alpha: 0.3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('تم الدمج', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              const SizedBox(height: 8),
+              Text('عدد الصفوف المُطابقة: ${_lastResult!.matchedCount}'),
+              if (_lastResult!.unmatchedCount > 0)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    'صفوف لم تُطابق: ${_lastResult!.unmatchedCount}',
+                    style: TextStyle(color: Colors.orange.shade800),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+      const SizedBox(height: 28),
+      const Divider(),
+      const SizedBox(height: 8),
+      _buildActionExplainer(
+        icon: Icons.restart_alt,
+        title: 'تفريغ حالة القسم',
+        description:
+            'إجراء نادر: يمسح حالة الإنجاز والملاحظات لكل حالات قسمك (تراجع عن آخر رفع)، مع بقاء بيانات الطلاب الأصلية كما هي.',
+        danger: true,
+        button: OutlinedButton.icon(
+          onPressed: (tickets.isEmpty || _isResetting) ? null : _confirmResetStatus,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.red.shade700,
+            side: BorderSide(color: Colors.red.shade300),
+          ),
+          icon: _isResetting
+              ? SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.red.shade700),
+                )
+              : const Icon(Icons.restart_alt),
+          label: const Text('تفريغ حالة القسم'),
+        ),
+      ),
+    ]);
+  }
+
+  /// إطار موحَّد لكل زر رفع/تنزيل: أيقونة + عنوان + شرح مبسَّط بسطر واحد
+  /// (بطلب سليمان: شرح بلغة بسيطة بلا مصطلحات تقنية لكل زر)، ثم الزر نفسه.
+  Widget _buildActionExplainer({
+    required IconData icon,
+    required String title,
+    required String description,
+    required Widget button,
+    bool danger = false,
+  }) {
+    final accent = danger ? Colors.red.shade700 : AppColors.greenDark;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        border: Border.all(color: danger ? Colors.red.shade200 : Colors.grey.shade200),
+        borderRadius: BorderRadius.circular(14),
+        color: danger ? Colors.red.shade50.withValues(alpha: 0.4) : Colors.white,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: accent, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: accent),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(description, style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700, height: 1.5)),
+          const SizedBox(height: 12),
+          button,
+        ],
+      ),
+    );
+  }
+
+  /// تبويب "متابعة الإنجاز": نفس قسم المتابعة السابق بلا أي تغيير وظيفي.
+  Widget _buildFollowUpTab(List<Map<String, dynamic>> tickets) {
+    return _tabBody([_buildFollowUpSection(tickets)]);
+  }
+
+  /// تبويب "مسار التصعيد": نفس قسم التصعيد السابق بلا أي تغيير وظيفي.
+  Widget _buildEscalationTab(List<Map<String, dynamic>> tickets) {
+    return _tabBody([_buildEscalationSection(tickets)]);
   }
 
   /// زر تنزيل ملف "ذوي الإعاقة" - بنفس تصميم زرّي "تنزيل ملف قسمي" و"رفع
@@ -751,7 +1073,7 @@ class _CoordinatorBodyState extends State<_CoordinatorBody> {
               ),
             ],
           ),
-          FollowUpChart(data: followUpData),
+          FollowUpChart(data: followUpData, showCollegePerformance: false),
         ],
       ),
     );

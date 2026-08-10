@@ -1,4 +1,5 @@
 import 'excel_parser_service.dart';
+import 'report_data_service.dart';
 
 enum ReportScope { overall, department, shatr, advisor }
 
@@ -63,7 +64,7 @@ class ReportFilterService {
       final actions = (t['actions'] as List?) ?? [];
       for (final a in actions) {
         final action = a as Map<String, dynamic>;
-        final status = (action['status'] ?? '').toString();
+        final status = effectiveStatus(action);
         if (status == 'تم الإنجاز') continue;
         rows.add({
           'shatr': t['shatr'],

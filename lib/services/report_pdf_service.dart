@@ -630,12 +630,13 @@ class ReportPdfService {
   static pw.Widget _caseDetailsTable(List<Map<String, dynamic>> caseDetails) {
     final headers = ['اسم الطالب', 'الرقم الجامعي', 'نوع الإجراء', 'المقرر', 'الحالة'];
     final rows = caseDetails.map((c) {
+      final status = (c['status'] ?? '').toString();
       return [
         (c['name'] ?? '').toString(),
         (c['university_id'] ?? '').toString(),
         (c['action_type'] ?? '').toString(),
         (c['course'] ?? '').toString(),
-        (c['status'] ?? '').toString().isEmpty ? 'لم يتم' : c['status'].toString(),
+        status.isEmpty ? 'لم يتم' : status,
       ];
     }).toList();
 

@@ -150,10 +150,15 @@ class _PortalLoginScreenState extends State<PortalLoginScreen> {
       // عام قد يُستخدم من أجهزة مشتركة بين عدة منسّقين. setPersistence مدعومة
       // على الويب فقط - على أندرويد الجلسة تُحفظ محليًا بشكل دائم افتراضيًا
       // بواسطة SDK نفسه، فلا حاجة لاستدعائها إطلاقًا هناك.
+      //
+      // دائمًا LOCAL (بغضّ النظر عن "تذكرني") - كانت SESSION تسبّب خروج
+      // المستخدم فعليًا عند مجرد تحديث الصفحة (F5) بدل البقاء بنفس الجلسة،
+      // وهو خلل لاحظه سليمان صراحةً (2026-08-09). الحماية من ترك الجلسة
+      // مفتوحة على جهاز مشترك تغطّيها الآن آلية تسجيل الخروج التلقائي بعد 15
+      // دقيقة خمول (انظر inactivity_auto_logout.dart) بدل الاعتماد على
+      // SESSION فقط.
       if (kIsWeb) {
-        await FirebaseAuth.instance.setPersistence(
-          _rememberMe ? Persistence.LOCAL : Persistence.SESSION,
-        );
+        await FirebaseAuth.instance.setPersistence(Persistence.LOCAL);
       }
       await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
@@ -173,13 +178,21 @@ class _PortalLoginScreenState extends State<PortalLoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+      // بلا سهم رجوع إطلاقًا لو ما فيه شيء يُرجَع له فعليًا - في تطبيق الجوال
+      // (main_advising_app.dart) هذه الشاشة تُعرَض كجذر التطبيق مباشرة لمن
+      // لم يسجّل دخوله بعد (`MobileAdvisingRoot`، بلا صفحة تعريفية قبلها)،
+      // فكان السهم يظهر نشطًا لكنه لا يفعل شيئًا (`maybePop` على شاشة جذر
+      // بلا مسار سابق) - يبدو للمستخدم وكأنه "عالق" بلا طريقة للخروج
+      // (سليمان 2026-08-08). لو فُتحت هذه الشاشة بالدفع من مكان آخر (مثال:
+      // إعادة الدخول من داخل البوابة) فالسهم يظهر ويعمل بشكل طبيعي.
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
         foregroundColor: AppColors.green,
-        leading: BackButton(
-          onPressed: () => Navigator.of(context).maybePop(),
-        ),
+        automaticallyImplyLeading: false,
+        leading: Navigator.of(context).canPop()
+            ? BackButton(onPressed: () => Navigator.of(context).maybePop())
+            : null,
       ),
       bottomNavigationBar: const PortalFooterBar(),
       body: Stack(

@@ -40,12 +40,26 @@ class CollegeRosterMember {
   /// انظر lib/data/faculty_sort_order.dart.
   final String staffNumber;
 
-  /// نص حر تكتبه العمادة صراحةً في عمود "نصاب الإرشاد" (سابقًا "ملاحظات
-  /// تخفيض النصاب") - تصنيف عبء الإرشاد صراحةً (معفى/حالات خاصة/نسبة)، وهو
-  /// **المرجع الحاسم الأول** لعبء الإرشاد قبل أي استنتاج من نص المنصب -
-  /// انظر lib/data/advising_load_rules.dart. لا علاقة له بالنصاب التدريسي
-  /// (انظر [teachingLoadHours] أدناه، حقل مستقل تمامًا لذلك الغرض).
+  /// نص هجري خام كما يكتبه ملف "تاريخ الإلتحاق بالجامعة" المصدر الرسمي
+  /// (صيغة "يوم-شهر-سنة"، أرقام عربية أو إنجليزية) - فارغ لمن لا تطابق له في
+  /// ذلك الملف (أعضاء جدد لم يُدرَجوا بعد). يُستخدم فقط لترتيب الأعضاء عند
+  /// تساوي الدرجة العلمية (الأقدم تعيينًا يتقدَّم) - انظر
+  /// lib/data/faculty_sort_order.dart.
+  final String appointmentDate;
+
+  /// نص حر تكتبه العمادة صراحةً في عمود "النصاب التدريسي" (سابقًا "قرار
+  /// تخفيض النصاب") - **المرجع الحاسم الأول** للنصاب التدريسي، يتغذّى منه
+  /// [TeachingLoadRegulation.effectiveMaxHoursFor]. لا علاقة له بالإرشاد
+  /// (انظر [advisingQuotaNote] أدناه، عمود مستقل تمامًا لذلك الغرض - كان
+  /// الحقلان يُقرآن سابقًا من نفس القيمة خطأً، ما جعل تصنيف الإرشاد يعتمد
+  /// على عمود النصاب التدريسي بدل عمود الإرشاد الفعلي).
   final String quotaReductionNote;
+
+  /// نص حر تكتبه العمادة صراحةً في عمود "نصاب الإرشاد" - تصنيف عبء الإرشاد
+  /// صراحةً (بدون تخفيض نصاب/50%/معفي من الارشاد/حالات خاصة)، وهو **المرجع
+  /// الحاسم الأول** لعبء الإرشاد قبل أي استنتاج من نص المنصب - انظر
+  /// lib/data/advising_load_rules.dart.
+  final String advisingQuotaNote;
 
   /// النصاب التدريسي الفعلي المحسوب مسبقًا من العمادة نفسها في عمود "نصاب
   /// عضو هيئة التدريس" - **المرجع الحاسم الأول** للنصاب التدريسي، يتغلّب
@@ -77,8 +91,10 @@ class CollegeRosterMember {
     required this.reducedToPercent,
     required this.advisingReason,
     required this.quotaReductionNote,
+    this.advisingQuotaNote = '',
     this.teachingLoadHours,
     required this.staffNumber,
+    this.appointmentDate = '',
   });
 
   factory CollegeRosterMember.fromRaw({
@@ -99,14 +115,16 @@ class CollegeRosterMember {
     required String notes,
     String employeeStatus = '',
     String quotaReductionNote = '',
+    String advisingQuotaNote = '',
     int? teachingLoadHours,
     String staffNumber = '',
+    String appointmentDate = '',
   }) {
     // حالة الموظف تُدمَج مع نص المنصب عند التصنيف - "مبتعث خارجي"/"معار"
     // في عمود حالة الموظف يُعفي بنفس قوة ذكرها داخل عمود المنصب نفسه.
     final combined =
         [position, position2, position3, employeeStatus].where((p) => p.isNotEmpty).join('، ');
-    final result = AdvisingLoadRules.classify(combined, advisingNote: quotaReductionNote, ownDepartment: department);
+    final result = AdvisingLoadRules.classify(combined, advisingNote: advisingQuotaNote, ownDepartment: department);
     return CollegeRosterMember(
       type: type,
       name: name,
@@ -128,8 +146,10 @@ class CollegeRosterMember {
       reducedToPercent: result.reducedToPercent,
       advisingReason: result.reason,
       quotaReductionNote: quotaReductionNote,
+      advisingQuotaNote: advisingQuotaNote,
       teachingLoadHours: teachingLoadHours,
       staffNumber: staffNumber,
+      appointmentDate: appointmentDate,
     );
   }
 
@@ -154,8 +174,10 @@ class CollegeRosterMember {
         'reducedToPercent': reducedToPercent,
         'advisingReason': advisingReason,
         'quotaReductionNote': quotaReductionNote,
+        'advisingQuotaNote': advisingQuotaNote,
         'teachingLoadHours': teachingLoadHours,
         'staffNumber': staffNumber,
+        'appointmentDate': appointmentDate,
       };
 
   factory CollegeRosterMember.fromJson(Map<String, dynamic> json) => CollegeRosterMember(
@@ -179,7 +201,9 @@ class CollegeRosterMember {
         reducedToPercent: json['reducedToPercent'] as int?,
         advisingReason: json['advisingReason'] as String? ?? '',
         quotaReductionNote: json['quotaReductionNote'] as String? ?? '',
+        advisingQuotaNote: json['advisingQuotaNote'] as String? ?? '',
         teachingLoadHours: json['teachingLoadHours'] as int?,
         staffNumber: json['staffNumber'] as String? ?? '',
+        appointmentDate: json['appointmentDate'] as String? ?? '',
       );
 }

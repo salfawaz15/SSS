@@ -140,18 +140,13 @@ class AdvisorZipService {
         rawBytes,
         dropdowns: [
           DropdownColumn(
-            columnIndex: ExcelExportService.statusColumnIndex,
+            columnIndex: ExcelExportService.advisorStatusColumnIndex,
             options: ExcelProtectionService.statusOptions,
-          ),
-          DropdownColumn(
-            columnIndex: ExcelExportService.completedByColumnIndex,
-            options: ExcelExportService.completedByOptions,
           ),
         ],
         unlockedColumnIndexes: [
-          ExcelExportService.statusColumnIndex,
-          ExcelExportService.notesColumnIndex,
-          ExcelExportService.completedByColumnIndex,
+          ExcelExportService.advisorStatusColumnIndex,
+          ExcelExportService.advisorNotesColumnIndex,
         ],
         dataRowCount: dataRowCount,
       );

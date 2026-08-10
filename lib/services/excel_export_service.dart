@@ -10,16 +10,19 @@ class ExcelExportService {
   static const String actionTypeHeader = 'نوع الإجراء';
   static const String courseHeader = 'المقرر';
   static const String requiredSectionHeader = 'رقم الشعبة';
-  static const String statusHeader = 'حالة الإنجاز';
-  static const String notesHeader = 'ملاحظات';
-  static const String completedByHeader = 'أُنجز من قبل';
+  static const String advisorStatusHeader = 'حالة الإنجاز من قبل المرشد الأكاديمي';
+  static const String advisorNotesHeader = 'ملاحظات المرشد الأكاديمي';
+  static const String coordinatorStatusHeader = 'حالة الإنجاز من قبل منسق القسم';
+  static const String coordinatorNotesHeader = 'ملاحظات منسق القسم';
+  static const String collegeStatusHeader = 'حالة الإنجاز من قبل منسق الكلية';
+  static const String collegeNotesHeader = 'ملاحظات منسق الكلية';
 
-  /// خيارات قائمة "أُنجز من قبل" المنسدلة - عمود اختياري لتوضيح الجهة التي
-  /// أنجزت الطلب فعليًا (يُستخدم لاحقًا في تفصيل التقرير الشامل)
-  static const List<String> completedByOptions = [
+  /// خيارات "من أنجز فعليًا" - لم تعد عمودًا يدويًا، بل تُستنتَج تلقائيًا من
+  /// أي عمود حالة (مرشد/منسق قسم/منسق كلية) يحمل "تم الإنجاز" أولاً حسب
+  /// ترتيب التصعيد؛ هذه القائمة تُستخدم فقط لتهيئة عدّاد تفصيل التقرير الشامل
+  static const List<String> completionSourceOptions = [
     'المرشد الأكاديمي',
     'منسق القسم',
-    'وحدة الإرشاد الأكاديمي',
     'منسق الكلية',
   ];
 
@@ -36,9 +39,12 @@ class ExcelExportService {
     courseHeader,
     requiredSectionHeader,
     'سبب الطلب',
-    statusHeader,
-    notesHeader,
-    completedByHeader,
+    advisorStatusHeader,
+    advisorNotesHeader,
+    coordinatorStatusHeader,
+    coordinatorNotesHeader,
+    collegeStatusHeader,
+    collegeNotesHeader,
   ];
 
   static const List<double> _columnWidths = [
@@ -56,17 +62,29 @@ class ExcelExportService {
     22,
     16,
     24,
-    20,
+    16,
+    24,
+    16,
+    24,
   ];
 
-  /// فهرس عمود "حالة الإنجاز" (صفر-فهرسة) في الملف المُصدَّر
-  static const int statusColumnIndex = 12;
+  /// فهرس عمود "حالة الإنجاز من قبل المرشد الأكاديمي" (صفر-فهرسة)
+  static const int advisorStatusColumnIndex = 12;
 
-  /// فهرس عمود "ملاحظات" (صفر-فهرسة) في الملف المُصدَّر
-  static const int notesColumnIndex = 13;
+  /// فهرس عمود "ملاحظات المرشد الأكاديمي" (صفر-فهرسة)
+  static const int advisorNotesColumnIndex = 13;
 
-  /// فهرس عمود "أُنجز من قبل" (صفر-فهرسة) في الملف المُصدَّر
-  static const int completedByColumnIndex = 14;
+  /// فهرس عمود "حالة الإنجاز من قبل منسق القسم" (صفر-فهرسة)
+  static const int coordinatorStatusColumnIndex = 14;
+
+  /// فهرس عمود "ملاحظات منسق القسم" (صفر-فهرسة)
+  static const int coordinatorNotesColumnIndex = 15;
+
+  /// فهرس عمود "حالة الإنجاز من قبل منسق الكلية" (صفر-فهرسة)
+  static const int collegeStatusColumnIndex = 16;
+
+  /// فهرس عمود "ملاحظات منسق الكلية" (صفر-فهرسة)
+  static const int collegeNotesColumnIndex = 17;
 
   static final _thinGrayBorder = Border(
     borderStyle: BorderStyle.Thin,
@@ -140,6 +158,9 @@ class ExcelExportService {
           ' ',
           ' ',
           ' ',
+          ' ',
+          ' ',
+          ' ',
         ], dataRowIndex);
         dataRowIndex++;
         continue;
@@ -147,18 +168,24 @@ class ExcelExportService {
 
       for (final a in actions) {
         final action = a as Map<String, dynamic>;
-        final status = (action['status'] ?? '').toString();
-        final notes = (action['notes'] ?? '').toString();
-        final completedBy = (action['completed_by'] ?? '').toString();
+        final advisorStatus = (action['advisor_status'] ?? '').toString();
+        final advisorNotes = (action['advisor_notes'] ?? '').toString();
+        final coordinatorStatus = (action['coordinator_status'] ?? '').toString();
+        final coordinatorNotes = (action['coordinator_notes'] ?? '').toString();
+        final collegeStatus = (action['college_status'] ?? '').toString();
+        final collegeNotes = (action['college_notes'] ?? '').toString();
         final row = [
           ...baseInfo,
           action['action_type'] ?? '',
           action['course'] ?? '',
           action['required_section'] ?? action['current_section'] ?? '',
           action['reason_detail'] ?? action['reason'] ?? '',
-          status.isEmpty ? ' ' : status,
-          notes.isEmpty ? ' ' : notes,
-          completedBy.isEmpty ? ' ' : completedBy,
+          advisorStatus.isEmpty ? ' ' : advisorStatus,
+          advisorNotes.isEmpty ? ' ' : advisorNotes,
+          coordinatorStatus.isEmpty ? ' ' : coordinatorStatus,
+          coordinatorNotes.isEmpty ? ' ' : coordinatorNotes,
+          collegeStatus.isEmpty ? ' ' : collegeStatus,
+          collegeNotes.isEmpty ? ' ' : collegeNotes,
         ];
         _appendStyledRow(sheet, row, dataRowIndex);
         dataRowIndex++;

@@ -1,14 +1,18 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/advisor_roster_entry.dart';
 import '../services/advisor_roster_service.dart';
 import '../services/advisor_zip_service.dart';
+import '../services/app_update_service.dart';
 import '../services/disability_file_service.dart';
 import '../services/excel_parser_service.dart';
 import '../services/firestore_ticket_service.dart';
@@ -21,22 +25,16 @@ import '../theme/app_theme.dart';
 import 'admin_nav.dart';
 import 'admin_reports_screen.dart';
 import 'advisor_roster_screen.dart';
-import 'change_password_dialog.dart';
 import 'coordinators_contacts_screen.dart';
-import 'advising_cases_admin_screen.dart';
-import 'advising_schedule_admin_screen.dart';
-import 'college_roster_admin_screen.dart';
-import 'course_schedule_admin_screen.dart';
 import 'follow_up_chart.dart';
-import 'hardship_cases_admin_screen.dart';
 import 'portal_accounts.dart';
+import 'portal_cards.dart';
 import 'portal_header.dart';
 import 'portal_operations_guide_page.dart';
 import 'portal_sitemap_screen.dart';
 import 'reset_user_password_screen.dart';
 import 'round_icon_button.dart';
 import 'stage_progress_chart.dart';
-import 'support_cases_admin_screen.dart';
 
 /// شاشة الإدارة في بوابة الويب (كل الصلاحيات): رفع ملف Microsoft Forms،
 /// لوحة متابعة تعرض حجم الإنجاز، تنزيل ملف أي قسم، والتقرير الشامل
@@ -174,6 +172,97 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
           const SnackBar(content: Text('تم تفريغ البيانات')),
         );
       }
+    }
+  }
+
+  /// أداة نشر تحديث تطبيق الجوال - جُرِّب أولاً استضافة ملف الـAPK على
+  /// Firebase Storage (يتطلب ترقية خطة الفوترة لـBlaze) ثم على Firebase
+  /// Hosting نفسه (رفض الخادم الملف صراحةً: "الملفات التنفيذية ممنوعة على
+  /// خطة Spark") - كلاهما مسدود بلا ترقية الخطة المدفوعة. الحل النهائي:
+  /// إصدار GitHub Release دائم باسم ثابت "app-latest" بمستودع المشروع
+  /// العام (`salfawaz15/SSS`) - رابط تنزيل مباشر مجاني بلا حدود، ويبقى نفس
+  /// الرابط بالضبط عبر كل الإصدارات القادمة (أمر `gh release upload
+  /// app-latest FILE --clobber` يستبدل الملف القديم بلا تغيير الرابط). سليمان
+  /// 2026-08-08/09: حل دائم بدل تكرار نفس العائق (رفع/تحديث يدوي معقّد) في
+  /// كل إصدار قادم. هذه الأداة فقط تكتب رقم/اسم الإصدار وملاحظاته في
+  /// `app_config/cba_advising` بـFirestore - الكتابة الفعلية تتطلب صلاحية
+  /// أدمن (`firestore.rules`)، وهذه الشاشة مفتوحة فقط لحساب الإدارة أصلاً.
+  static const String _kApkDownloadUrl =
+      'https://github.com/salfawaz15/SSS/releases/download/app-latest/app-advising-release.apk';
+
+  Future<void> _publishAppUpdateDialog(BuildContext context) async {
+    final codeCtrl = TextEditingController();
+    final nameCtrl = TextEditingController();
+    final notesCtrl = TextEditingController();
+
+    final doc = await FirebaseFirestore.instance.collection('app_config').doc('cba_advising').get();
+    final data = doc.data();
+    codeCtrl.text = (((data?['latest_version_code'] as num?)?.toInt() ?? 0) + 1).toString();
+    nameCtrl.text = data?['latest_version_name']?.toString() ?? '';
+
+    if (!context.mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('نشر تحديث تطبيق الجوال'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'تأكد أنك رفعت ملف الـAPK الجديد على إصدار GitHub الثابت '
+              '"app-latest" بمستودع المشروع (gh release upload app-latest '
+              'FILE --clobber) قبل الحفظ هنا.',
+              style: TextStyle(fontSize: 12.5, color: Colors.grey),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: codeCtrl,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'رقم الإصدار (build number)', border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: nameCtrl,
+              decoration: const InputDecoration(labelText: 'اسم الإصدار (مثال: 1.0.6)', border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: notesCtrl,
+              maxLines: 3,
+              decoration: const InputDecoration(labelText: 'ملاحظات الإصدار (اختياري)', border: OutlineInputBorder()),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('إلغاء')),
+          ElevatedButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('نشر')),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+    final code = int.tryParse(codeCtrl.text.trim());
+    if (code == null || nameCtrl.text.trim().isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('رقم الإصدار واسمه مطلوبان')),
+        );
+      }
+      return;
+    }
+
+    await FirebaseFirestore.instance.collection('app_config').doc('cba_advising').set({
+      'latest_version_code': code,
+      'latest_version_name': nameCtrl.text.trim(),
+      'apk_url': _kApkDownloadUrl,
+      'release_notes': notesCtrl.text.trim(),
+    }, SetOptions(merge: true));
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تم نشر بيانات التحديث بنجاح')),
+      );
     }
   }
 
@@ -364,6 +453,7 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
       title: 'لوحة الإدارة',
       showBackButton: false,
       navItems: buildAdminNavItems(context, current: 'dashboard'),
+      floatingActionButton: _buildAndroidDownloadBadge(),
       actions: [
           PopupMenuButton<VoidCallback>(
             icon: const Icon(Icons.more_vert),
@@ -395,6 +485,10 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
                   ),
                   child: const PortalMenuRow(icon: Icons.vpn_key_outlined, label: 'الحسابات وكلمات المرور'),
                 ),
+                PopupMenuItem(
+                  value: () => _publishAppUpdateDialog(context),
+                  child: const PortalMenuRow(icon: Icons.system_update_outlined, label: 'نشر تحديث تطبيق الجوال'),
+                ),
               ],
               const PopupMenuDivider(),
               PopupMenuItem(
@@ -403,17 +497,57 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
                 ),
                 child: const PortalMenuRow(icon: Icons.map_outlined, label: 'خريطة صفحات الموقع'),
               ),
+              // نُقلت هنا من صف أيقونات كبير بالصفحة الرئيسية (أُزيل بطلب
+              // سليمان 2026-08-09 لتبسيط اللوحة) - الوظيفتان لا تزالان
+              // متاحتين، فقط عبر قائمة "المزيد" بدل صف بطاقات ظاهر دائمًا.
               PopupMenuItem(
-                value: () => showChangePasswordDialog(context),
-                child: const PortalMenuRow(icon: Icons.lock_outline, label: 'تغيير كلمة المرور'),
+                value: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => StreamBuilder<List<Map<String, dynamic>>>(
+                      stream: FirestoreTicketService.watchAllTickets(),
+                      builder: (context, snapshot) {
+                        final tickets = snapshot.data ?? [];
+                        final groups = ExcelParserService.groupByShatrAndDepartment(tickets);
+                        return PortalScaffold(
+                          title: 'تقارير متابعة الحذف والإضافة',
+                          navItems: buildAdminNavItems(context, current: 'reports'),
+                          body: ListView(
+                            padding: const EdgeInsets.all(16),
+                            children: [
+                              _buildReportSection(tickets),
+                              const SizedBox(height: 24),
+                              _buildStageReportsSection(groups),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                child: const PortalMenuRow(icon: Icons.assessment_outlined, label: 'تقارير متابعة الحذف والإضافة'),
+              ),
+              PopupMenuItem(
+                value: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => StreamBuilder<List<Map<String, dynamic>>>(
+                      stream: FirestoreTicketService.watchAllTickets(),
+                      builder: (context, snapshot) {
+                        final tickets = snapshot.data ?? [];
+                        final groups = ExcelParserService.groupByShatrAndDepartment(tickets);
+                        return PortalScaffold(
+                          title: 'تنزيل ملفات الحالات',
+                          navItems: buildAdminNavItems(context, current: 'downloads'),
+                          body: _buildDownloadsList(groups, snapshot.hasData),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                child: const PortalMenuRow(icon: Icons.folder_zip_outlined, label: 'تنزيل ملفات الحالات'),
               ),
               PopupMenuItem(
                 value: _confirmClearData,
                 child: PortalMenuRow(icon: Icons.delete_sweep_outlined, label: 'تفريغ البيانات', color: Colors.red.shade700),
-              ),
-              PopupMenuItem(
-                value: () => FirebaseAuth.instance.signOut(),
-                child: PortalMenuRow(icon: Icons.logout, label: 'تسجيل خروج', color: Colors.red.shade700),
               ),
             ],
           ),
@@ -422,7 +556,6 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
         stream: FirestoreTicketService.watchAllTickets(),
         builder: (context, snapshot) {
           final tickets = snapshot.data ?? [];
-          final groups = ExcelParserService.groupByShatrAndDepartment(tickets);
           final reportData = ReportDataService.build(tickets);
 
           return ListView(
@@ -451,8 +584,6 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
                 tickets.map((t) => t['department']).toSet().length,
               ),
               const SizedBox(height: 20),
-              _buildQuickActionsBar(tickets, groups, snapshot.hasData),
-              const SizedBox(height: 24),
               FollowUpChart(
                 data: reportData,
                 tickets: tickets,
@@ -464,176 +595,6 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
           );
         },
       ),
-    );
-  }
-
-  /// شريط الإجراءات الأربعة الرئيسية (متابعة حالات الظروف الخاصة، متابعة
-  /// حالات الدعم النفسي والاجتماعي، التقارير، تنزيل ملفات الحالات) - بشكل
-  /// موحّد ومتّسق بدل تفرّقها في أماكن مختلفة من الصفحة، وكل زر يفتح صفحته
-  /// المستقلة. الألوان تتبادل بين الأخضر والذهبي (هوية الوحدة) بحيث يكون
-  /// النص بلون مخالف لخلفيته دائمًا لضمان التباين والوضوح.
-  Widget _buildQuickActionsBar(
-    List<Map<String, dynamic>> tickets,
-    Map<String, List<Map<String, dynamic>>> groups,
-    bool hasData,
-  ) {
-    final isSuperAdmin =
-        FirebaseAuth.instance.currentUser?.email == PortalAccounts.superAdminEmail;
-    final actions = [
-      (
-        title: 'متابعة حالات الظروف الخاصة',
-        icon: Icons.volunteer_activism_outlined,
-        background: AppColors.gold,
-        foreground: AppColors.greenDark,
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const HardshipCasesAdminScreen()),
-        ),
-      ),
-      (
-        title: 'متابعة حالات الدعم النفسي والاجتماعي',
-        icon: Icons.favorite_border,
-        background: AppColors.green,
-        foreground: AppColors.goldLight,
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const SupportCasesAdminScreen()),
-        ),
-      ),
-      (
-        title: 'التقارير',
-        icon: Icons.assessment_outlined,
-        background: AppColors.greenDark,
-        foreground: AppColors.goldLight,
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => PortalScaffold(
-              title: 'التقارير',
-              navItems: buildAdminNavItems(context, current: 'reports'),
-              body: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  _buildReportSection(tickets),
-                  const SizedBox(height: 24),
-                  _buildStageReportsSection(groups),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-      (
-        title: 'تنزيل ملفات الحالات',
-        icon: Icons.folder_zip_outlined,
-        background: AppColors.goldLight,
-        foreground: AppColors.greenDark,
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => PortalScaffold(
-              title: 'تنزيل ملفات الحالات',
-              navItems: buildAdminNavItems(context, current: 'downloads'),
-              body: _buildDownloadsList(groups, hasData),
-            ),
-          ),
-        ),
-      ),
-    ];
-    final adminOnlyActions = isSuperAdmin
-        ? [
-            (
-              title: 'تسكين المقررات وشعبها',
-              icon: Icons.event_note_outlined,
-              background: AppColors.green,
-              foreground: AppColors.goldLight,
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const CourseScheduleAdminScreen(initialTabIndex: 0, singleTab: true)),
-              ),
-            ),
-            (
-              title: 'الجدول الدراسي لأعضاء هيئة التدريس',
-              icon: Icons.person_search_outlined,
-              background: AppColors.gold,
-              foreground: AppColors.greenDark,
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const CourseScheduleAdminScreen(initialTabIndex: 1, singleTab: true)),
-              ),
-            ),
-            (
-              title: 'بيانات منسوبي الكلية',
-              icon: Icons.badge_outlined,
-              background: AppColors.greenDark,
-              foreground: AppColors.goldLight,
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const CollegeRosterAdminScreen()),
-              ),
-            ),
-            (
-              title: 'توزيع فترات الإرشاد',
-              icon: Icons.schedule_outlined,
-              background: AppColors.gold,
-              foreground: AppColors.greenDark,
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const AdvisingScheduleAdminScreen()),
-              ),
-            ),
-            (
-              title: 'متابعة حالات الإرشاد',
-              icon: Icons.fact_check_outlined,
-              background: AppColors.greenDark,
-              foreground: AppColors.goldLight,
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const AdvisingCasesAdminScreen()),
-              ),
-            ),
-          ]
-        : const <_QuickAction>[];
-
-    Widget group(String label, List<_QuickAction> items) {
-      if (items.isEmpty) return const SizedBox.shrink();
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8, right: 4),
-            child: Text(label, style: AppTextStyles.h3(color: Colors.grey.shade700)),
-          ),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final isNarrow = constraints.maxWidth < 760;
-              if (isNarrow) {
-                return Column(
-                  children: [
-                    for (var i = 0; i < items.length; i++) ...[
-                      _QuickActionCard(action: items[i]),
-                      if (i < items.length - 1) const SizedBox(height: 12),
-                    ],
-                  ],
-                );
-              }
-              return IntrinsicHeight(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (var i = 0; i < items.length; i++) ...[
-                      Expanded(child: _QuickActionCard(action: items[i])),
-                      if (i < items.length - 1) const SizedBox(width: 12),
-                    ],
-                  ],
-                ),
-              );
-            },
-          ),
-        ],
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        group('إجراءات عامة', actions),
-        if (adminOnlyActions.isNotEmpty) ...[
-          const SizedBox(height: 20),
-          group('أدوات المدير العام', adminOnlyActions),
-        ],
-      ],
     );
   }
 
@@ -859,6 +820,45 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
     );
   }
 
+  /// مربع صغير عائم بأسفل الشاشة (لا شريط علوي بارز) لتحميل تطبيق الجوال
+  /// (Android) - تظهر فقط بنسخة الموقع (لا معنى لها داخل التطبيق نفسه بعد
+  /// تثبيته) وفقط بلوحة الإدارة. النقر على الأيقونة نفسها يبدأ التحميل
+  /// مباشرة - بلا زر "تحميل" منفصل، بأسلوب مربعات التحميل بالمواقع الاحترافية.
+  /// تقرأ رابط ورقم آخر نسخة منشورة حيًّا من نفس مصدر [AppUpdateService]
+  /// المستخدَم للتحقق من التحديثات داخل التطبيق - فتختفي تلقائيًا لو لم يوجد
+  /// رابط منشور بعد.
+  Widget _buildAndroidDownloadBadge() {
+    if (!kIsWeb) return const SizedBox.shrink();
+    return FutureBuilder(
+      future: AppUpdateService.getLatestRelease(),
+      builder: (context, snapshot) {
+        final apkUrl = snapshot.data?.apkUrl;
+        if (apkUrl == null || apkUrl.isEmpty) return const SizedBox.shrink();
+        final versionName = snapshot.data?.versionName;
+        return Tooltip(
+          message: 'تحميل تطبيق الجوال (Android)'
+              '${versionName != null && versionName.isNotEmpty ? ' - الإصدار $versionName' : ''}',
+          child: Material(
+            color: AppColors.greenDark,
+            shape: const CircleBorder(),
+            elevation: 3,
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: () async {
+                final directUrl = await AppUpdateService.resolveDirectDownloadUrl(apkUrl);
+                launchUrl(Uri.parse(directUrl), mode: LaunchMode.externalApplication);
+              },
+              child: const Padding(
+                padding: EdgeInsets.all(14),
+                child: Icon(Icons.android, color: Colors.white, size: kPortalCardIconSizeLarge),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildDashboard(ReportData data, int totalCases, int activeDepartments) {
     final rate = (data.overall.completionRate * 100).toStringAsFixed(0);
     final tiles = [
@@ -871,7 +871,7 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
       return Column(
         children: [
           for (var i = 0; i < tiles.length; i++) ...[
-            _statTile(tiles[i].label, tiles[i].value, tiles[i].icon, tiles[i].color),
+            PortalStatCard(icon: tiles[i].icon, value: tiles[i].value, label: tiles[i].label, accentColor: tiles[i].color),
             if (i < tiles.length - 1) const SizedBox(height: 12),
           ],
         ],
@@ -882,62 +882,11 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           for (var i = 0; i < tiles.length; i++) ...[
-            Expanded(child: _statTile(tiles[i].label, tiles[i].value, tiles[i].icon, tiles[i].color)),
+            Expanded(
+              child: PortalStatCard(icon: tiles[i].icon, value: tiles[i].value, label: tiles[i].label, accentColor: tiles[i].color),
+            ),
             if (i < tiles.length - 1) const SizedBox(width: 12),
           ],
-        ],
-      ),
-    );
-  }
-
-  /// بطاقة إحصاء واحدة بأسلوب "رقم بارز + بلوك أيقونة ملوّن" - مستوحاة من
-  /// تصميم لوحات المؤشرات الاحترافية، بألوان الهوية البصرية للوحدة.
-  Widget _statTile(String label, String value, IconData icon, Color accentColor) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.grey.shade200),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Row(
-        children: [
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    value,
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.greenDark,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    label,
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade700),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Container(
-            width: 60,
-            color: accentColor,
-            alignment: Alignment.center,
-            child: Icon(icon, color: Colors.white, size: 24),
-          ),
         ],
       ),
     );
@@ -962,7 +911,7 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
           ],
         ),
         const SizedBox(height: 16),
-        _buildReportEntryCard(
+        PortalActionCard(
           icon: Icons.summarize_outlined,
           title: 'التقرير الشامل السريع',
           subtitle: 'طباعة أو تنزيل تقرير فوري بكل بيانات البوابة',
@@ -970,7 +919,7 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
           onTap: () => _showQuickReportSheet(tickets),
         ),
         const SizedBox(height: 14),
-        _buildReportEntryCard(
+        PortalActionCard(
           icon: Icons.query_stats,
           title: 'التقارير التفصيلية',
           subtitle: 'تقرير كل قسم علمي، كل شطر، أو كل مرشد أكاديمي - ومتابعة الإنجاز',
@@ -980,64 +929,6 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
           ),
         ),
       ],
-    );
-  }
-
-  /// بطاقة دخول موحّدة الشكل لكل مداخل التقارير (السريع والتفصيلي) - أيقونة
-  /// + عنوان + وصف مختصر داخل تدرّج لوني، بدل عرض كل الأزرار مباشرة على
-  /// الصفحة دفعة واحدة.
-  Widget _buildReportEntryCard({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required List<Color> gradientColors,
-    required VoidCallback onTap,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: gradientColors,
-              begin: Alignment.centerRight,
-              end: Alignment.centerLeft,
-            ),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppColors.gold, width: 1.2),
-          ),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(icon, color: Colors.white),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(subtitle, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                  ],
-                ),
-              ),
-              const Icon(Icons.arrow_back_ios_new, color: Colors.white70, size: 16),
-            ],
-          ),
-        ),
-      ),
     );
   }
 
@@ -1165,46 +1056,3 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
   }
 }
 
-/// بطاقة إجراء واحدة ضمن شريط الإجراءات الأربعة (`_buildQuickActionsBar`) -
-/// أيقونة + عنوان داخل خلفية ملوّنة بالهوية البصرية، مع نص بلون مخالف
-/// للخلفية دائمًا لضمان التباين.
-typedef _QuickAction = ({
-  String title,
-  IconData icon,
-  Color background,
-  Color foreground,
-  VoidCallback onTap,
-});
-
-class _QuickActionCard extends StatelessWidget {
-  const _QuickActionCard({required this.action});
-
-  final _QuickAction action;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: action.background,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: action.onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(action.icon, color: action.foreground, size: 26),
-              const SizedBox(height: 10),
-              Text(
-                action.title,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: action.foreground, fontWeight: FontWeight.bold, fontSize: 13),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}

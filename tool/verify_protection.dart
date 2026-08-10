@@ -53,10 +53,15 @@ void main() {
 
   final protectedBytes = ExcelProtectionService.protect(
     rawBytes,
-    statusColumnIndex: ExcelExportService.statusColumnIndex,
+    dropdowns: [
+      DropdownColumn(
+        columnIndex: ExcelExportService.advisorStatusColumnIndex,
+        options: ExcelProtectionService.statusOptions,
+      ),
+    ],
     unlockedColumnIndexes: [
-      ExcelExportService.statusColumnIndex,
-      ExcelExportService.notesColumnIndex,
+      ExcelExportService.advisorStatusColumnIndex,
+      ExcelExportService.advisorNotesColumnIndex,
     ],
     dataRowCount: dataRowCount,
   );
@@ -67,7 +72,7 @@ void main() {
   final decoded = xls.Excel.decodeBytes(protectedBytes);
   final sheet = decoded.tables[decoded.tables.keys.first]!;
   print('عدد الصفوف بعد إعادة القراءة: ${sheet.maxRows} (متوقع ${dataRowCount + 1})');
-  print('عدد الأعمدة: ${sheet.maxColumns} (متوقع 14)');
+  print('عدد الأعمدة: ${sheet.maxColumns} (متوقع 18)');
 
   // 2. تحقق من محتوى XML الخام: sheetProtection + dataValidations + عدد cellXfs
   final archive = ZipDecoder().decodeBytes(protectedBytes);

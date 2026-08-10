@@ -1,7 +1,15 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import 'change_password_dialog.dart';
+import 'portal_accounts.dart';
 import 'portal_footer.dart';
+import 'portal_operations_guide_page.dart';
+import 'quick_search_index.dart';
+import 'round_icon_button.dart';
 
 /// عنصر تنقّل واحد في الشريط العلوي للبوابة (نفس فكرة تبويبات الصفحة
 /// العامة `_NavBar` في public_landing_screen.dart، لكن لأقسام البوابة
@@ -24,11 +32,34 @@ class PortalNavItem {
 /// العامة (`assets/images/full_logo_green.png`، خلفية خضراء + TU بحلقة
 /// ذهبية + اسم الكلية والوحدة) بلا إعادة بنائها يدويًا بخط/تنسيق مختلف،
 /// حتى تكون بصمة الهوية مطابقة 100% سواء قبل تسجيل الدخول أو داخل البوابة.
+///
+/// **داخل تطبيق الجوال فقط** (`!kIsWeb`) تُستبدَل بأيقونة التطبيق المصغَّرة
+/// نفسها الظاهرة خارجيًا على شاشة الجهاز (`assets/images/app_icon.png`) -
+/// الشعار الكامل العريض (مصمَّم أصلاً لعرض الحاسوب) كان يظهر ضخمًا جدًا على
+/// شاشة الجوال الضيقة (سليمان 2026-08-09). الموقع (الويب) يبقى بالشعار
+/// الكامل كما هو بلا أي تغيير.
 class _PortalBrandBadge extends StatelessWidget {
   const _PortalBrandBadge();
 
   @override
   Widget build(BuildContext context) {
+    if (!kIsWeb) {
+      return Container(
+        width: 36,
+        height: 36,
+        decoration: const BoxDecoration(shape: BoxShape.circle),
+        clipBehavior: Clip.antiAlias,
+        child: Image.asset(
+          'assets/images/app_icon.png',
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => Container(
+            decoration: const BoxDecoration(color: AppColors.green, shape: BoxShape.circle),
+            alignment: Alignment.center,
+            child: Text('TU', style: AppTextStyles.caption(color: Colors.white)),
+          ),
+        ),
+      );
+    }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
@@ -40,6 +71,290 @@ class _PortalBrandBadge extends StatelessWidget {
         height: 40,
         fit: BoxFit.contain,
         errorBuilder: (_, _, _) => Text('TU', style: AppTextStyles.caption(color: Colors.white)),
+      ),
+    );
+  }
+}
+
+/// قائمة الحساب الموحّدة (تغيير كلمة المرور، دليل تشغيل البوابة، تسجيل
+/// خروج) - جزء ثابت من [PortalHeader] نفسه بدل أن يبنيها كل شاشة رئيسية
+/// من الصفر (كانت مكرَّرة بـ4 ملفات مختلفة). تظهر في **كل** صفحات البوابة
+/// بلا استثناء (حتى الصفحات الفرعية المفتوحة بـ`Navigator.push`)، لأنها
+/// جزء من الهيدر لا من `actions` الاختيارية لكل صفحة - يحل جذريًا مشكلة
+/// عدم القدرة على تسجيل الخروج من صفحة فرعية (كانت تتطلب الرجوع أولًا
+/// للصفحة الرئيسية التي وحدها كانت تحمل هذه القائمة).
+class _PortalAccountMenu extends StatelessWidget {
+  const _PortalAccountMenu();
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<VoidCallback>(
+      icon: const Icon(Icons.account_circle_outlined, color: AppColors.green),
+      tooltip: 'الحساب',
+      onSelected: (action) => action(),
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          value: () => showChangePasswordDialog(context),
+          child: const PortalMenuRow(icon: Icons.lock_outline, label: 'تغيير كلمة المرور'),
+        ),
+        PopupMenuItem(
+          value: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const PortalOperationsGuidePage()),
+          ),
+          child: const PortalMenuRow(icon: Icons.menu_book_outlined, label: 'دليل تشغيل البوابة'),
+        ),
+        PopupMenuItem(
+          value: () {
+            // تسجيل الخروج من صفحة مفتوحة فوق الشاشة الرئيسية (Push) كان لا
+            // يظهر أثره - الجذر يعيد بناء نفسه داخليًا لشاشة الدخول، لكن أي
+            // صفحة مفتوحة فوقه بمكدّس التنقّل تبقى ظاهرة تحجبها تمامًا (خلل
+            // أُبلِغ عنه من سليمان 2026-08-09). الحل: إغلاق كل الصفحات
+            // المفتوحة أولاً بالرجوع للجذر مباشرة عبر `rootNavigator: true`
+            // (يتجاوز أي Navigator متداخل داخل الصفحة الحالية نفسها)، فتظهر
+            // شاشة الدخول فورًا بعد تسجيل الخروج من أي مكان بالتطبيق.
+            Navigator.of(context, rootNavigator: true).popUntil((route) => route.isFirst);
+            FirebaseAuth.instance.signOut();
+          },
+          child: PortalMenuRow(icon: Icons.logout, label: 'تسجيل خروج', color: Colors.red.shade700),
+        ),
+      ],
+    );
+  }
+}
+
+/// بيانات الدور المطلوبة لبناء عناصر "البحث السريع" - تُحسَم مرة واحدة عند
+/// فتح حوار البحث (منسّق القسم فقط يحتاج جلبًا إضافيًا من Firestore
+/// لمعرفة شطره/قسمه، بنفس أسلوب reports_hub_screen.dart).
+class _QuickSearchRoleInfo {
+  final String role;
+  final bool isSuperAdmin;
+  final String? uid;
+  final String? shatr;
+  final String? department;
+
+  const _QuickSearchRoleInfo({
+    required this.role,
+    this.isSuperAdmin = false,
+    this.uid,
+    this.shatr,
+    this.department,
+  });
+}
+
+Future<_QuickSearchRoleInfo> _resolveQuickSearchRole() async {
+  final user = FirebaseAuth.instance.currentUser;
+  final email = user?.email;
+
+  if (PortalAccounts.isFullAdmin(email)) {
+    return _QuickSearchRoleInfo(
+      role: QuickSearchRole.fullAdmin,
+      isSuperAdmin: email == PortalAccounts.superAdminEmail,
+    );
+  }
+  if (PortalAccounts.viewerEmails.values.contains(email)) {
+    return const _QuickSearchRoleInfo(role: QuickSearchRole.viewer);
+  }
+  if (PortalAccounts.isCollegeCoordinator(email)) {
+    return _QuickSearchRoleInfo(role: QuickSearchRole.collegeCoordinator, uid: user?.uid);
+  }
+  if (PortalAccounts.isUnitCoordinator(email)) {
+    return const _QuickSearchRoleInfo(role: QuickSearchRole.unitCoordinator);
+  }
+
+  final uid = user?.uid;
+  if (uid == null) return const _QuickSearchRoleInfo(role: QuickSearchRole.unitCoordinator);
+  final doc = await FirebaseFirestore.instance.collection('coordinator_accounts').doc(uid).get();
+  final data = doc.data();
+  return _QuickSearchRoleInfo(
+    role: QuickSearchRole.departmentCoordinator,
+    uid: uid,
+    shatr: data?['shatr']?.toString(),
+    department: data?['department']?.toString(),
+  );
+}
+
+/// أيقونة "بحث سريع" ثابتة بالهيدر (نفس فكرة أيقونة البحث بموقع سدايا
+/// المرجعي) - تظهر في كل صفحات البوابة بلا استثناء لأنها جزء من
+/// [PortalHeader] نفسه لا من `actions` كل صفحة على حدة. الضغط عليها يفتح
+/// حوار بحث فيه اقتراحات جاهزة كشرائح قابلة للضغط قبل الكتابة، وتتحوّل فور
+/// الكتابة لقائمة نتائج مطابقة (عنوان أو كلمة مفتاحية) - كل نتيجة تنقل
+/// فورًا لشاشتها الحقيقية.
+class _PortalQuickSearchButton extends StatelessWidget {
+  const _PortalQuickSearchButton();
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      icon: const Icon(Icons.search, color: AppColors.green),
+      tooltip: 'بحث سريع',
+      onPressed: () => _openQuickSearch(context),
+    );
+  }
+
+  Future<void> _openQuickSearch(BuildContext context) async {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => FutureBuilder<_QuickSearchRoleInfo>(
+        future: _resolveQuickSearchRole(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            return const Dialog(
+              child: Padding(
+                padding: EdgeInsets.all(32),
+                child: SizedBox(
+                  height: 40,
+                  width: 40,
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+              ),
+            );
+          }
+          final info = snapshot.data!;
+          final entries = buildQuickSearchEntries(
+            context,
+            role: info.role,
+            isSuperAdmin: info.isSuperAdmin,
+            uid: info.uid,
+            shatr: info.shatr,
+            department: info.department,
+          );
+          return _QuickSearchDialog(entries: entries);
+        },
+      ),
+    );
+  }
+}
+
+class _QuickSearchDialog extends StatefulWidget {
+  final List<QuickSearchEntry> entries;
+
+  const _QuickSearchDialog({required this.entries});
+
+  @override
+  State<_QuickSearchDialog> createState() => _QuickSearchDialogState();
+}
+
+class _QuickSearchDialogState extends State<_QuickSearchDialog> {
+  final _searchCtrl = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  void _select(QuickSearchEntry entry) {
+    Navigator.of(context).pop();
+    entry.onTap();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final query = _query.trim();
+    final suggestions = widget.entries.take(8).toList();
+    final results = query.isEmpty
+        ? const <QuickSearchEntry>[]
+        : widget.entries.where((e) => e.matches(query)).toList();
+
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 460, maxHeight: 480),
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.search, color: AppColors.green),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text('بحث سريع', style: AppTextStyles.h3())),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    tooltip: 'إغلاق',
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _searchCtrl,
+                autofocus: true,
+                onChanged: (v) => setState(() => _query = v),
+                decoration: InputDecoration(
+                  hintText: 'اكتب اسم الصفحة أو الإجراء (مثال: جداول)',
+                  prefixIcon: const Icon(Icons.travel_explore_outlined),
+                  filled: true,
+                  fillColor: Colors.grey.shade100,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Flexible(
+                child: query.isEmpty
+                    ? SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (suggestions.isEmpty)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 24),
+                                child: Center(
+                                  child: Text(
+                                    'لا توجد اختصارات بحث لدورك الحالي',
+                                    style: TextStyle(color: Colors.grey.shade600),
+                                  ),
+                                ),
+                              )
+                            else ...[
+                              Text('اقتراحات سريعة', style: AppTextStyles.caption(color: Colors.grey.shade600)),
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: suggestions
+                                    .map(
+                                      (e) => ActionChip(
+                                        avatar: Icon(e.icon, size: 16, color: AppColors.green),
+                                        label: Text(e.title),
+                                        onPressed: () => _select(e),
+                                      ),
+                                    )
+                                    .toList(),
+                              ),
+                            ],
+                          ],
+                        ),
+                      )
+                    : (results.isEmpty
+                        ? Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 24),
+                            child: Center(
+                              child: Text('لا توجد نتائج مطابقة', style: TextStyle(color: Colors.grey.shade600)),
+                            ),
+                          )
+                        : ListView.builder(
+                            shrinkWrap: true,
+                            itemCount: results.length,
+                            itemBuilder: (context, i) {
+                              final e = results[i];
+                              return ListTile(
+                                leading: Icon(e.icon, color: AppColors.green),
+                                title: Text(e.title),
+                                onTap: () => _select(e),
+                              );
+                            },
+                          )),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -107,11 +422,19 @@ class PortalHeader extends StatelessWidget implements PreferredSizeWidget {
                     const _PortalBrandBadge(),
                     const SizedBox(width: 18),
                     if (navItems.isNotEmpty)
-                      ...navItems.map(navButton)
+                      Expanded(
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(children: navItems.map(navButton).toList()),
+                        ),
+                      )
                     else if (fallbackTitle != null)
-                      Text(fallbackTitle!, style: AppTextStyles.h3()),
-                    const Spacer(),
+                      Text(fallbackTitle!, style: AppTextStyles.h3())
+                    else
+                      const Spacer(),
                     ...?trailing,
+                    const _PortalQuickSearchButton(),
+                    const _PortalAccountMenu(),
                   ],
                 );
               }
@@ -124,6 +447,8 @@ class PortalHeader extends StatelessWidget implements PreferredSizeWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       ...?trailing,
+                      const _PortalQuickSearchButton(),
+                      const _PortalAccountMenu(),
                       if (navItems.isNotEmpty)
                         PopupMenuButton<int>(
                           icon: const Icon(Icons.menu, color: AppColors.green),

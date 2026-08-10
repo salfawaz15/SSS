@@ -6,6 +6,8 @@ import 'package:intl/intl.dart';
 
 import '../data/advising_load_rules.dart';
 import '../data/faculty_sort_order.dart';
+import '../data/teaching_load_regulation.dart';
+import '../data/teaching_quota_status.dart';
 import '../models/college_roster_member.dart';
 import '../models/course_section_record.dart';
 import '../services/college_roster_parser_service.dart';
@@ -87,6 +89,7 @@ extension on AdvisingLoad {
         AdvisingLoad.reduced => 'إرشاد جزئي',
         AdvisingLoad.exempt => 'معفى من الإرشاد',
         AdvisingLoad.specialCasesOnly => 'حالات خاصة فقط',
+        AdvisingLoad.frozen => 'الحالة مجمّدة',
       };
 
   Color get color => switch (this) {
@@ -94,6 +97,7 @@ extension on AdvisingLoad {
         AdvisingLoad.reduced => Colors.blue.shade700,
         AdvisingLoad.exempt => Colors.red.shade700,
         AdvisingLoad.specialCasesOnly => Colors.purple.shade700,
+        AdvisingLoad.frozen => Colors.grey.shade700,
       };
 }
 
@@ -123,6 +127,24 @@ class _CollegeRosterAdminScreenState extends State<CollegeRosterAdminScreen> {
   // من القائمة تمامًا - لا تظهر إلا من هو متواجد فعليًا (بمنصب، بتكليف، أو
   // بلا أي تكليف) - تعليمات صريحة. صندوق "إظهار الكل" يعطّل هذا الإخفاء.
   bool _showAll = false;
+
+  // فرز الجدول بالضغط على رأس أي عمود (بطلب سليمان 2026-08-09: "زي المواقع
+  // الاحترافية") - `_sortKey` بدل رقم عمود ثابت لأن أعمدة القسم/الشطر تظهر
+  // أو تختفي حسب الفلتر النشط، فيتغيّر ترقيمها الفعلي. null = الفرز
+  // الافتراضي (FacultySortOrder.compareMembers) بلا تعديل المستخدم.
+  String? _sortKey;
+  bool _sortAscending = true;
+
+  void _onSort(String key) {
+    setState(() {
+      if (_sortKey == key) {
+        _sortAscending = !_sortAscending;
+      } else {
+        _sortKey = key;
+        _sortAscending = true;
+      }
+    });
+  }
 
   @override
   void initState() {
@@ -179,6 +201,41 @@ class _CollegeRosterAdminScreenState extends State<CollegeRosterAdminScreen> {
     return total;
   }
 
+  /// لون عمود "العبء الدراسي" بنفس منطق/ألوان تقرير النصاب التدريسي
+  /// (`course_schedule_admin_screen.dart`): أحمر دون النصاب، أخضر مطابق،
+  /// برتقالي زائد إجباري (فارق تقريب)، أرجواني زائد اختياري - كانت تظهر
+  /// كرقم عادي بلا تلوين بهذه الشاشة تحديدًا (سليمان 2026-08-09).
+  Color? _teachingLoadColorFor(CollegeRosterMember m) {
+    if (m.academicRank.trim().isEmpty) return null;
+    final combinedPositions = [m.position, m.position2, m.position3].join('، ');
+    final effectiveMax = m.teachingLoadHours ??
+        TeachingLoadRegulation.effectiveMaxHoursFor(
+          academicRank: m.academicRank,
+          combinedPositions: combinedPositions,
+          quotaReductionNote: m.quotaReductionNote,
+          positions: [m.position, m.position2, m.position3],
+        );
+    final fullRankMax = TeachingLoadRegulation.maxHoursFor(m.academicRank);
+    final status = compareTeachingQuota(_teachingLoadFor(m), effectiveMax, fullRankMaxHours: fullRankMax);
+    return teachingQuotaColor(status);
+  }
+
+  /// شارة "العبء الدراسي" بنفس قالب `_loadChip` (خلفية معبّأة بلون الحالة +
+  /// حدّ بنفس اللون) بدل رقم ملوَّن بلا خلفية - توحيدًا بصريًا مع شارة عبء
+  /// الإرشاد بنفس الجدول (بطلب سليمان).
+  Widget _teachingLoadChip(CollegeRosterMember m) {
+    final color = _teachingLoadColorFor(m) ?? Colors.grey.shade600;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.5)),
+      ),
+      child: Text('${_teachingLoadFor(m)}', style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12)),
+    );
+  }
+
   Future<void> _clearData() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -200,6 +257,26 @@ class _CollegeRosterAdminScreenState extends State<CollegeRosterAdminScreen> {
     await _loadAll();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تفريغ البيانات.')));
+  }
+
+  /// يفحص عمودي "نصاب الإرشاد" و"النصاب التدريسي" لكل عضو مقابل القيم
+  /// المعتمدة فقط - بديل عن قائمة منسدلة داخل ملف الإكسل (لا يدعمها قارئ
+  /// الموقع، انظر lib/data/advising_load_rules.dart). يُرجع سطرًا تحذيريًا
+  /// لكل قيمة غريبة (اسم العضو + العمود + القيمة المكتوبة) لعرضها في حوار
+  /// التأكيد قبل الاعتماد - تنبيه فقط، لا يمنع الرفع.
+  List<String> _invalidQuotaValues(List<CollegeRosterMember> members) {
+    final lines = <String>[];
+    for (final m in members) {
+      final advising = m.advisingQuotaNote.trim();
+      if (advising.isNotEmpty && !AdvisingLoadRules.validAdvisingQuotaValues.contains(advising)) {
+        lines.add('${m.name} - نصاب الإرشاد: "$advising"');
+      }
+      final teaching = m.quotaReductionNote.trim();
+      if (teaching.isNotEmpty && !TeachingLoadRegulation.validQuotaReductionValues.contains(teaching)) {
+        lines.add('${m.name} - النصاب التدريسي: "$teaching"');
+      }
+    }
+    return lines;
   }
 
   Future<void> _upload() async {
@@ -234,14 +311,33 @@ class _CollegeRosterAdminScreenState extends State<CollegeRosterAdminScreen> {
       if (!mounted) return;
       final facultyCount = members.where((m) => m.type == CollegeMemberType.faculty).length;
       final adminCount = members.length - facultyCount;
+      final invalidQuotaValues = _invalidQuotaValues(members);
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('تأكيد الاعتماد'),
-          content: Text(
-            'تم استخراج ${members.length} منسوبًا من الملف ($facultyCount عضو هيئة تدريس، $adminCount إداري)'
-            '${fileSavedAt != null ? '\nتاريخ آخر حفظ للملف: ${DateFormat('yyyy/MM/dd HH:mm').format(fileSavedAt)}' : ''}.\n\n'
-            'سيستبدل هذا بيانات منسوبي الكلية المخزَّنة حاليًا بالكامل. هل تريد الاعتماد؟',
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'تم استخراج ${members.length} منسوبًا من الملف ($facultyCount عضو هيئة تدريس، $adminCount إداري)'
+                  '${fileSavedAt != null ? '\nتاريخ آخر حفظ للملف: ${DateFormat('yyyy/MM/dd HH:mm').format(fileSavedAt)}' : ''}.\n\n'
+                  'سيستبدل هذا بيانات منسوبي الكلية المخزَّنة حاليًا بالكامل. هل تريد الاعتماد؟',
+                ),
+                if (invalidQuotaValues.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    'تنبيه: قيم غير معروفة في عمودي "نصاب الإرشاد"/"النصاب التدريسي" '
+                    '(قد تكون خطأ إملائي - سيُتعامَل معها كأنها فارغة):',
+                    style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 4),
+                  ...invalidQuotaValues.map((line) => Text('- $line', style: TextStyle(color: Colors.orange.shade800))),
+                ],
+              ],
+            ),
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
@@ -319,6 +415,30 @@ class _CollegeRosterAdminScreenState extends State<CollegeRosterAdminScreen> {
         return a.name.compareTo(b.name);
       });
     }
+
+    // فرز المستخدم اليدوي (بالضغط على رأس عمود) يتغلّب على الفرز الافتراضي
+    // أعلاه إن اختير - لجدول أعضاء هيئة التدريس فقط حاليًا (نفس الأعمدة
+    // الخمسة المطلوبة: الاسم، القسم، المنصب، عبء الإرشاد، العبء الدراسي).
+    if (_sortKey != null && _typeFilter == CollegeMemberType.faculty) {
+      int cmp(CollegeRosterMember a, CollegeRosterMember b) {
+        switch (_sortKey) {
+          case 'department':
+            return FacultySortOrder.displayDepartment(a.department)
+                .compareTo(FacultySortOrder.displayDepartment(b.department));
+          case 'position':
+            return _positionsDisplay(a).compareTo(_positionsDisplay(b));
+          case 'advisingLoad':
+            return a.advisingLoad.label.compareTo(b.advisingLoad.label);
+          case 'teachingLoad':
+            return _teachingLoadFor(a).compareTo(_teachingLoadFor(b));
+          case 'name':
+          default:
+            return a.name.compareTo(b.name);
+        }
+      }
+
+      list.sort(_sortAscending ? cmp : (a, b) => cmp(b, a));
+    }
     return list;
   }
 
@@ -326,7 +446,7 @@ class _CollegeRosterAdminScreenState extends State<CollegeRosterAdminScreen> {
   Widget build(BuildContext context) {
     return PortalScaffold(
       title: 'بيانات منسوبي الكلية',
-      navItems: buildAdminNavItems(context, current: 'tools'),
+      navItems: buildAdminNavItems(context, current: 'college-roster'),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : Column(
@@ -482,42 +602,65 @@ class _CollegeRosterAdminScreenState extends State<CollegeRosterAdminScreen> {
           clipBehavior: Clip.antiAlias,
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
-            child: DataTable(
-              headingRowColor: WidgetStateProperty.all(AppColors.green),
-              headingTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-              columns: [
-                const DataColumn(label: Expanded(child: Center(child: Text('الاسم')))),
-                if (_deptFilter == _kAllDepartments)
-                  const DataColumn(label: Expanded(child: Center(child: Text('القسم / الجهة')))),
-                if (_shatrFilter == _kAllShatr)
-                  const DataColumn(label: Expanded(child: Center(child: Text('الشطر')))),
-                const DataColumn(label: Expanded(child: Center(child: Text('المنصب')))),
-                const DataColumn(label: Expanded(child: Center(child: Text('عبء الإرشاد')))),
-                const DataColumn(label: Expanded(child: Center(child: Text('العبء الدراسي')))),
-              ],
-              rows: [
-                for (var i = 0; i < rows.length; i++)
-                  DataRow(
-                    color: WidgetStateProperty.all(_isAbsentMember(rows[i])
-                        ? Colors.grey.shade200
-                        : (i.isEven ? Colors.white : const Color(0xFFF7F5EF))),
-                    cells: [
-                      DataCell(Center(child: Text(rows[i].name, textAlign: TextAlign.center))),
-                      if (_deptFilter == _kAllDepartments)
-                        DataCell(Center(
-                            child: Text(FacultySortOrder.displayDepartment(rows[i].department),
-                                textAlign: TextAlign.center))),
-                      if (_shatrFilter == _kAllShatr)
-                        DataCell(Center(child: Text(rows[i].shatr.isEmpty ? '—' : rows[i].shatr))),
-                      DataCell(Center(
-                          child: Text(
-                              _positionsDisplay(rows[i]).ifEmptyDash(),
-                              textAlign: TextAlign.center))),
-                      DataCell(Center(child: _loadChip(rows[i]))),
-                      DataCell(Center(child: Text('${_teachingLoadFor(rows[i])}'))),
-                    ],
-                  ),
-              ],
+            child: Builder(
+              builder: (context) {
+                // كل عمود قابل للفرز مرتبط بمفتاح دلالي (`_sortKey`) لا رقم
+                // ثابت - لأن عمودَي القسم/الشطر يظهران أو يختفيان حسب الفلتر
+                // النشط فيتحرّك ترقيم الأعمدة الفعلي (سليمان 2026-08-09:
+                // فرز الجدول بالضغط على رأس أي عمود، زي المواقع الاحترافية).
+                final sortableColumns = <({String key, String label})>[
+                  (key: 'name', label: 'الاسم'),
+                  if (_deptFilter == _kAllDepartments) (key: 'department', label: 'القسم / الجهة'),
+                  (key: 'position', label: 'المنصب'),
+                  (key: 'advisingLoad', label: 'عبء الإرشاد'),
+                  (key: 'teachingLoad', label: 'العبء الدراسي'),
+                ];
+                int? sortColumnIndex;
+                var idx = 0;
+                final columns = <DataColumn>[];
+                for (final c in sortableColumns) {
+                  if (c.key == _sortKey) sortColumnIndex = idx;
+                  columns.add(DataColumn(
+                    label: Expanded(child: Center(child: Text(c.label))),
+                    onSort: (_, _) => _onSort(c.key),
+                  ));
+                  idx++;
+                  if (c.key == 'department' && _shatrFilter == _kAllShatr) {
+                    columns.add(const DataColumn(label: Expanded(child: Center(child: Text('الشطر')))));
+                    idx++;
+                  }
+                }
+                return DataTable(
+                  headingRowColor: WidgetStateProperty.all(AppColors.green),
+                  headingTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  sortColumnIndex: sortColumnIndex,
+                  sortAscending: _sortAscending,
+                  columns: columns,
+                  rows: [
+                    for (var i = 0; i < rows.length; i++)
+                      DataRow(
+                        color: WidgetStateProperty.all(_isAbsentMember(rows[i])
+                            ? Colors.grey.shade200
+                            : (i.isEven ? Colors.white : const Color(0xFFF7F5EF))),
+                        cells: [
+                          DataCell(Center(child: Text(rows[i].name, textAlign: TextAlign.center))),
+                          if (_deptFilter == _kAllDepartments)
+                            DataCell(Center(
+                                child: Text(FacultySortOrder.displayDepartment(rows[i].department),
+                                    textAlign: TextAlign.center))),
+                          if (_shatrFilter == _kAllShatr)
+                            DataCell(Center(child: Text(rows[i].shatr.isEmpty ? '—' : rows[i].shatr))),
+                          DataCell(Center(
+                              child: Text(
+                                  _positionsDisplay(rows[i]).ifEmptyDash(),
+                                  textAlign: TextAlign.center))),
+                          DataCell(Center(child: _loadChip(rows[i]))),
+                          DataCell(Center(child: _teachingLoadChip(rows[i]))),
+                        ],
+                      ),
+                  ],
+                );
+              },
             ),
           ),
         ),

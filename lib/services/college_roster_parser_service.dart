@@ -84,9 +84,11 @@ class CollegeRosterParserService {
           office: _cell(row, index, 'رقم المكتب'),
           notes: _cellAny(row, index, ['ملاحظة', 'ملاحظات', 'ملاحظات المكاتب']),
           employeeStatus: employeeStatus,
-          quotaReductionNote: _cellAny(row, index, ['نصاب الإرشاد', 'ملاحظات تخفيض النصاب']),
+          quotaReductionNote: _cellAny(row, index, ['النصاب التدريسي', 'قرار تخفيض النصاب', 'ملاحظات تخفيض النصاب']),
+          advisingQuotaNote: _cell(row, index, 'نصاب الإرشاد'),
           teachingLoadHours: int.tryParse(_cell(row, index, 'نصاب عضو هيئة التدريس')),
           staffNumber: _cellAny(row, index, ['رقم المنسوب', 'رقم الموظف']),
+          appointmentDate: _cell(row, index, 'تاريخ التعيين'),
         ));
       }
     }

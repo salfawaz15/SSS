@@ -32,6 +32,18 @@ class StatusCounts {
         break;
     }
   }
+
+  /// مقياس "هل اشتغل الشخص على الحالة أم لا" - أي قيمة مكتوبة (بصرف النظر عن
+  /// محتواها) تُحتسب "اشتغل"، والفراغ فقط يُحتسب "لم يشتغل". يُستخدم لأداء
+  /// المرشد/منسق القسم/منسق الكلية، لا لحالة الحل الفعلية للطلب.
+  void addWorked(String? status) {
+    total++;
+    if (status != null && status.trim().isNotEmpty) {
+      completed++;
+    } else {
+      blank++;
+    }
+  }
 }
 
 class AdvisorReport {
@@ -45,6 +57,8 @@ class DepartmentReport {
   final String shatr;
   final String department;
   final StatusCounts counts = StatusCounts();
+  // أداء منسّق القسم (اشتغل/لم يشتغل على عمود حالته) - قسم واحد = منسّق واحد عادة
+  final StatusCounts coordinatorCounts = StatusCounts();
   final Map<String, AdvisorReport> _advisorsByName = {};
 
   DepartmentReport(this.shatr, this.department);
@@ -54,6 +68,15 @@ class DepartmentReport {
   AdvisorReport advisor(String name) {
     return _advisorsByName.putIfAbsent(name, () => AdvisorReport(name));
   }
+}
+
+/// أداء منسّق الكلية على مستوى شطر كامل (لا يوجد اسم منسّق كلية لكل تذكرة،
+/// فيُقاس على مستوى الشطر الذي يمثله)
+class ShatrReport {
+  final String shatr;
+  final StatusCounts collegeCounts = StatusCounts();
+
+  ShatrReport(this.shatr);
 }
 
 enum AdvisorProgressStatus { notStarted, inProgress, complete }
@@ -91,15 +114,41 @@ class AdvisorProgress {
   }
 }
 
+/// آخر حالة غير فارغة تصعيديًا (المرشد ← منسق القسم ← منسق الكلية) - تحدد
+/// هل الحالة محلولة فعليًا، بصرف النظر عمن أنجزها
+String effectiveStatus(Map<String, dynamic> action) {
+  final college = (action['college_status'] ?? '').toString().trim();
+  if (college.isNotEmpty) return college;
+  final coordinator = (action['coordinator_status'] ?? '').toString().trim();
+  if (coordinator.isNotEmpty) return coordinator;
+  return (action['advisor_status'] ?? '').toString().trim();
+}
+
+/// اسم الجهة التي أنجزت الحالة فعليًا ('تم الإنجاز') - أول من كتبها تصعيديًا
+/// (المرشد ← منسق القسم ← منسق الكلية)، أو فارغ لو لم تُنجَز
+String effectiveCompletedBy(Map<String, dynamic> action) {
+  if ((action['advisor_status'] ?? '').toString().trim() == 'تم الإنجاز') {
+    return 'المرشد الأكاديمي';
+  }
+  if ((action['coordinator_status'] ?? '').toString().trim() == 'تم الإنجاز') {
+    return 'منسق القسم';
+  }
+  if ((action['college_status'] ?? '').toString().trim() == 'تم الإنجاز') {
+    return 'منسق الكلية';
+  }
+  return '';
+}
+
 class ReportData {
   final StatusCounts overall = StatusCounts();
   final List<DepartmentReport> departments;
+  final List<ShatrReport> shatrReports;
   final Map<String, int> completedByOverall = {
-    for (final option in ExcelExportService.completedByOptions) option: 0,
+    for (final option in ExcelExportService.completionSourceOptions) option: 0,
     'غير محدد': 0,
   };
 
-  ReportData(this.departments);
+  ReportData(this.departments, this.shatrReports);
 }
 
 class ReportDataService {
@@ -138,7 +187,12 @@ class ReportDataService {
       }
     }
 
-    final data = ReportData(departmentsByKey.values.toList());
+    final shatrByKey = <String, ShatrReport>{
+      for (final shatr in [ExcelParserService.shatrMale, ExcelParserService.shatrFemale])
+        shatr: ShatrReport(shatr),
+    };
+
+    final data = ReportData(departmentsByKey.values.toList(), shatrByKey.values.toList());
 
     for (final ticket in tickets) {
       final shatr = (ticket['shatr'] ?? '').toString();
@@ -152,35 +206,37 @@ class ReportDataService {
         key,
         () => DepartmentReport(shatr, department),
       );
+      final shatrReport = shatrByKey.putIfAbsent(shatr, () => ShatrReport(shatr));
 
       final actions = (ticket['actions'] as List?) ?? [];
       for (final a in actions) {
         final action = a as Map<String, dynamic>;
-        final status = action['status']?.toString();
+        final status = effectiveStatus(action);
 
         data.overall.addStatus(status);
         departmentReport.counts.addStatus(status);
+        departmentReport.coordinatorCounts.addWorked(action['coordinator_status']?.toString());
+        shatrReport.collegeCounts.addWorked(action['college_status']?.toString());
         if (advisorName.isNotEmpty) {
-          departmentReport.advisor(advisorName).counts.addStatus(status);
+          departmentReport.advisor(advisorName).counts.addWorked(action['advisor_status']?.toString());
         }
 
         if (status == 'تم الإنجاز') {
-          final completedBy = (action['completed_by'] ?? '').toString();
-          final bucket =
-              ExcelExportService.completedByOptions.contains(completedBy)
-              ? completedBy
-              : 'غير محدد';
-          data.completedByOverall[bucket] =
-              (data.completedByOverall[bucket] ?? 0) + 1;
+          final bucket = effectiveCompletedBy(action);
+          final key = bucket.isEmpty ? 'غير محدد' : bucket;
+          data.completedByOverall[key] = (data.completedByOverall[key] ?? 0) + 1;
         }
       }
     }
 
-    // إعادة بناء قائمة الأقسام كاملة (تشمل أي قسم إضافي ظهر بالبيانات الفعلية
-    // ولم يكن ضمن القائمة الثابتة، احتياطًا)
+    // إعادة بناء قائمة الأقسام والشطور كاملة (تشمل أي قسم/شطر إضافي ظهر
+    // بالبيانات الفعلية ولم يكن ضمن القائمة الثابتة، احتياطًا)
     data.departments
       ..clear()
       ..addAll(departmentsByKey.values);
+    data.shatrReports
+      ..clear()
+      ..addAll(shatrByKey.values);
 
     return data;
   }
@@ -201,11 +257,48 @@ class ReportDataService {
         ));
       }
     }
+    _sortByRate(rows);
+    return rows;
+  }
+
+  static void _sortByRate(List<AdvisorProgress> rows) {
     rows.sort((a, b) {
       final rateCompare = a.counts.completionRate.compareTo(b.counts.completionRate);
       if (rateCompare != 0) return rateCompare;
       return b.counts.total.compareTo(a.counts.total);
     });
+  }
+
+  /// ترتيب أداء منسّقي الأقسام (اشتغل/لم يشتغل على حالاتهم) - قسم واحد يمثّل
+  /// منسّقًا واحدًا عادة
+  static List<AdvisorProgress> rankedCoordinators(ReportData data) {
+    final rows = <AdvisorProgress>[];
+    for (final department in data.departments) {
+      if (department.coordinatorCounts.total == 0) continue;
+      rows.add(AdvisorProgress(
+        shatr: department.shatr,
+        department: department.department,
+        advisorName: department.department,
+        counts: department.coordinatorCounts,
+      ));
+    }
+    _sortByRate(rows);
+    return rows;
+  }
+
+  /// ترتيب أداء منسّقي الكلية (اشتغل/لم يشتغل) على مستوى كل شطر
+  static List<AdvisorProgress> rankedCollegeCoordinators(ReportData data) {
+    final rows = <AdvisorProgress>[];
+    for (final shatrReport in data.shatrReports) {
+      if (shatrReport.collegeCounts.total == 0) continue;
+      rows.add(AdvisorProgress(
+        shatr: shatrReport.shatr,
+        department: '',
+        advisorName: shatrReport.shatr,
+        counts: shatrReport.collegeCounts,
+      ));
+    }
+    _sortByRate(rows);
     return rows;
   }
 }

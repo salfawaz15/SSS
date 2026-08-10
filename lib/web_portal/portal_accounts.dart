@@ -10,6 +10,14 @@ class PortalAccounts {
   /// إضافي شخصي بصلاحيات كاملة على البوابة.
   static const String superAdminEmail = 'salfawaz@$domain';
 
+  /// حساب "منسّق الوحدة" - دور تقني جاهز بانتظار القرار الرسمي، بلا ربطه
+  /// بأي شخص فعلي بعد. بريد ثابت واحد فقط (لا تفريع شطر/قسم مثل منسّقي
+  /// الأقسام) لأن صلاحياته تقتصر على رفع الملفات فقط عبر شاشة واحدة مخصَّصة
+  /// (انظر UnitCoordinatorWorkspaceScreen)، بلا أي عرض تقارير أو بيانات.
+  static const String unitCoordinatorEmail = 'unit-coordinator@$domain';
+
+  static bool isUnitCoordinator(String? email) => email == unitCoordinatorEmail;
+
   /// حسابا عرض التقارير فقط (بلا صلاحية رفع/تنزيل ملفات الأقسام) - تابعان
   /// لدخول الإدارة لكن بصلاحيات أقل (استطلاع وطباعة التقارير حصرًا).
   static const Map<String, String> viewerEmails = {
@@ -18,11 +26,16 @@ class PortalAccounts {
   };
 
   /// كل خيارات "دخول الإدارة" الظاهرة في قائمة الدخول العادية (الصلاحية
-  /// الكاملة + صلاحيات العرض فقط) - حساب المدير العام (salfawaz) غير مُدرَج
-  /// هنا عمدًا؛ له صفحة دخول مخفية منفصلة (انظر hidden_admin_login_screen.dart).
+  /// الكاملة + صلاحيات العرض فقط + منسّق الوحدة) - حساب المدير العام
+  /// (salfawaz) غير مُدرَج هنا عمدًا؛ له صفحة دخول مخفية منفصلة (انظر
+  /// hidden_admin_login_screen.dart). ترتيب هرمي: منسّق الوحدة (دور إداري
+  /// بصلاحية رفع ملفات فقط) يأتي بعد أمين الوحدة (دور أكاديمي) لا قبله -
+  /// لا يمكن أن يكون الإداري أعلى من الأكاديمي بالترتيب (سليمان).
   static Map<String, String> get adminRoleEmails => {
     'إدارة وحدة الإرشاد الأكاديمي': adminEmail,
-    ...viewerEmails,
+    'أمين الوحدة': viewerEmails['أمين الوحدة']!,
+    'منسّق الوحدة': unitCoordinatorEmail,
+    'سكرتير الوحدة': viewerEmails['سكرتير الوحدة']!,
   };
 
   /// صلاحيات كاملة (إدارة + المدير العام) بنفس المستوى تمامًا.

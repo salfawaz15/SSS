@@ -5,6 +5,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import '../models/advising_schedule.dart';
+import '../services/advising_schedule_excel_service.dart';
 import '../services/college_roster_lookup_service.dart';
 import '../services/college_roster_repository.dart';
 
@@ -112,8 +113,12 @@ class AdvisingSchedulePdfService {
     return widgets;
   }
 
-  /// نسخة تجمع كل الأقسام/الأشطر معًا في ملف PDF واحد (كل مجموعة في صفحة/
-  /// صفحات مستقلة) - لتقرير أو طباعة شاملة بدل الاقتصار على قسم/شطر واحد.
+  /// نسخة تجمع كل الأقسام/الأشطر معًا في ملف PDF واحد - **مرتَّبة باليوم
+  /// أولًا** (الأحد بكل أقسامه، ثم الاثنين، ثم الثلاثاء)، وداخل كل يوم كل
+  /// قسم × شطر بترتيب ثابت (نفس ترتيب [AdvisingScheduleExcelService]) -
+  /// بدل الترتيب السابق (قسم كامل بكل أيامه، ثم القسم التالي) الذي طلب
+  /// سليمان صراحةً استبداله (2026-08-10): "يوم الأحد الأقسام حسب الشطر
+  /// وبعدها الاثنين وهكذا". كل يوم يبدأ صفحة جديدة دائمًا.
   static Future<Uint8List> buildAll({
     required Map<(String, String), List<AdvisingScheduleSlot>> byDeptShatr,
     bool signage = false,
@@ -125,28 +130,36 @@ class AdvisingSchedulePdfService {
 
     final doc = pw.Document(theme: pw.ThemeData.withFont(base: regular, bold: bold));
 
-    for (final entry in byDeptShatr.entries) {
-      final (department, shatr) = entry.key;
-      final slots = entry.value;
-      final unitManagerName = CollegeRosterLookupService.unitManagerFor(roster, shatr);
-      final coordinatorMatch = CollegeRosterLookupService.coordinatorFor(roster, department, shatr);
-      final coordinator = coordinatorMatch == null
-          ? null
-          : (name: coordinatorMatch.name, label: coordinatorMatch.male ? 'منسّق القسم' : 'منسّقة القسم');
+    // ترتيب ثابت للأقسام/الأشطر (لا يعتمد على ترتيب مفاتيح الخريطة الممرَّرة)
+    final pairs = [
+      for (final d in AdvisingScheduleExcelService.departmentOptions)
+        for (final s in AdvisingScheduleExcelService.shatrOptions) (d, s),
+    ];
+
+    var anyDataAtAll = false;
+    for (final day in AdvisingScheduleExcelService.dayColumnLabels) {
+      final sections = <pw.Widget>[];
+      for (final (department, shatr) in pairs) {
+        final daySlots = (byDeptShatr[(department, shatr)] ?? const [])
+            .where((s) => s.dayLabel == day)
+            .toList()
+          ..sort((a, b) => _periodOrder(a.periodLabel).compareTo(_periodOrder(b.periodLabel)));
+        if (daySlots.isEmpty) continue;
+        final coordinatorMatch = CollegeRosterLookupService.coordinatorFor(roster, department, shatr);
+        final coordinatorLabel = coordinatorMatch == null
+            ? null
+            : '${coordinatorMatch.male ? 'منسّق القسم' : 'منسّقة القسم'}: ${coordinatorMatch.name}';
+        sections.add(_deptShatrSection(department, shatr, coordinatorLabel, daySlots, signage: signage));
+      }
+      if (sections.isEmpty) continue;
+      anyDataAtAll = true;
 
       doc.addPage(
         pw.MultiPage(
           pageFormat: signage ? PdfPageFormat.a4.landscape : PdfPageFormat.a4,
           margin: pw.EdgeInsets.all(signage ? 28 : 24),
           textDirection: pw.TextDirection.rtl,
-          header: (context) => _header(
-            logo: logo,
-            department: department,
-            shatr: shatr,
-            coordinator: coordinator,
-            unitManagerName: unitManagerName,
-            scale: signage ? 1.6 : 1,
-          ),
+          header: (context) => _genericHeader(logo: logo, title: day, scale: signage ? 1.6 : 1),
           footer: signage
               ? null
               : (context) => pw.Container(
@@ -170,16 +183,86 @@ class AdvisingSchedulePdfService {
               pw.Center(child: pw.Container(height: 2, width: 160, color: _gold)),
               pw.SizedBox(height: 16),
             ],
-            if (slots.isEmpty)
-              pw.Center(child: pw.Text('لا توجد بيانات لهذا القسم/الشطر بعد.'))
-            else
-              ..._daysWithPageBreaks(slots, signage: signage),
+            ...sections,
           ],
         ),
       );
     }
 
+    if (!anyDataAtAll) {
+      doc.addPage(
+        pw.Page(
+          pageFormat: signage ? PdfPageFormat.a4.landscape : PdfPageFormat.a4,
+          build: (context) => pw.Center(child: pw.Text('لا توجد بيانات لهذا النطاق بعد.')),
+        ),
+      );
+    }
+
     return doc.save();
+  }
+
+  /// عنوان عام لصفحة يوم كامل (بلا قسم/شطر مفرد، لأن الصفحة تجمع عدة أقسام) -
+  /// الشعار واسم الوحدة فقط، واسم اليوم كعنوان رئيسي بدل بيانات قسم واحد.
+  static pw.Widget _genericHeader({required pw.MemoryImage logo, required String title, double scale = 1}) {
+    return pw.Container(
+      padding: pw.EdgeInsets.symmetric(horizontal: 14 * scale, vertical: 10 * scale),
+      decoration: pw.BoxDecoration(color: _green, borderRadius: pw.BorderRadius.circular(8)),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.center,
+        children: [
+          pw.Expanded(
+            flex: 3,
+            child: pw.Text('يوم $title',
+                style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 13 * scale)),
+          ),
+          pw.SizedBox(width: 10 * scale),
+          pw.Image(logo, height: 72 * scale),
+          pw.SizedBox(width: 10 * scale),
+          pw.Expanded(
+            flex: 4,
+            child: pw.Text('وحدة الإرشاد الأكاديمي والخريجين',
+                textAlign: pw.TextAlign.right,
+                maxLines: 2,
+                style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 11 * scale)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// قسم فرعي واحد (قسم أكاديمي × شطر) ضمن صفحة يوم كامل - عنوان مصغَّر
+  /// (القسم + الشطر + المنسّق إن وُجد) ثم جداول الفترات لنفس اليوم فقط.
+  static pw.Widget _deptShatrSection(
+    String department,
+    String shatr,
+    String? coordinatorLabel,
+    List<AdvisingScheduleSlot> daySlots, {
+    required bool signage,
+  }) {
+    final titleFontSize = signage ? 16.0 : 11.0;
+    return pw.Container(
+      margin: const pw.EdgeInsets.only(bottom: 14),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        children: [
+          pw.Container(
+            padding: pw.EdgeInsets.symmetric(horizontal: signage ? 14 : 10, vertical: signage ? 8 : 6),
+            decoration: pw.BoxDecoration(color: _greenDark, borderRadius: pw.BorderRadius.circular(6)),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text('${department.replaceFirst(RegExp(r'^قسم\s+'), '')} - $shatr',
+                    style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: titleFontSize)),
+                if (coordinatorLabel != null)
+                  pw.Text(coordinatorLabel, style: pw.TextStyle(color: PdfColors.white, fontSize: titleFontSize - 2)),
+              ],
+            ),
+          ),
+          pw.SizedBox(height: 6),
+          ...daySlots.map(signage ? _periodTableSignage : _periodTable),
+        ],
+      ),
+    );
   }
 
   /// نسخة مخصّصة لعرض الجدول على شاشات الإسياب داخل الكلية: اتجاه أفقي
@@ -230,9 +313,28 @@ class AdvisingSchedulePdfService {
     return doc.save();
   }
 
+  /// يرتّب الأيام بترتيب الأسبوع الفعلي والفترات داخل كل يوم بترتيب الوقت -
+  /// بدونه كانت تظهر بترتيب ورودها العشوائي بالبيانات المرفوعة (سليمان
+  /// 2026-08-10)، وهي نفس مشكلة `advising_schedule_admin_screen.dart`.
+  static int _dayOrder(String label) {
+    final i = AdvisingScheduleExcelService.dayColumnLabels.indexOf(label);
+    return i == -1 ? AdvisingScheduleExcelService.dayColumnLabels.length : i;
+  }
+
+  static int _periodOrder(String label) {
+    final i = AdvisingScheduleExcelService.periodOptions.indexWhere(label.startsWith);
+    return i == -1 ? AdvisingScheduleExcelService.periodOptions.length : i;
+  }
+
   static Map<String, List<AdvisingScheduleSlot>> _groupedByDay(List<AdvisingScheduleSlot> slots) {
+    final sorted = [...slots]
+      ..sort((a, b) {
+        final dayCompare = _dayOrder(a.dayLabel).compareTo(_dayOrder(b.dayLabel));
+        if (dayCompare != 0) return dayCompare;
+        return _periodOrder(a.periodLabel).compareTo(_periodOrder(b.periodLabel));
+      });
     final map = <String, List<AdvisingScheduleSlot>>{};
-    for (final s in slots) {
+    for (final s in sorted) {
       map.putIfAbsent(s.dayLabel, () => []).add(s);
     }
     return map;

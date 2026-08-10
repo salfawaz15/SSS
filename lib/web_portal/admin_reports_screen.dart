@@ -121,7 +121,7 @@ class _AdminReportsScreenState extends State<AdminReportsScreen> {
           'university_id': t['university_id'],
           'action_type': action['action_type'],
           'course': action['course'],
-          'status': action['status'],
+          'status': effectiveStatus(action),
         });
       }
     }

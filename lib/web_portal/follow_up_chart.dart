@@ -18,6 +18,9 @@ class FollowUpChart extends StatefulWidget {
   final List<AdvisorRosterEntry>? roster;
   final bool showShatrFilter;
   final bool showDepartmentFilter;
+  // منسّق القسم لا يرى أداء منسّقي الكلية (مستوى أعلى منه) - يُعطَّل فقط في
+  // شاشة منسّق القسم؛ الإدارة ومنسّق الكلية يريان كل المستويات كالمعتاد.
+  final bool showCollegePerformance;
 
   const FollowUpChart({
     super.key,
@@ -26,6 +29,7 @@ class FollowUpChart extends StatefulWidget {
     this.roster,
     this.showShatrFilter = false,
     this.showDepartmentFilter = false,
+    this.showCollegePerformance = true,
   });
 
   @override
@@ -52,12 +56,21 @@ class _FollowUpChartState extends State<FollowUpChart> {
     final filterSelected = (!widget.showShatrFilter || _shatr != null) &&
         (!widget.showDepartmentFilter || _department != null);
 
+    final overallRankedCoordinators = ReportDataService.rankedCoordinators(widget.data);
+    final overallRankedCollege = widget.showCollegePerformance
+        ? ReportDataService.rankedCollegeCoordinators(widget.data)
+        : <AdvisorProgress>[];
+
     Widget bars;
     Widget? filteredPie;
+    List<AdvisorProgress> coordinatorRanked = overallRankedCoordinators;
+    List<AdvisorProgress> collegeRanked = overallRankedCollege;
     if (!_hasFilters) {
       bars = _AdvisorBars(ranked: overallRanked, cap: 10);
     } else if (!filterSelected) {
       bars = _FilterPrompt(showShatr: widget.showShatrFilter, showDepartment: widget.showDepartmentFilter);
+      coordinatorRanked = [];
+      collegeRanked = [];
     } else {
       final filteredTickets = (widget.tickets ?? []).where((t) {
         if (_shatr != null && (t['shatr'] ?? '') != _shatr) return false;
@@ -69,6 +82,10 @@ class _FollowUpChartState extends State<FollowUpChart> {
       bars = filteredRanked.isEmpty
           ? Text('لا توجد حالات لهذا الاختيار', style: TextStyle(fontSize: 12, color: Colors.grey.shade600))
           : _AdvisorBars(ranked: filteredRanked, cap: 20);
+      coordinatorRanked = ReportDataService.rankedCoordinators(filteredData);
+      collegeRanked = widget.showCollegePerformance
+          ? ReportDataService.rankedCollegeCoordinators(filteredData)
+          : [];
 
       final fNotStarted = filteredRanked.where((a) => a.status == AdvisorProgressStatus.notStarted).length;
       final fInProgress = filteredRanked.where((a) => a.status == AdvisorProgressStatus.inProgress).length;
@@ -168,6 +185,28 @@ class _FollowUpChartState extends State<FollowUpChart> {
             ),
           const SizedBox(height: 18),
           bars,
+          if (coordinatorRanked.isNotEmpty) ...[
+            const SizedBox(height: 22),
+            const Divider(height: 1),
+            const SizedBox(height: 18),
+            _AdvisorBars(
+              ranked: coordinatorRanked,
+              cap: 10,
+              title: 'نسبة إنجاز منسقي الأقسام (الأقل إنجازًا أولًا)',
+              moreLabel: 'قسمًا آخر',
+            ),
+          ],
+          if (collegeRanked.isNotEmpty) ...[
+            const SizedBox(height: 22),
+            const Divider(height: 1),
+            const SizedBox(height: 18),
+            _AdvisorBars(
+              ranked: collegeRanked,
+              cap: 10,
+              title: 'نسبة إنجاز منسقي الكلية (الأقل إنجازًا أولًا)',
+              moreLabel: 'شطرًا آخر',
+            ),
+          ],
         ],
       ),
     );
@@ -288,8 +327,15 @@ class _StatusPie extends StatelessWidget {
 class _AdvisorBars extends StatelessWidget {
   final List<AdvisorProgress> ranked;
   final int cap;
+  final String title;
+  final String moreLabel;
 
-  const _AdvisorBars({required this.ranked, required this.cap});
+  const _AdvisorBars({
+    required this.ranked,
+    required this.cap,
+    this.title = 'نسبة إنجاز المرشدين (الأقل إنجازًا أولًا)',
+    this.moreLabel = 'مرشدًا آخر',
+  });
 
   Color _colorFor(AdvisorProgressStatus status) {
     switch (status) {
@@ -310,7 +356,7 @@ class _AdvisorBars extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('نسبة إنجاز المرشدين (الأقل إنجازًا أولًا)', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+        Text(title, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
         const SizedBox(height: 12),
         ...shown.map((advisor) {
           final rate = advisor.counts.completionRate;
@@ -357,7 +403,7 @@ class _AdvisorBars extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(top: 4),
             child: Text(
-              'وأيضًا ${ranked.length - cap} مرشدًا آخر - التفصيل الكامل في التقرير المُصدَّر',
+              'وأيضًا ${ranked.length - cap} $moreLabel - التفصيل الكامل في التقرير المُصدَّر',
               style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
             ),
           ),

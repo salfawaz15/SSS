@@ -26,18 +26,13 @@ class MailService {
       rawXlsxBytes,
       dropdowns: [
         DropdownColumn(
-          columnIndex: ExcelExportService.statusColumnIndex,
+          columnIndex: ExcelExportService.coordinatorStatusColumnIndex,
           options: ExcelProtectionService.statusOptions,
-        ),
-        DropdownColumn(
-          columnIndex: ExcelExportService.completedByColumnIndex,
-          options: ExcelExportService.completedByOptions,
         ),
       ],
       unlockedColumnIndexes: [
-        ExcelExportService.statusColumnIndex,
-        ExcelExportService.notesColumnIndex,
-        ExcelExportService.completedByColumnIndex,
+        ExcelExportService.coordinatorStatusColumnIndex,
+        ExcelExportService.coordinatorNotesColumnIndex,
       ],
       dataRowCount: dataRowCount,
     );

@@ -1,4 +1,3 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
 
@@ -8,7 +7,6 @@ import '../services/report_excel_service.dart';
 import '../services/report_pdf_service.dart';
 import '../services/web_download.dart';
 import '../theme/app_theme.dart';
-import 'change_password_dialog.dart';
 import 'portal_header.dart';
 
 /// شاشة حساب "العرض فقط" (أمين الوحدة / سكرتير الوحدة): استطلاع وعرض
@@ -102,18 +100,6 @@ class _ViewerReportsScreenState extends State<ViewerReportsScreen> {
     return PortalScaffold(
       title: 'التقرير الشامل',
       showBackButton: false,
-      actions: [
-          IconButton(
-            icon: const Icon(Icons.lock_outline),
-            tooltip: 'تغيير كلمة المرور',
-            onPressed: () => showChangePasswordDialog(context),
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: 'تسجيل خروج',
-            onPressed: () => FirebaseAuth.instance.signOut(),
-          ),
-      ],
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),

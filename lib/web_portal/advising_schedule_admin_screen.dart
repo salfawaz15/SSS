@@ -63,6 +63,7 @@ class _AdvisingScheduleAdminScreenState extends State<AdvisingScheduleAdminScree
   String _department = _kAllDepartments;
   String _shatr = _kAllShatr;
   List<AdvisingScheduleSlot> _slots = [];
+  Map<(String, String), List<AdvisingScheduleSlot>> _filteredData = {};
   bool _loading = false;
 
   bool get _isAllDepartments => _department == _kAllDepartments;
@@ -75,16 +76,42 @@ class _AdvisingScheduleAdminScreenState extends State<AdvisingScheduleAdminScree
     _load();
   }
 
+  /// يجمع بيانات كل تركيبة (قسم، شطر) تطابق الفلتر الحالي - قسم واحد أو
+  /// "الكل"، × شطر واحد أو "الكل" كلٌ على حدة (مثال: كل الأقسام لكن شطر
+  /// الطلاب فقط) - مصدر واحد مشترك للعرض على الشاشة وبناء تقرير PDF معًا.
+  Future<Map<(String, String), List<AdvisingScheduleSlot>>> _loadFilteredData() async {
+    final departments = _isAllDepartments ? CourseCatalog.departments : [_department];
+    final shatrList = _isAllShatr
+        ? [ExcelParserService.shatrMale, ExcelParserService.shatrFemale]
+        : [_shatr];
+
+    final all = <(String, String), List<AdvisingScheduleSlot>>{};
+    for (final department in departments) {
+      for (final shatr in shatrList) {
+        final slots = await AdvisingScheduleRepository.load(department, shatr);
+        if (slots.isNotEmpty) all[(department, shatr)] = slots;
+      }
+    }
+    return all;
+  }
+
   Future<void> _load() async {
+    setState(() => _loading = true);
     if (_isFiltered) {
-      setState(() => _slots = []);
+      final data = await _loadFilteredData();
+      if (!mounted) return;
+      setState(() {
+        _filteredData = data;
+        _slots = [];
+        _loading = false;
+      });
       return;
     }
-    setState(() => _loading = true);
     final slots = await AdvisingScheduleRepository.load(_department, _shatr);
     if (!mounted) return;
     setState(() {
       _slots = slots;
+      _filteredData = {};
       _loading = false;
     });
   }
@@ -236,18 +263,7 @@ class _AdvisingScheduleAdminScreenState extends State<AdvisingScheduleAdminScree
   /// (مثال: كل الأقسام لكن شطر الطلاب فقط)، بدل الاقتصار على "الكل" للقسم
   /// فقط.
   Future<Uint8List> _buildFilteredPdf({required bool signage}) async {
-    final departments = _isAllDepartments ? CourseCatalog.departments : [_department];
-    final shatrList = _isAllShatr
-        ? [ExcelParserService.shatrMale, ExcelParserService.shatrFemale]
-        : [_shatr];
-
-    final all = <(String, String), List<AdvisingScheduleSlot>>{};
-    for (final department in departments) {
-      for (final shatr in shatrList) {
-        final slots = await AdvisingScheduleRepository.load(department, shatr);
-        if (slots.isNotEmpty) all[(department, shatr)] = slots;
-      }
-    }
+    final all = _isFiltered ? _filteredData : await _loadFilteredData();
     return AdvisingSchedulePdfService.buildAll(byDeptShatr: all, signage: signage);
   }
 
@@ -382,15 +398,34 @@ class _AdvisingScheduleAdminScreenState extends State<AdvisingScheduleAdminScree
     );
   }
 
+  // ترتيب الأيام بترتيب الأسبوع الفعلي (لا بترتيب ورودها بالملف)، والفترات
+  // داخل كل يوم بترتيب الوقت - بدونه كانت الفترات تظهر بترتيب عشوائي
+  // (سليمان 2026-08-10).
+  static int _dayOrder(String label) {
+    final i = AdvisingScheduleExcelService.dayColumnLabels.indexOf(label);
+    return i == -1 ? AdvisingScheduleExcelService.dayColumnLabels.length : i;
+  }
+
+  static int _periodOrder(String label) {
+    final i = AdvisingScheduleExcelService.periodOptions.indexWhere(label.startsWith);
+    return i == -1 ? AdvisingScheduleExcelService.periodOptions.length : i;
+  }
+
   Widget _buildPreview() {
-    if (_isFiltered) {
-      return const Center(child: Text('اختر قسمًا وشطرًا محدَّدين لعرض التفاصيل هنا، أو استخدم بطاقة التقرير أعلاه للنطاق الشامل'));
-    }
+    if (_isFiltered) return _buildFilteredPreview();
     if (_slots.isEmpty) {
       return const Center(child: Text('لا يوجد جدول محفوظ لهذا القسم/الشطر - نزّل النموذج وارفعه بعد تعبئته'));
     }
+
+    final sortedSlots = [..._slots]
+      ..sort((a, b) {
+        final dayCompare = _dayOrder(a.dayLabel).compareTo(_dayOrder(b.dayLabel));
+        if (dayCompare != 0) return dayCompare;
+        return _periodOrder(a.periodLabel).compareTo(_periodOrder(b.periodLabel));
+      });
+
     final byDay = <String, List<AdvisingScheduleSlot>>{};
-    for (final s in _slots) {
+    for (final s in sortedSlots) {
       byDay.putIfAbsent(s.dayLabel, () => []).add(s);
     }
     return SingleChildScrollView(
@@ -418,6 +453,86 @@ class _AdvisingScheduleAdminScreenState extends State<AdvisingScheduleAdminScree
                           .toList(),
                     ),
                     const SizedBox(height: 10),
+                  ],
+                ],
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  /// عرض الشاشة عند اختيار "الكل" لأحد الفلترين (أو كليهما) - كان يظهر
+  /// نص "اختر قسمًا وشطرًا محدَّدين" بلا أي بيانات (سليمان 2026-08-10: "لا
+  /// يمكن اظهار الاسماء الا اذا اخترت قسم وشطر"). العرض الآن مبني حسب اليوم
+  /// أولًا (بنفس منطق تقرير PDF الشامل)، وداخل كل يوم قسم فرعي لكل (قسم،
+  /// شطر) له بيانات فعلية بذلك اليوم.
+  Widget _buildFilteredPreview() {
+    if (_filteredData.isEmpty) {
+      return const Center(child: Text('لا يوجد أي جدول محفوظ ضمن هذا النطاق بعد - نزّل النموذج وارفعه بعد تعبئته'));
+    }
+
+    final byDay = <String, List<(String department, String shatr, AdvisingScheduleSlot slot)>>{};
+    for (final entry in _filteredData.entries) {
+      final (department, shatr) = entry.key;
+      for (final slot in entry.value) {
+        byDay.putIfAbsent(slot.dayLabel, () => []).add((department, shatr, slot));
+      }
+    }
+    final sortedDays = byDay.keys.toList()..sort((a, b) => _dayOrder(a).compareTo(_dayOrder(b)));
+    for (final list in byDay.values) {
+      list.sort((a, b) {
+        final deptCompare = AdvisingScheduleExcelService.departmentOptions
+            .indexOf(a.$1)
+            .compareTo(AdvisingScheduleExcelService.departmentOptions.indexOf(b.$1));
+        if (deptCompare != 0) return deptCompare;
+        final shatrCompare =
+            AdvisingScheduleExcelService.shatrOptions.indexOf(a.$2).compareTo(AdvisingScheduleExcelService.shatrOptions.indexOf(b.$2));
+        if (shatrCompare != 0) return shatrCompare;
+        return _periodOrder(a.$3.periodLabel).compareTo(_periodOrder(b.$3.periodLabel));
+      });
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: sortedDays.map((day) {
+          final items = byDay[day]!;
+          // تجميع فرعي حسب (قسم، شطر) داخل نفس اليوم - بلا فقد ترتيبها المرتَّب أعلاه
+          final byDeptShatr = <(String, String), List<AdvisingScheduleSlot>>{};
+          for (final (department, shatr, slot) in items) {
+            byDeptShatr.putIfAbsent((department, shatr), () => []).add(slot);
+          }
+          return Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(day, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.green)),
+                  const Divider(),
+                  for (final section in byDeptShatr.entries) ...[
+                    Text(
+                      '${section.key.$1.replaceFirst(RegExp(r'^قسم\s+'), '')} - ${section.key.$2}',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.gold),
+                    ),
+                    const SizedBox(height: 6),
+                    for (final slot in section.value) ...[
+                      Text('الفترة: ${slot.periodLabel}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                      const SizedBox(height: 4),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: slot.entries
+                            .map((e) => Chip(label: Text('${e.advisorName} (مكتب ${e.office})')))
+                            .toList(),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                    const SizedBox(height: 6),
                   ],
                 ],
               ),

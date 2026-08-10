@@ -10,6 +10,7 @@ import '../services/app_update_service.dart';
 import '../services/unit_guide_pdf_service.dart';
 import '../services/web_download.dart';
 import '../theme/app_theme.dart';
+import 'portal_cards.dart';
 import 'portal_root.dart';
 
 class _ExternalLink {
@@ -189,7 +190,7 @@ class _PublicLandingScreenState extends State<PublicLandingScreen> {
 
 void _pushLogin(BuildContext context) {
   Navigator.of(context).push(
-    MaterialPageRoute(builder: (_) => const PortalRoot()),
+    MaterialPageRoute(builder: (_) => const PortalRoot(), settings: const RouteSettings(name: kPortalRootRouteName)),
   );
 }
 
@@ -1557,7 +1558,12 @@ class _StatsSection extends StatelessWidget {
                     childAspectRatio: isNarrow ? 3.4 : 3.6,
                     children: [
                       for (var i = 0; i < stats.length; i++)
-                        _PublicStatTile(stat: stats[i], accentColor: accentColors[i % accentColors.length]),
+                        PortalStatCard(
+                          icon: stats[i].icon,
+                          value: stats[i].value,
+                          label: stats[i].label,
+                          accentColor: accentColors[i % accentColors.length],
+                        ),
                     ],
                   );
                 },
@@ -1569,71 +1575,6 @@ class _StatsSection extends StatelessWidget {
     );
   }
 }
-
-/// بطاقة إحصاء عامة واحدة بأسلوب "رقم بارز + بلوك أيقونة ملوّن" (مستوحى من
-/// لوحات المؤشرات الاحترافية) - نفس نمط `_statTile` في لوحة إدارة الوحدة،
-/// بألوان الهوية البصرية.
-class _PublicStatTile extends StatelessWidget {
-  const _PublicStatTile({required this.stat, required this.accentColor});
-
-  final _Stat stat;
-  final Color accentColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.grey.shade200),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Row(
-        children: [
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    stat.value,
-                    style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.greenDark,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    stat.label,
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade700),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Container(
-            width: 56,
-            height: double.infinity,
-            color: accentColor,
-            alignment: Alignment.center,
-            child: Icon(stat.icon, color: Colors.white, size: 22),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 
 /// قسم بارز في الصفحة الرئيسية يجمّع الروابط الخارجية المهمة (تُستخدم يوميًا
 /// من المرشدين والمنسّقين للوصول لأنظمة الجامعة) مُقسّمة إلى تفريعات ذكية

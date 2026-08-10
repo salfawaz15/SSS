@@ -36,6 +36,11 @@ enum AdvisingLoad {
 
   /// لا يُسند له إرشاد عام - فقط حالات إرشادية خاصة (مثل ذوي الإعاقة)
   specialCasesOnly,
+
+  /// حالته مجمّدة مؤقتًا (موقوف الراتب/مجاز/مبتعث/معار) - لا يُسند له أي
+  /// إرشاد ولا يُصنَّف بمعفى/جزئي/كامل، بصرف النظر عن قيمة عمود "نصاب
+  /// الإرشاد"، لأنه غير متاح فعليًا حاليًا وليس قرار إعفاء إرشادي دائم.
+  frozen,
 }
 
 class AdvisingLoadResult {
@@ -47,6 +52,16 @@ class AdvisingLoadResult {
 }
 
 class AdvisingLoadRules {
+  /// القيم الصحيحة الوحيدة المعتمدة لعمود "نصاب الإرشاد" - تُستخدم عند رفع
+  /// الملف لتنبيه المستخدم بأي قيمة مكتوبة يدويًا خارج هذه القائمة (خطأ
+  /// إملائي محتمل) بدل الاعتماد على قائمة منسدلة داخل الإكسل نفسه (جُرِّبت
+  /// وتبيّن أنها تكسر قراءة مكتبة `excel` المستخدَمة بالموقع - انظر الذاكرة).
+  static const List<String> validAdvisingQuotaValues = [
+    'بدون تخفيض نصاب',
+    '50%',
+    'معفي من الارشاد',
+    'حالات خاصة',
+  ];
   /// عبارات تعني إعفاءً كاملاً بذاتها بلا حاجة لنسبة تخفيض
   static const List<String> _fullExemptKeywords = [
     'عميد الكلية',
@@ -68,12 +83,6 @@ class AdvisingLoadRules {
     'نائبة رئيسة الوحدة',
     'رئيس قسم',
     'رئيسة قسم',
-    'معار',
-    'معارة',
-    'مبتعث',
-    'مبتعثة',
-    'مجاز',
-    'مجازة',
     'خارج الكلية',
     // صيغ القائمة المعيارية الجديدة لعمود "المنصب" (بلا "ال" التعريف، انظر
     // lib/data/position_catalog.dart) - تُضاف هنا إلى جانب الصيغ القديمة
@@ -111,6 +120,20 @@ class AdvisingLoadRules {
 
   /// عبارات تعني عدم إسناد إرشاد عام - فقط حالات خاصة
   static const List<String> _specialCasesOnlyKeywords = ['أمين قسم', 'أمينة قسم'];
+
+  /// عبارات تعني تجميد حالة الإرشاد مؤقتًا (غير متاح فعليًا حاليًا) - أولوية
+  /// مطلقة تتغلّب حتى على قيمة عمود "نصاب الإرشاد" الصريحة، لأن موقوفًا عن
+  /// العمل أو مبتعثًا لا يُسند له إرشاد بصرف النظر عمّا تكتبه العمادة في ذلك
+  /// العمود لحين عودته الفعلية.
+  static const List<String> _frozenKeywords = [
+    'موقوف الراتب',
+    'معار',
+    'معارة',
+    'مبتعث',
+    'مبتعثة',
+    'مجاز',
+    'مجازة',
+  ];
 
   /// أسماء الأقسام العلمية الخمسة (بلا "قسم") - تُستخدم لتحديد هل منصب
   /// "أمين/ة قسم" الذي يحمله عضو هو لقسمه هو أم لقسم آخر (مثال: هبة
@@ -159,6 +182,9 @@ class AdvisingLoadRules {
     if (normalized.contains(_normalizeHamza('خاصة'))) {
       return AdvisingLoadResult(AdvisingLoad.specialCasesOnly, 'نصاب الإرشاد من ملف العمادة: "$note"');
     }
+    if (normalized.contains(_normalizeHamza('بدون تخفيض'))) {
+      return AdvisingLoadResult(AdvisingLoad.full, 'نصاب الإرشاد من ملف العمادة: "$note"');
+    }
 
     // نسبة قد تُكتب رقمًا عشريًا مباشرة (خلية إكسل بصيغة نسبة مئوية، مثل
     // 0.5)، أو نصًا "50%"، أو التسمية الجاهزة "إرشاد جزئي" (بلا رقم).
@@ -179,6 +205,13 @@ class AdvisingLoadRules {
   }
 
   static AdvisingLoadResult classify(String? positionText, {String advisingNote = '', String ownDepartment = ''}) {
+    final normalizedPositionText = _normalizeHamza((positionText ?? '').trim());
+    for (final k in _frozenKeywords) {
+      if (normalizedPositionText.contains(_normalizeHamza(k))) {
+        return AdvisingLoadResult(AdvisingLoad.frozen, 'حالة الموظف مجمّدة مؤقتًا: "$k"');
+      }
+    }
+
     final fromNote = _classifyFromNote(advisingNote);
     if (fromNote != null) return fromNote;
 

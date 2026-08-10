@@ -107,6 +107,25 @@ class FacultySortOrder {
   static String _combinedPositions(CollegeRosterMember m) =>
       [m.position, m.position2, m.position3].join(' ');
 
+  /// يحوّل نصًا هجريًا بصيغة "يوم-شهر-سنة" (أرقام عربية هندية أو إنجليزية،
+  /// بصفر بادئ أو بدونه) لقيمة عددية قابلة للمقارنة (سنة×10000 + شهر×100 +
+  /// يوم)، أو null إن كان النص فارغًا/غير مفهوم.
+  static int? _parseHijriDate(String raw) {
+    if (raw.trim().isEmpty) return null;
+    const eastern = '٠١٢٣٤٥٦٧٨٩';
+    final normalized = raw.trim().split('').map((ch) {
+      final i = eastern.indexOf(ch);
+      return i == -1 ? ch : i.toString();
+    }).join();
+    final parts = normalized.split('-');
+    if (parts.length != 3) return null;
+    final day = int.tryParse(parts[0]);
+    final month = int.tryParse(parts[1]);
+    final year = int.tryParse(parts[2]);
+    if (day == null || month == null || year == null) return null;
+    return year * 10000 + month * 100 + day;
+  }
+
   /// فهرس المستوى القيادي (0 = وكيل الجامعة .. الأعلى)، أو null لو ما فيه
   /// أي منصب من القائمة المحدَّدة صراحةً ولا تكليف - "المكلفون خارجيًا"
   /// (نسبة تخفيض صريحة أو تكليف بلا نسبة) يأتون بعد كل المناصب القيادية
@@ -229,6 +248,21 @@ class FacultySortOrder {
     final r = academicRankOrder(a.academicRank)
         .compareTo(academicRankOrder(b.academicRank));
     if (r != 0) return r;
+
+    // عند تساوي الدرجة العلمية: الأقدم تعيينًا (تاريخ التحاق أبكر بالجامعة)
+    // يتقدَّم - طلب صريح من سليمان. من له تاريخ صالح يتقدَّم على من ليس له
+    // (فارغ/غير مفهوم)؛ إن تساوى الاثنان (كلاهما بلا تاريخ، أو نفس التاريخ)
+    // يُستكمَل بالمقارنة الحالية برقم المنسوب كـfallback أخير.
+    final aDate = _parseHijriDate(a.appointmentDate);
+    final bDate = _parseHijriDate(b.appointmentDate);
+    if (aDate != null && bDate != null) {
+      final d = aDate.compareTo(bDate);
+      if (d != 0) return d;
+    } else if (aDate != null) {
+      return -1;
+    } else if (bDate != null) {
+      return 1;
+    }
 
     final an = int.tryParse(a.staffNumber);
     final bn = int.tryParse(b.staffNumber);

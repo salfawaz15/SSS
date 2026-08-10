@@ -108,6 +108,11 @@ class OfficialMismatchReconciliation {
 }
 
 class AdvisingCaseAnalysis {
+  /// طلاب مسكَّنون لدى مرشد من نفس قسمهم، موجود بملف منسوبي الكلية - الوضع
+  /// السليم المستهدف؛ عكس [studentsWithoutAdvisor] (بلا مرشد إطلاقًا) و
+  /// [studentsWithWrongDeptAdvisor] (مرشد موجود لكن خطأ/غير موثَّق).
+  final List<AdvisingCaseRecord> studentsCorrectlyAssigned;
+
   final List<UnassignedStudent> studentsWithoutAdvisor;
   final List<MismatchedAdvisorCase> studentsWithWrongDeptAdvisor;
   final List<ExemptAdvisorWithStudentsCase> exemptAdvisorsWithStudents;
@@ -141,6 +146,7 @@ class AdvisingCaseAnalysis {
   final List<AdvisingCaseRecord> healthCaseStudents;
 
   const AdvisingCaseAnalysis({
+    required this.studentsCorrectlyAssigned,
     required this.studentsWithoutAdvisor,
     required this.studentsWithWrongDeptAdvisor,
     required this.exemptAdvisorsWithStudents,
@@ -276,6 +282,7 @@ class AdvisingCaseAnalyzer {
         return (m.reducedToPercent ?? 50) / 100.0;
       case AdvisingLoad.exempt:
       case AdvisingLoad.specialCasesOnly:
+      case AdvisingLoad.frozen:
         return 0.0;
     }
   }
@@ -292,6 +299,7 @@ class AdvisingCaseAnalyzer {
     final dismissed = students.where((s) => s.isAcademicallyDismissed).toList();
     final activeStudents = students.where((s) => !s.isAcademicallyDismissed).toList();
 
+    final correctlyAssigned = <AdvisingCaseRecord>[];
     final withoutAdvisor = <UnassignedStudent>[];
     final wrongDept = <MismatchedAdvisorCase>[];
     final byAdvisorKey = <String, List<AdvisingCaseRecord>>{};
@@ -308,6 +316,8 @@ class AdvisingCaseAnalyzer {
       // في ملف منسوبي الكلية - بدل تجاهل حالته بصمت.
       if (advisor == null || advisor.department != s.department) {
         wrongDept.add(MismatchedAdvisorCase(student: s, advisor: advisor));
+      } else {
+        correctlyAssigned.add(s);
       }
       final key = _key(displayName(s.advisorNameRaw));
       byAdvisorKey.putIfAbsent(key, () => []).add(s);
@@ -347,6 +357,10 @@ class AdvisingCaseAnalyzer {
         exemptNoIssue.add(member);
         continue;
       }
+      // حالته مجمّدة (موقوف الراتب/مبتعث/معار/مجاز) - لا يُتوقَّع منه إرشاد
+      // حاليًا فلا يُعامَل كـ"مرشد بلا طلاب"، لكنه لا يُعرض ضمن قائمة المعفين
+      // أيضًا لأن التجميد مؤقت وليس قرار إعفاء إرشادي.
+      if (member.advisingLoad == AdvisingLoad.frozen) continue;
 
       if (assigned.isEmpty) {
         noStudents.add(member);
@@ -479,6 +493,7 @@ class AdvisingCaseAnalyzer {
     }
 
     return AdvisingCaseAnalysis(
+      studentsCorrectlyAssigned: correctlyAssigned,
       studentsWithoutAdvisor: withoutAdvisor,
       studentsWithWrongDeptAdvisor: wrongDept,
       healthCasesNotWithAmin: healthMismatches,

@@ -94,9 +94,12 @@ class TicketRepository {
         continue;
       }
 
-      action['status'] = row['status'];
-      action['notes'] = row['notes'];
-      action['completed_by'] = row['completed_by'];
+      action['advisor_status'] = row['advisor_status'];
+      action['advisor_notes'] = row['advisor_notes'];
+      action['coordinator_status'] = row['coordinator_status'];
+      action['coordinator_notes'] = row['coordinator_notes'];
+      action['college_status'] = row['college_status'];
+      action['college_notes'] = row['college_notes'];
       matched++;
     }
 

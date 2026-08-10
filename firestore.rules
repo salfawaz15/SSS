@@ -24,6 +24,14 @@ service cloud.firestore {
          request.auth.token.email == 'secretary@sss-advising-tu.internal');
     }
 
+    // منسّق الوحدة: دور تقني جاهز بانتظار القرار الرسمي (لا يزال غير مربوط
+    // بأي شخص فعلي) - بريد ثابت واحد بلا مستند حساب منفصل (لا تفريع شطر/قسم
+    // كمنسّقي الأقسام)، صلاحيته الوحيدة رفع الملفات فقط عبر شاشة مخصَّصة.
+    function isUnitCoordinator() {
+      return request.auth != null &&
+        request.auth.token.email == 'unit-coordinator@sss-advising-tu.internal';
+    }
+
     function coordinatorAccount() {
       return get(/databases/$(database)/documents/coordinator_accounts/$(request.auth.uid)).data;
     }
@@ -49,6 +57,11 @@ service cloud.firestore {
 
     match /tickets/{ticketId} {
       allow read, write: if isAdmin();
+
+      // منسّق الوحدة: نفس صلاحية رفع الملف الأساسي المتاحة للإدارة (قراءة
+      // مطلوبة فعليًا لأن دمج الرفعات التراكمية يقرأ التذاكر الحالية أولاً
+      // ليعرف الجديد منها) - بلا أي صلاحية أخرى غير هذه.
+      allow read, write: if isUnitCoordinator();
 
       allow read: if isCoordinatorFor(resource.data.shatr, resource.data.department);
 
@@ -171,55 +184,101 @@ service cloud.firestore {
     // مقصوران على حساب المدير العام (salfawaz) فقط، حسب طلبه صراحةً.
     match /courseSchedules/{shatrId} {
       allow read, write: if isSuperAdmin();
+
+      // منسّق الوحدة: رفع جدول الشطرين فقط - القراءة ضرورية للتحقق من أن
+      // تاريخ سحب الملف المرفوع أحدث من آخر نسخة معتمدة قبل الاستبدال.
+      allow read, write: if isUnitCoordinator();
     }
 
     // قوائم مواد خارج الكلية المعتمدة لكل شطر (ناتجة عن تقاطع القائمة الثابتة
     // مع ملف حويّة الجامعة الشامل) - نفس صلاحيات courseSchedules تمامًا.
     match /outsideCourses/{shatrId} {
       allow read, write: if isSuperAdmin();
+      allow read, write: if isUnitCoordinator();
     }
 
     // تقرير "بيانات الطلبة الأكاديمية حسب الكلية والقسم" المعتمد لكل شطر -
     // مصدر صفحة "متابعة حالات الإرشاد" - نفس صلاحيات courseSchedules تمامًا.
+    // السجلات مُقسَّمة لدفعات (chunks) تحت كل مستند شطر (يتجاوز حد 1 ميجابايت
+    // للمستند الواحد إن حُفظت كمصفوفة واحدة) - قاعدة المستند الأب لا تشمل
+    // المجموعات الفرعية تلقائيًا في Firestore، فلازم قاعدة صريحة لها وإلا
+    // تُرفَض كل قراءة/كتابة بصمت (تقع على القاعدة الافتراضية أسفل الملف).
     match /advisingReports/{shatrId} {
       allow read, write: if isSuperAdmin();
+      // منسّق الوحدة: رفع تقرير "بيانات الطلبة الأكاديمية" - القراءة ضرورية
+      // لأن اعتماد نسخة جديدة يحرّك النسخة الحالية أولاً إلى advisingReportsPrevious.
+      allow read, write: if isUnitCoordinator();
+      match /chunks/{chunkId} {
+        allow read, write: if isSuperAdmin();
+        allow read, write: if isUnitCoordinator();
+      }
     }
 
     // النسخة السابقة من بيانات الطلبة (قبل آخر رفعة) - مصدر "النطاق السابق"
     // للمعدل - نفس الصلاحيات تمامًا.
     match /advisingReportsPrevious/{shatrId} {
       allow read, write: if isSuperAdmin();
+      allow read, write: if isUnitCoordinator();
+      match /chunks/{chunkId} {
+        allow read, write: if isSuperAdmin();
+        allow read, write: if isUnitCoordinator();
+      }
     }
 
     // تقريرا "طلاب تابعين لمرشد" و"طلاب غير تابعين لمرشد" (ربط المرشد) لكل
     // شطر - يُدمَجان مع advisingReports عند التحليل - نفس الصلاحيات تمامًا.
     match /advisingAssignedReports/{shatrId} {
       allow read, write: if isSuperAdmin();
+      allow read, write: if isUnitCoordinator();
+      match /chunks/{chunkId} {
+        allow read, write: if isSuperAdmin();
+        allow read, write: if isUnitCoordinator();
+      }
     }
     match /advisingUnassignedReports/{shatrId} {
       allow read, write: if isSuperAdmin();
+      allow read, write: if isUnitCoordinator();
+      match /chunks/{chunkId} {
+        allow read, write: if isSuperAdmin();
+        allow read, write: if isUnitCoordinator();
+      }
     }
     // تقرير "الحالة الصحية للطلبة" (ذوو الإعاقة/الحالات الخاصة) لكل شطر -
     // نفس الصلاحيات تمامًا.
     match /advisingHealthReports/{shatrId} {
       allow read, write: if isSuperAdmin();
+      allow read, write: if isUnitCoordinator();
+      match /chunks/{chunkId} {
+        allow read, write: if isSuperAdmin();
+        allow read, write: if isUnitCoordinator();
+      }
     }
     // تقرير "طلاب على غير مرشدهم" الرسمي من الجامعة (للمقارنة والتحقق من
     // حالات الانتداب) لكل شطر - نفس الصلاحيات تمامًا.
     match /advisingMismatchReports/{shatrId} {
       allow read, write: if isSuperAdmin();
+      allow read, write: if isUnitCoordinator();
+      match /chunks/{chunkId} {
+        allow read, write: if isSuperAdmin();
+        allow read, write: if isUnitCoordinator();
+      }
     }
 
     // بيانات منسوبي الكلية الرسمية (أعضاء هيئة تدريس وإداريين) - رفع وقراءة
     // مقصوران على حساب المدير العام (salfawaz) فقط، نفس مبدأ courseSchedules.
     match /collegeRoster/{docId} {
       allow read, write: if isSuperAdmin();
+      // منسّق الوحدة: رفع بيانات منسوبي الكلية - القراءة ضرورية للتحقق من
+      // تاريخ آخر حفظ للملف قبل الاستبدال.
+      allow read, write: if isUnitCoordinator();
     }
 
     // جدول توزيع فترات الإرشاد الأكاديمي الموحّد لكل (قسم × شطر) - رفع
     // وقراءة مقصوران على حساب المدير العام فقط.
     match /advisingSchedules/{docId} {
       allow read, write: if isSuperAdmin();
+      // منسّق الوحدة: رفع توزيع فترات الإرشاد فقط.
+      allow read, write: if isUnitCoordinator();
     }
 
     match /{document=**} {

@@ -144,7 +144,13 @@ class FirestoreTicketService {
     };
 
     final actionIndex = <String, Map<String, dynamic>>{};
-    for (final ticket in ticketsData.values) {
+    // فهرس مفتاح-الإجراء -> رقم مستند التذكرة المالكة له، حتى نكتب فقط
+    // المستندات التي تغيّرت فعليًا بدل كل تذاكر القسم في كل مرة (كانت الدفعة
+    // تشمل كل تذكرة بلا استثناء حتى لو لم تُطابَق - إبطاء وكتابات غير
+    // ضرورية، سليمان 2026-08-09).
+    final actionOwnerDocId = <String, String>{};
+    for (final entry in ticketsData.entries) {
+      final ticket = entry.value;
       final universityId = (ticket['university_id'] ?? '').toString();
       if (universityId.isEmpty) continue;
 
@@ -158,11 +164,13 @@ class FirestoreTicketService {
           _ticketActionSection(action),
         );
         actionIndex.putIfAbsent(key, () => action);
+        actionOwnerDocId.putIfAbsent(key, () => entry.key);
       }
     }
 
     var matched = 0;
     var unmatched = 0;
+    final changedDocIds = <String>{};
 
     for (final row in processedRows) {
       final key = _actionKey(
@@ -177,15 +185,25 @@ class FirestoreTicketService {
         continue;
       }
 
-      action['status'] = row['status'];
-      action['notes'] = row['notes'];
-      action['completed_by'] = row['completed_by'];
+      // الأعمدة الثلاثة (مرشد/منسّق قسم/منسّق كلية) منفصلة الآن بالملف -
+      // كانت هذه الدالة لا تزال تكتب لحقول قديمة (status/notes/completed_by)
+      // غير موجودة أصلًا بالصف المُستخرَج (parseProcessedRows يُرجِع
+      // advisor_status/coordinator_status/college_status الخ)، فتُهمَل كل
+      // البيانات المرفوعة فعليًا بصمت بلا أي أثر (خلل جذري، سليمان
+      // 2026-08-09). يُحدَّث كل حقل فقط لو أُدخِلت له قيمة فعلية بالملف
+      // المرفوع (بلا مسح حقل جهة أخرى لم تُملَأ بهذا الملف تحديدًا).
+      for (final field in ['advisor_status', 'advisor_notes', 'coordinator_status', 'coordinator_notes', 'college_status', 'college_notes']) {
+        final value = (row[field] ?? '').toString();
+        if (value.isNotEmpty) action[field] = value;
+      }
       matched++;
+      final ownerId = actionOwnerDocId[key];
+      if (ownerId != null) changedDocIds.add(ownerId);
     }
 
     final batch = FirebaseFirestore.instance.batch();
-    for (final entry in ticketsData.entries) {
-      batch.update(_col.doc(entry.key), {'actions': entry.value['actions']});
+    for (final docId in changedDocIds) {
+      batch.update(_col.doc(docId), {'actions': ticketsData[docId]!['actions']});
     }
     await batch.commit();
 
