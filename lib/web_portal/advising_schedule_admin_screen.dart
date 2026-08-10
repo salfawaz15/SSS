@@ -393,7 +393,7 @@ class _AdvisingScheduleAdminScreenState extends State<AdvisingScheduleAdminScree
                 onPressed: _uploadingTemplate ? null : _uploadTemplate,
                 loading: _uploadingTemplate,
                 icon: Icons.upload_file,
-                label: 'رفع نموذج معبّأ (يقبل عدة ملفات)',
+                label: 'رفع نموذج معبّأ',
                 color: AppColors.green,
                 filled: false,
               ),
