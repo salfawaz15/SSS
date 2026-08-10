@@ -151,12 +151,16 @@ class AdvisingSchedulePdfService {
         final coordinatorLabel = coordinatorMatch == null
             ? null
             : '${coordinatorMatch.male ? 'منسّق القسم' : 'منسّقة القسم'}: ${coordinatorMatch.name}';
-        // لا نفرض pw.NewPage() بين الأقسام - جُرِّب سابقًا مع "الكل" + شاشات
-        // العرض وزاد عدد الصفحات كثيرًا (حتى 30 صفحة أفقية بخط ضخم) بدل
-        // تدفّق طبيعي، فبقي التجمّد نفسه على الأرجح بسبب تضخّم حجم/تكلفة
-        // المستند لا خلل تقسيم (سليمان 2026-08-10). التدفّق التلقائي الآن
-        // آمن بعد إزالة كل pw.Container اللافّة للجداول (انظر _periodTable).
-        sections.add(_deptShatrSection(department, shatr, coordinatorLabel, daySlots, signage: signage));
+        // مسطَّحة (بلا Column يجمعها) - السبب الجذري الحقيقي للتجمّد اللانهائي
+        // (تحقَّق فعليًا 2026-08-10 عبر متصفح حقيقي: ScriptDuration/JSHeap
+        // يتصاعدان بلا توقّف بلا نهاية): pw.Column **لا يدعم التقسيم بين
+        // الصفحات** بمكتبة pdf (بخلاف pw.Table المصمَّم لذلك)، فأي Column
+        // يجمع قسمًا كبيرًا (بفترتين حتى 26 مرشدًا بخط شاشات العرض الضخم)
+        // يتجاوز ارتفاعه أي صفحة منفردة، فتدخل المكتبة حلقة إضافة صفحات
+        // فارغة بلا نهاية محاولةً وضعه. الإصلاح: تُضاف عناصر كل قسم منفصلة
+        // مباشرة لقائمة محتوى الصفحة (لا داخل Column واحد)، فيبقى pw.Table
+        // وحده الكتلة الكبيرة، وهو قابل للتقسيم فعليًا بين الصفحات.
+        sections.addAll(_deptShatrWidgets(department, shatr, coordinatorLabel, daySlots, signage: signage));
       }
       if (sections.isEmpty) continue;
       anyDataAtAll = true;
@@ -239,7 +243,11 @@ class AdvisingSchedulePdfService {
 
   /// قسم فرعي واحد (قسم أكاديمي × شطر) ضمن صفحة يوم كامل - عنوان مصغَّر
   /// (القسم + الشطر + المنسّق إن وُجد) ثم جداول الفترات لنفس اليوم فقط.
-  static pw.Widget _deptShatrSection(
+  /// **قائمة مسطَّحة من العناصر، لا Column واحد يجمعها** - Column لا يدعم
+  /// التقسيم بين صفحات PDF (بخلاف pw.Table)، فتجميع قسم كبير بداخله يسبّب
+  /// تجمّدًا لانهائيًا إن تجاوز ارتفاعه صفحة واحدة (راجع التعليق بموقع
+  /// الاستدعاء بـ[buildAll] للتفاصيل الكاملة - تحقَّق فعليًا 2026-08-10).
+  static List<pw.Widget> _deptShatrWidgets(
     String department,
     String shatr,
     String? coordinatorLabel,
@@ -247,30 +255,23 @@ class AdvisingSchedulePdfService {
     required bool signage,
   }) {
     final titleFontSize = signage ? 16.0 : 11.0;
-    // بلا pw.Container خارجي يلفّ الكل - راجع الملاحظة أعلى _periodTableSignage
-    // بخصوص خطر التجمّد اللانهائي لأي كتلة متغيّرة الطول مغلَّفة بحاوية.
-    return pw.Column(
-      mainAxisSize: pw.MainAxisSize.min,
-      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-      children: [
-        pw.Container(
-          padding: pw.EdgeInsets.symmetric(horizontal: signage ? 14 : 10, vertical: signage ? 8 : 6),
-          decoration: pw.BoxDecoration(color: _greenDark, borderRadius: pw.BorderRadius.circular(6)),
-          child: pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text('${department.replaceFirst(RegExp(r'^قسم\s+'), '')} - $shatr',
-                  style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: titleFontSize)),
-              if (coordinatorLabel != null)
-                pw.Text(coordinatorLabel, style: pw.TextStyle(color: PdfColors.white, fontSize: titleFontSize - 2)),
-            ],
-          ),
+    return [
+      pw.Container(
+        margin: const pw.EdgeInsets.only(top: 6),
+        padding: pw.EdgeInsets.symmetric(horizontal: signage ? 14 : 10, vertical: signage ? 8 : 6),
+        decoration: pw.BoxDecoration(color: _greenDark, borderRadius: pw.BorderRadius.circular(6)),
+        child: pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Text('${department.replaceFirst(RegExp(r'^قسم\s+'), '')} - $shatr',
+                style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: titleFontSize)),
+            if (coordinatorLabel != null)
+              pw.Text(coordinatorLabel, style: pw.TextStyle(color: PdfColors.white, fontSize: titleFontSize - 2)),
+          ],
         ),
-        pw.SizedBox(height: 6),
-        ...daySlots.map(signage ? _periodTableSignage : _periodTable),
-        pw.SizedBox(height: 14),
-      ],
-    );
+      ),
+      for (final slot in daySlots) ...(signage ? _periodTableSignage(slot) : _periodTable(slot)),
+    ];
   }
 
   /// نسخة مخصّصة لعرض الجدول على شاشات الإسياب داخل الكلية: اتجاه أفقي
@@ -427,7 +428,7 @@ class AdvisingSchedulePdfService {
           child: pw.Text(dayLabel, style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 12)),
         ),
         pw.SizedBox(height: 6),
-        ...periods.map(_periodTable),
+        for (final p in periods) ..._periodTable(p),
         pw.SizedBox(height: 14),
       ],
     );
@@ -446,92 +447,84 @@ class AdvisingSchedulePdfService {
           child: pw.Text(dayLabel, style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 20)),
         ),
         pw.SizedBox(height: 10),
-        ...periods.map(_periodTableSignage),
+        for (final p in periods) ..._periodTableSignage(p),
         pw.SizedBox(height: 22),
       ],
     );
   }
 
-  // ملاحظة مهمة: لا تُغلَّف جداول متغيّرة الطول (قد تحوي عشرات الصفوف) بـ
-  // pw.Container - فالحاوية كتلة واحدة غير قابلة للتقسيم بين الصفحات
-  // بمكتبة pdf، بخلاف pw.Column/pw.Table اللذين يدعمان التدفّق التلقائي.
-  // تجاهُل هذا سبّب تجمّد الصفحة بلا نهاية عند توليد تقرير "شاشات العرض"
-  // لقسم كبير (سليمان 2026-08-10) - أُزيلت كل الحاويات اللافّة للجداول هنا،
-  // وبقيت فقط حول العناصر الصغيرة ثابتة الارتفاع (شريط العنوان/اليوم).
-  static pw.Widget _periodTableSignage(AdvisingScheduleSlot slot) {
-    return pw.Column(
-      mainAxisSize: pw.MainAxisSize.min,
-      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-      children: [
-        pw.Container(
-          margin: const pw.EdgeInsets.only(top: 8),
-          padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          color: _lightGray,
-          child: pw.Text('الفترة: ${slot.periodLabel}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 16, color: _green)),
-        ),
-        pw.Table(
-          border: pw.TableBorder(horizontalInside: pw.BorderSide(color: PdfColors.grey300)),
-          defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
-          columnWidths: const {0: pw.FlexColumnWidth(1), 1: pw.FlexColumnWidth(3)},
-          children: [
+  // كل فترة = عنصران مستقلّان في القائمة المسطَّحة (عنوان صغير ثابت الطول +
+  // pw.Table وحده) لا Column يجمعهما - راجع تعليق [_deptShatrWidgets] و
+  // [buildAll] بخصوص خطر التجمّد اللانهائي (Column لا يدعم التقسيم بين
+  // صفحات PDF بمكتبة pdf، بخلاف pw.Table المصمَّم لذلك خصيصًا - تحقَّق
+  // فعليًا بمتصفح حقيقي 2026-08-10: الحل السابق بإزالة pw.Container فقط لم
+  // يكفِ لأن pw.Column يحمل نفس القيد بالضبط).
+  static List<pw.Widget> _periodTableSignage(AdvisingScheduleSlot slot) {
+    return [
+      pw.Container(
+        margin: const pw.EdgeInsets.only(top: 8),
+        padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        color: _lightGray,
+        child: pw.Text('الفترة: ${slot.periodLabel}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 16, color: _green)),
+      ),
+      pw.Table(
+        border: pw.TableBorder(horizontalInside: pw.BorderSide(color: PdfColors.grey300)),
+        defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
+        columnWidths: const {0: pw.FlexColumnWidth(1), 1: pw.FlexColumnWidth(3)},
+        children: [
+          pw.TableRow(
+            decoration: pw.BoxDecoration(color: _green),
+            children: [
+              _cell('رقم المكتب', bold: true, color: PdfColors.white, fontSize: 15),
+              _cell('اسم المرشد الأكاديمي', bold: true, color: PdfColors.white, fontSize: 15),
+            ],
+          ),
+          for (var i = 0; i < slot.entries.length; i++)
             pw.TableRow(
-              decoration: pw.BoxDecoration(color: _green),
+              decoration: pw.BoxDecoration(color: i.isEven ? PdfColors.white : _lightGray),
               children: [
-                _cell('رقم المكتب', bold: true, color: PdfColors.white, fontSize: 15),
-                _cell('اسم المرشد الأكاديمي', bold: true, color: PdfColors.white, fontSize: 15),
+                _cell(slot.entries[i].office, fontSize: 14),
+                _cell(slot.entries[i].advisorName, fontSize: 14),
               ],
             ),
-            for (var i = 0; i < slot.entries.length; i++)
-              pw.TableRow(
-                decoration: pw.BoxDecoration(color: i.isEven ? PdfColors.white : _lightGray),
-                children: [
-                  _cell(slot.entries[i].office, fontSize: 14),
-                  _cell(slot.entries[i].advisorName, fontSize: 14),
-                ],
-              ),
-          ],
-        ),
-      ],
-    );
+        ],
+      ),
+    ];
   }
 
-  static pw.Widget _periodTable(AdvisingScheduleSlot slot) {
-    return pw.Column(
-      mainAxisSize: pw.MainAxisSize.min,
-      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-      children: [
-        pw.Container(
-          margin: const pw.EdgeInsets.only(top: 6),
-          padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          color: _lightGray,
-          child: pw.Text('الفترة: ${slot.periodLabel}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: _green)),
-        ),
-        // ترتيب الأعمدة معكوس عمدًا (رقم المكتب أولاً..الاسم أخيرًا) لأن
-        // pw.Table يرتّب أعمدته فعليًا من يسار الصفحة لا حسب اتجاه النص.
-        pw.Table(
-          border: pw.TableBorder(horizontalInside: pw.BorderSide(color: PdfColors.grey300)),
-          defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
-          columnWidths: const {0: pw.FlexColumnWidth(1), 1: pw.FlexColumnWidth(3)},
-          children: [
+  static List<pw.Widget> _periodTable(AdvisingScheduleSlot slot) {
+    return [
+      pw.Container(
+        margin: const pw.EdgeInsets.only(top: 6),
+        padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        color: _lightGray,
+        child: pw.Text('الفترة: ${slot.periodLabel}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: _green)),
+      ),
+      // ترتيب الأعمدة معكوس عمدًا (رقم المكتب أولاً..الاسم أخيرًا) لأن
+      // pw.Table يرتّب أعمدته فعليًا من يسار الصفحة لا حسب اتجاه النص.
+      pw.Table(
+        border: pw.TableBorder(horizontalInside: pw.BorderSide(color: PdfColors.grey300)),
+        defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
+        columnWidths: const {0: pw.FlexColumnWidth(1), 1: pw.FlexColumnWidth(3)},
+        children: [
+          pw.TableRow(
+            decoration: pw.BoxDecoration(color: _green),
+            children: [
+              _cell('رقم المكتب', bold: true, color: PdfColors.white),
+              _cell('اسم المرشد الأكاديمي', bold: true, color: PdfColors.white),
+            ],
+          ),
+          for (var i = 0; i < slot.entries.length; i++)
             pw.TableRow(
-              decoration: pw.BoxDecoration(color: _green),
+              decoration: pw.BoxDecoration(color: i.isEven ? PdfColors.white : _lightGray),
               children: [
-                _cell('رقم المكتب', bold: true, color: PdfColors.white),
-                _cell('اسم المرشد الأكاديمي', bold: true, color: PdfColors.white),
+                _cell(slot.entries[i].office),
+                _cell(slot.entries[i].advisorName),
               ],
             ),
-            for (var i = 0; i < slot.entries.length; i++)
-              pw.TableRow(
-                decoration: pw.BoxDecoration(color: i.isEven ? PdfColors.white : _lightGray),
-                children: [
-                  _cell(slot.entries[i].office),
-                  _cell(slot.entries[i].advisorName),
-                ],
-              ),
-          ],
-        ),
-      ],
-    );
+        ],
+      ),
+    ];
   }
 
   static pw.Widget _cell(String text, {bool bold = false, PdfColor? color, double fontSize = 10}) {
