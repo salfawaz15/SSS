@@ -34,7 +34,7 @@ jobs:
           DARTEOF
 
       - run: flutter pub get
-      - run: flutter build web --release
+      - run: flutter build web --release --pwa-strategy=none
 
       - name: Deploy to Firebase Hosting
         run: npx firebase-tools deploy --only hosting --token "$FIREBASE_TOKEN"
