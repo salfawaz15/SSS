@@ -368,23 +368,6 @@ class _CollegeRosterAdminScreenState extends State<CollegeRosterAdminScreen> {
   List<String> get _departments =>
       _typedMembers.map((m) => m.department).where((d) => d.isNotEmpty).toSet().toList()..sort();
 
-  // ترتيب مناصب الإداريين حسب تعليمات صريحة - الأكثر تحديدًا يُفحص أولًا.
-  static const List<String> _adminTiers = [
-    'مستشار',
-    'مدير إدارة',
-    'مدير مكتب',
-    'مساعد مدير إدارة',
-    'إدارة الكلية',
-  ];
-
-  int _adminTierIndex(CollegeRosterMember m) {
-    final text = [m.position, m.position2, m.position3].join(' ');
-    for (var i = 0; i < _adminTiers.length; i++) {
-      if (text.contains(_adminTiers[i])) return i;
-    }
-    return _adminTiers.length;
-  }
-
   List<CollegeRosterMember> get _filtered {
     final search = _searchCtrl.text.trim();
     final list = _typedMembers.where((m) {
@@ -402,19 +385,12 @@ class _CollegeRosterAdminScreenState extends State<CollegeRosterAdminScreen> {
             b,
             compareDepartment: _deptFilter == _kAllDepartments,
           ));
-    } else {
-      // فرز الإداريين: الجهة، ثم الشطر (طلاب قبل طالبات)، ثم مستوى المنصب
-      // حسب ترتيب صريح، ثم الاسم.
-      list.sort((a, b) {
-        final d = a.department.compareTo(b.department);
-        if (d != 0) return d;
-        final s = FacultySortOrder.shatrRank(a.shatr).compareTo(FacultySortOrder.shatrRank(b.shatr));
-        if (s != 0) return s;
-        final t = _adminTierIndex(a).compareTo(_adminTierIndex(b));
-        if (t != 0) return t;
-        return a.name.compareTo(b.name);
-      });
     }
+    // الإداريون: بلا أي فرز آلي - يظهرون بنفس ترتيب صفوفهم بملف الإكسل
+    // المرفوع تمامًا (ترتيب `list.where()` أعلاه يحافظ على الترتيب الأصلي
+    // للقائمة المحمَّلة)، بطلب سليمان صراحةً 2026-08-11 بعد تحديثه للملف
+    // ورفعه - كان الفرز السابق (جهة، شطر، مستوى منصب، اسم) يعيد ترتيبهم
+    // خلافًا لترتيبه المتعمَّد بالملف.
 
     // فرز المستخدم اليدوي (بالضغط على رأس عمود) يتغلّب على الفرز الافتراضي
     // أعلاه إن اختير - لجدول أعضاء هيئة التدريس فقط حاليًا (نفس الأعمدة
