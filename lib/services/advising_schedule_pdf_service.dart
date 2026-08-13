@@ -181,7 +181,7 @@ class AdvisingSchedulePdfService {
           pageFormat: signage ? PdfPageFormat.a4.landscape : PdfPageFormat.a4,
           margin: pw.EdgeInsets.all(signage ? 28 : 24),
           textDirection: pw.TextDirection.rtl,
-          header: (context) => _genericHeader(logo: logo, title: day, scale: signage ? 1.6 : 1),
+          header: (context) => _genericHeader(logo: logo, scale: signage ? 1.6 : 1),
           footer: signage
               ? null
               : (context) => pw.Container(
@@ -195,9 +195,11 @@ class AdvisingSchedulePdfService {
           build: (context) => [
             pw.SizedBox(height: signage ? 14 : 10),
             if (!signage) ...[
+              // اسم اليوم انتقل هنا (كان داخل الشريط الأخضر أعلاه) - سليمان
+              // 2026-08-14: الشريط صار يعرض عنوان الجدول الثابت بدلًا منه.
               pw.Center(
                 child: pw.Text(
-                  'جدول توزيع فترات الإرشاد الأكاديمي',
+                  'يوم $day',
                   style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: _green),
                 ),
               ),
@@ -228,34 +230,38 @@ class AdvisingSchedulePdfService {
   /// حجم مصغَّر (سليمان 2026-08-13: "صغّر الشعار") - هذا العنوان يتكرر أعلى
   /// **كل صفحة** بتقرير "كل الأقسام" (قد يصل عشرات الصفحات)، فحجمه الكبير
   /// السابق كان يهدر مساحة فعلية تمنع أقسامًا كثيرة من الاكتمال بصفحة واحدة.
-  static pw.Widget _genericHeader({required pw.MemoryImage logo, required String title, double scale = 1}) {
+  static pw.Widget _genericHeader({required pw.MemoryImage logo, double scale = 1}) {
     return pw.Container(
       padding: pw.EdgeInsets.symmetric(horizontal: 12 * scale, vertical: 7 * scale),
       decoration: pw.BoxDecoration(color: _green, borderRadius: pw.BorderRadius.circular(6)),
       child: pw.Row(
         crossAxisAlignment: pw.CrossAxisAlignment.center,
         children: [
+          // يمين الصفحة (RTL: أول عنصر بالقائمة): الشعار - أكبر قليلاً بطلب
+          // سليمان. السبب الحقيقي لصغره سابقًا مهما زاد `height` كان هامشًا
+          // شفافًا ضخمًا بالصورة الأصلية (أُصلح باستخدام unit_logo_cropped.png
+          // بدلًا منها في _logo()) لا قيمة الحجم نفسها.
+          pw.Image(logo, height: 36 * scale),
+          pw.SizedBox(width: 8 * scale),
           pw.Expanded(
-            flex: 3,
-            child: pw.Text('يوم $title',
-                style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 13 * scale)),
+            flex: 5,
+            child: pw.Center(
+              child: pw.Text(
+                'جدول توزيع فترات الإرشاد الأكاديمي للفصل الدراسي الأول 1448هـ',
+                textAlign: pw.TextAlign.center,
+                maxLines: 2,
+                style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 12 * scale),
+              ),
+            ),
           ),
           pw.SizedBox(width: 8 * scale),
-          // السبب الحقيقي لصغر الشعار مهما زاد `height`: صورة
-          // unit_logo_transparent.png الأصلية فيها هامش شفاف ضخم فوق الشعار
-          // الفعلي، فيتقلَّص الجزء المرئي بنفس النسبة عند أي تحجيم - استُبدلت
-          // بـunit_logo_cropped.png (حدودها مطابقة للشعار الحقيقي تقريبًا)
-          // في _logo()، فصار الحجم المرئي الفعلي أكبر بكثير بنفس `height` -
-          // 30 هنا تعطي نفس الحجم المرئي تقريبًا الذي كان يحتاج 72+ بالصورة القديمة.
-          // جدًا مقارنة بالنص بعد التصغير الأول لتوفير المساحة) - 54 بدل 40.
-          pw.Image(logo, height: 30 * scale),
-          pw.SizedBox(width: 8 * scale),
+          // يسار الصفحة (آخر عنصر بالقائمة): اسم الوحدة.
           pw.Expanded(
-            flex: 4,
+            flex: 3,
             child: pw.Text('وحدة الإرشاد الأكاديمي والخريجين',
                 textAlign: pw.TextAlign.right,
                 maxLines: 2,
-                style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 11 * scale)),
+                style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 10 * scale)),
           ),
         ],
       ),
