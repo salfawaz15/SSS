@@ -30,8 +30,13 @@ class AdvisingSchedulePdfService {
         return pw.Font.ttf(bytes);
       }();
 
+  /// نسخة "مقصوصة" (بلا الهامش الشفاف الضخم المحيط بالشعار الفعلي بملف
+  /// unit_logo_transparent.png الأصلي) - سليمان 2026-08-13/14: الشعار يبدو
+  /// صغيرًا جدًا مهما زدت `height`، لأن أغلب الصورة الأصلية فراغ شفاف فوق
+  /// الشعار الحقيقي، فيتقلَّص الجزء المرئي فعليًا بنفس نسبة الفراغ عند أي
+  /// تحجيم. هذه النسخة حدودها مطابقة تقريبًا لحدود الشعار نفسه.
   static Future<pw.MemoryImage> _logo() async {
-    final bytes = await rootBundle.load('assets/images/unit_logo_transparent.png');
+    final bytes = await rootBundle.load('assets/images/unit_logo_cropped.png');
     return pw.MemoryImage(bytes.buffer.asUint8List());
   }
 
@@ -236,9 +241,14 @@ class AdvisingSchedulePdfService {
                 style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 13 * scale)),
           ),
           pw.SizedBox(width: 8 * scale),
-          // حجم متناسق مع نص العنوان (سليمان 2026-08-13: كان الشعار صغيرًا
+          // السبب الحقيقي لصغر الشعار مهما زاد `height`: صورة
+          // unit_logo_transparent.png الأصلية فيها هامش شفاف ضخم فوق الشعار
+          // الفعلي، فيتقلَّص الجزء المرئي بنفس النسبة عند أي تحجيم - استُبدلت
+          // بـunit_logo_cropped.png (حدودها مطابقة للشعار الحقيقي تقريبًا)
+          // في _logo()، فصار الحجم المرئي الفعلي أكبر بكثير بنفس `height` -
+          // 30 هنا تعطي نفس الحجم المرئي تقريبًا الذي كان يحتاج 72+ بالصورة القديمة.
           // جدًا مقارنة بالنص بعد التصغير الأول لتوفير المساحة) - 54 بدل 40.
-          pw.Image(logo, height: 54 * scale),
+          pw.Image(logo, height: 30 * scale),
           pw.SizedBox(width: 8 * scale),
           pw.Expanded(
             flex: 4,
@@ -429,7 +439,9 @@ class AdvisingSchedulePdfService {
                 ),
               ),
               pw.SizedBox(width: 10 * scale),
-              pw.Image(logo, height: 72 * scale),
+              // نفس ملاحظة _genericHeader: بعد التحويل لـunit_logo_cropped.png
+              // (بلا الهامش الشفاف الضخم) صار 72 كبيرًا جدًا فعليًا - خُفِّض لـ36.
+              pw.Image(logo, height: 36 * scale),
               pw.SizedBox(width: 10 * scale),
               // يسار الصفحة: إدارة الوحدة
               pw.Expanded(
