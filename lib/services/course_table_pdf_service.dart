@@ -66,7 +66,7 @@ class CourseTablePdfService {
 
   static Future<Uint8List>? _cachedLogoBytes;
   static Future<Uint8List> _loadLogoBytes() {
-    return _cachedLogoBytes ??= rootBundle.load('assets/images/unit_logo_light.png').then((b) => b.buffer.asUint8List());
+    return _cachedLogoBytes ??= rootBundle.load('assets/images/unit_logo_final.png').then((b) => b.buffer.asUint8List());
   }
 
   static Future<Uint8List> build({

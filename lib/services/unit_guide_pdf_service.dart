@@ -43,7 +43,7 @@ class UnitGuidePdfService {
   /// الشعار الرسمي المعتمد (نسخة الخلفية الفاتحة - يُعرض داخل بطاقة بيضاء
   /// على غلاف كل تقرير/دليل بصرف النظر عن لون خلفية الصفحة نفسها).
   static Future<pw.MemoryImage> _logo() async {
-    final bytes = await rootBundle.load('assets/images/unit_logo_light.png');
+    final bytes = await rootBundle.load('assets/images/unit_logo_final.png');
     return pw.MemoryImage(bytes.buffer.asUint8List());
   }
 

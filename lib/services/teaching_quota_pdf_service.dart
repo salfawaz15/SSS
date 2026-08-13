@@ -44,7 +44,7 @@ class TeachingQuotaPdfService {
       }();
 
   static Future<pw.MemoryImage> _logo() async {
-    final bytes = await rootBundle.load('assets/images/unit_logo_transparent.png');
+    final bytes = await rootBundle.load('assets/images/unit_logo_final.png');
     return pw.MemoryImage(bytes.buffer.asUint8List());
   }
 

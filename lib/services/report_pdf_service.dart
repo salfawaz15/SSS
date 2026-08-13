@@ -145,7 +145,7 @@ class ReportPdfService {
 
   static Future<Uint8List> _loadLogoBytes() {
     return _cachedLogoBytes ??= rootBundle
-        .load('assets/images/unit_logo_light.png')
+        .load('assets/images/unit_logo_final.png')
         .then((b) => b.buffer.asUint8List());
   }
 
