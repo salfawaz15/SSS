@@ -58,6 +58,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/unit_logo_cropped.png
+    - assets/images/unit_logo_final.png
     - assets/images/full_logo_green.png
     - assets/images/app_icon.png
     - assets/images/unit_logo_transparent.jpeg

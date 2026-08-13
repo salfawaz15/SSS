@@ -35,9 +35,14 @@ class AdvisingSchedulePdfService {
   /// unit_logo_transparent.png الأصلي) - سليمان 2026-08-13/14: الشعار يبدو
   /// صغيرًا جدًا مهما زدت `height`، لأن أغلب الصورة الأصلية فراغ شفاف فوق
   /// الشعار الحقيقي، فيتقلَّص الجزء المرئي فعليًا بنفس نسبة الفراغ عند أي
-  /// تحجيم. هذه النسخة حدودها مطابقة تقريبًا لحدود الشعار نفسه.
+  /// تحجيم. **تحديث 2026-08-14**: `unit_logo_cropped.png` (الحل السابق) كانت
+  /// حدودها ضيقة فعلًا لكن بخلفية بيضاء صريحة (بلا شفافية إطلاقًا) - سبّبت
+  /// مربعًا أبيض قبيحًا حول الشعار فوق الشريط الأخضر، وهذا "المشكلة الكبيرة"
+  /// التي لاحظها سليمان. استُبدلت بـunit_logo_final.png: مقصوصة يدويًا من
+  /// شعار سليمان الجديد (شفاف حقيقي 100% بالحواف الأربع) بأداة سكربت مخصَّصة
+  /// تحسب صندوق الحدود المرئي فعليًا بدل الاعتماد على ملف مُجهَّز مسبقًا.
   static Future<pw.MemoryImage> _logo() async {
-    final bytes = await rootBundle.load('assets/images/unit_logo_cropped.png');
+    final bytes = await rootBundle.load('assets/images/unit_logo_final.png');
     return pw.MemoryImage(bytes.buffer.asUint8List());
   }
 
