@@ -669,7 +669,8 @@ class UnitGuidePdfService {
         pageFormat: PdfPageFormat.a4,
         textDirection: pw.TextDirection.rtl,
         margin: const pw.EdgeInsets.fromLTRB(16, 14, 16, 14),
-        build: (context) => pw.Container(
+        build: (context) => pw.Stack(children: [
+          pw.Container(
           width: double.infinity,
           height: double.infinity,
           padding: const pw.EdgeInsets.all(10),
@@ -757,6 +758,8 @@ class UnitGuidePdfService {
           ],
           ),
         ),
+          pw.Positioned(left: 14, bottom: 8, child: PdfBrandKit.watermark()),
+        ]),
       ),
     );
 
