@@ -225,7 +225,7 @@ class AdvisingSchedulePdfService {
   /// السابق كان يهدر مساحة فعلية تمنع أقسامًا كثيرة من الاكتمال بصفحة واحدة.
   static pw.Widget _genericHeader({required pw.MemoryImage logo, required String title, double scale = 1}) {
     return pw.Container(
-      padding: pw.EdgeInsets.symmetric(horizontal: 12 * scale, vertical: 6 * scale),
+      padding: pw.EdgeInsets.symmetric(horizontal: 12 * scale, vertical: 7 * scale),
       decoration: pw.BoxDecoration(color: _green, borderRadius: pw.BorderRadius.circular(6)),
       child: pw.Row(
         crossAxisAlignment: pw.CrossAxisAlignment.center,
@@ -233,17 +233,19 @@ class AdvisingSchedulePdfService {
           pw.Expanded(
             flex: 3,
             child: pw.Text('يوم $title',
-                style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 12 * scale)),
+                style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 13 * scale)),
           ),
           pw.SizedBox(width: 8 * scale),
-          pw.Image(logo, height: 40 * scale),
+          // حجم متناسق مع نص العنوان (سليمان 2026-08-13: كان الشعار صغيرًا
+          // جدًا مقارنة بالنص بعد التصغير الأول لتوفير المساحة) - 54 بدل 40.
+          pw.Image(logo, height: 54 * scale),
           pw.SizedBox(width: 8 * scale),
           pw.Expanded(
             flex: 4,
             child: pw.Text('وحدة الإرشاد الأكاديمي والخريجين',
                 textAlign: pw.TextAlign.right,
                 maxLines: 2,
-                style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 10 * scale)),
+                style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 11 * scale)),
           ),
         ],
       ),
