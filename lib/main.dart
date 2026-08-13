@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -19,6 +20,16 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
     await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    if (kIsWeb) {
+      // إصلاح تعليق الرفع/الاستعلامات بلا نهاية (بلا خطأ ولا نجاح) على بعض
+      // الشبكات (جامعية/شركات) التي تمنع قناة البث المباشرة WebChannel
+      // (بروكسي/جدار حماية/فحص TLS) - سليمان لاحظه فعليًا 2026-08-09 عند
+      // رفع ملف معالج بصفحة المنسّق. الحل الرسمي من Firebase: يكتشف تلقائيًا
+      // إن كانت الشبكة تحتاج Long-Polling كبديل ويستخدمه بدل التعليق الصامت.
+      FirebaseFirestore.instance.settings = const Settings(
+        webExperimentalAutoDetectLongPolling: true,
+      );
+    }
   } catch (e) {
     // بوابة الويب (Firestore/Auth) تعتمد على Firebase - تطبيق الأندرويد
     // (HomeShell) لا يعتمد عليها إطلاقًا، فلا يتأثر لو فشلت التهيئة هنا.

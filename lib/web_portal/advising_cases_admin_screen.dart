@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
 
+import '../data/academic_department_names.dart';
 import '../models/advising_case_record.dart';
 import '../models/college_roster_member.dart';
 import '../services/advising_case_analyzer.dart';
@@ -174,6 +175,36 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
     }
   }
 
+  /// خاص بتقرير "طلاب تابعين لمرشد" عبر PDF فقط: سليمان بدأ يدمج بملف واحد
+  /// كلية إدارة الأعمال كاملة + كلية الحاسبات كاملة (2026-08-13، لضمان شمول
+  /// طلاب د. طارق حلمي المسندين إليه رغم كونه إداريًا بكلية أخرى - انظر
+  /// [[project_tariq_helmy_secondment]] بالذاكرة) بدل ملف مفلتَر لكليتنا فقط
+  /// كسابقًا. تُبقي فقط صفوف "التخصص" المطابقة لأحد الأقسام الخمسة المعروفة
+  /// لكليتنا (`isKnownBachelorDepartment`) - فطلاب كلية الحاسبات بغير تخصص
+  /// "نظم المعلومات الإدارية" (علوم حاسب، هندسة برمجيات...) يُستبعَدون تلقائيًا،
+  /// بينما طلاب طارق حلمي (تخصصهم "نظم المعلومات الإدارية" فعليًا) يمرّون
+  /// بلا أي علم استثناء يدوي. بلا أثر على ملف كليتنا وحدها (كل صفوفه أصلًا
+  /// من الأقسام الخمسة المعروفة).
+  List<AdvisingCaseRecord> _filterToOurCollegeDepartments(
+    List<AdvisingCaseRecord> records,
+    Map<String, int> exclusionCounts,
+  ) {
+    final kept = <AdvisingCaseRecord>[];
+    for (final r in records) {
+      if (isKnownBachelorDepartment(normalizeDepartmentName(r.department))) {
+        kept.add(r);
+      } else {
+        final rawDept = r.department.trim();
+        exclusionCounts.update(
+          'تخصص خارج كليتنا (${rawDept.isEmpty ? "فارغ" : rawDept})',
+          (v) => v + 1,
+          ifAbsent: () => 1,
+        );
+      }
+    }
+    return kept;
+  }
+
   Future<void> _uploadForKind(
     AdvisingReportKind kind,
     _UploadSlot slot,
@@ -201,18 +232,23 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
       try {
         if (isPdf) {
           final r = await AdvisingReportPdfParserService.parseInBackground(bytes, advisorShatrByName: _advisorShatrByName);
-          records = r.records;
-          unresolvedShatrRows = r.unresolvedShatrRows;
           exclusionCounts = r.exclusionCounts;
+          records = kind == AdvisingReportKind.assigned
+              ? _filterToOurCollegeDepartments(r.records, exclusionCounts)
+              : r.records;
+          unresolvedShatrRows = r.unresolvedShatrRows;
         } else {
           exclusionCounts = <String, int>{};
-          records = AdvisingReportParserService.parse(
+          final parsed = AdvisingReportParserService.parse(
             bytes,
             requireDepartment: requireDepartment,
             advisorShatrByName: _advisorShatrByName,
             isHealthReport: kind == AdvisingReportKind.health,
             exclusionCounts: exclusionCounts,
           );
+          records = kind == AdvisingReportKind.assigned
+              ? _filterToOurCollegeDepartments(parsed, exclusionCounts)
+              : parsed;
         }
       } on ShatrRequiredException {
         // الملف لا يحوي عمود "الجنس" فلا يمكن فرزه تلقائيًا - يُطلَب من
@@ -233,18 +269,23 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
         if (chosen == null) return;
         if (isPdf) {
           final r = await AdvisingReportPdfParserService.parseInBackground(bytes, shatr: chosen);
-          records = r.records;
-          unresolvedShatrRows = r.unresolvedShatrRows;
           exclusionCounts = r.exclusionCounts;
+          records = kind == AdvisingReportKind.assigned
+              ? _filterToOurCollegeDepartments(r.records, exclusionCounts)
+              : r.records;
+          unresolvedShatrRows = r.unresolvedShatrRows;
         } else {
           exclusionCounts = <String, int>{};
-          records = AdvisingReportParserService.parse(
+          final parsed = AdvisingReportParserService.parse(
             bytes,
             shatr: chosen,
             requireDepartment: requireDepartment,
             isHealthReport: kind == AdvisingReportKind.health,
             exclusionCounts: exclusionCounts,
           );
+          records = kind == AdvisingReportKind.assigned
+              ? _filterToOurCollegeDepartments(parsed, exclusionCounts)
+              : parsed;
         }
       }
 

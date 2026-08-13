@@ -14,8 +14,10 @@ import '../services/advisor_roster_service.dart';
 import '../services/advisor_zip_service.dart';
 import '../services/app_update_service.dart';
 import '../services/disability_file_service.dart';
+import '../services/escalation_file_service.dart';
 import '../services/excel_parser_service.dart';
 import '../services/firestore_ticket_service.dart';
+import '../services/processed_file_parser_service.dart';
 import '../services/report_data_service.dart';
 import '../services/report_excel_service.dart';
 import '../services/report_pdf_service.dart';
@@ -330,6 +332,95 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
     }
   }
 
+  /// نفس ملف "مرحلة المنسّق" (المرحلة 2: كل حالات القسم مدمجة بملف واحد)
+  /// المتاح للمنسّق من حسابه بالضبط - متاح أيضًا من لوحة الإدارة مباشرة، جزء
+  /// من الخطة البديلة الوقائية (سليمان 2026-08-13): قيام الإدارة بدور
+  /// المنسّق كاملاً (تنزيل ورفع) بالتوازي مع استمرار عمل حساب المنسّق نفسه،
+  /// حتى لا تتعطل دورة العمل الحرجة لو واجه أحد المنسّقين صعوبة باستخدام الموقع.
+  Future<void> _downloadStage2OnBehalf(
+    String key,
+    List<Map<String, dynamic>> tickets,
+  ) async {
+    final stage2Key = 'stage2dl|$key';
+    setState(() => _downloadingKeys.add(stage2Key));
+    try {
+      final bytes = EscalationFileService.buildStage2File(tickets);
+      final parts = key.split('|');
+      final shatrLabel = parts[0] == ExcelParserService.shatrMale ? 'male' : 'female';
+      downloadBytes(bytes, '${parts.length > 1 ? parts[1] : 'قسم'}_${shatrLabel}_مرحلة_المنسق.xlsx');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تم تنزيل ملف مرحلة المنسّق بنجاح')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تعذّر إنشاء ملف مرحلة المنسّق: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _downloadingKeys.remove(stage2Key));
+    }
+  }
+
+  /// يرفع ملفًا معالجًا (عائدًا من المرشدين/المنسّق) نيابةً عن منسّق قسم معيّن
+  /// - نفس دالة `mergeProcessedRows` وحوار النتيجة المستخدَمين بالضبط بصفحة
+  /// المنسّق، فقط بقسم/شطر يُحدَّدان صراحةً بدل قراءتهما من حساب المسجَّل
+  /// دخوله. جزء من الخطة البديلة الوقائية (سليمان 2026-08-13).
+  Future<void> _pickAndUploadProcessedFileOnBehalf(
+    String shatr,
+    String department,
+  ) async {
+    final key = 'upload|$shatr|$department';
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['xlsx'],
+      allowMultiple: true,
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return;
+
+    setState(() => _downloadingKeys.add(key));
+    try {
+      final allRows = <Map<String, dynamic>>[];
+      for (final file in result.files) {
+        if (file.bytes == null) continue;
+        allRows.addAll(ProcessedFileParserService.parseProcessedRows(file.bytes!));
+      }
+
+      final mergeResult = await FirestoreTicketService.mergeProcessedRows(
+        allRows,
+        shatr: shatr,
+        department: department,
+      ).timeout(
+        const Duration(seconds: 25),
+        onTimeout: () => throw Exception(
+          'انتهت مهلة الاتصال بالخادم (25 ثانية بلا استجابة) - تأكد من اتصال الإنترنت وحاول مرة أخرى',
+        ),
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'تم الرفع نيابةً عن "$department - $shatr": ${mergeResult.matchedCount} '
+              'حالة مطابَقة${mergeResult.unmatchedCount > 0 ? '، ${mergeResult.unmatchedCount} غير مطابَقة' : ''}',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('حدث خطأ أثناء معالجة الملف: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _downloadingKeys.remove(key));
+    }
+  }
+
   /// تجميد أي مرحلة نيابةً عن المنسّق/منسّق الكلية - مهم لو تأخّر أو غاب،
   /// فلا يبقى تقدّم القسم/الشطر موقوفًا بانتظاره. نفس دوال StageSnapshotService
   /// المستخدَمة في شاشتَي المنسّق ومنسّق الكلية بالضبط.
@@ -617,6 +708,8 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
         final department = parts.length > 1 ? parts[1] : '';
         final isDownloading = _downloadingKeys.contains(key);
         final isDownloadingDisability = _downloadingKeys.contains('disability|$key');
+        final isDownloadingStage2 = _downloadingKeys.contains('stage2dl|$key');
+        final isUploadingProcessed = _downloadingKeys.contains('upload|$key');
         final hasDisabilityCases = DisabilityFileService.filterDisabilityTickets(e.value).isNotEmpty;
         return Card(
           margin: const EdgeInsets.only(bottom: 10),
@@ -651,6 +744,22 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
                   icon: Icons.download,
                   isLoading: isDownloading,
                   onPressed: isDownloading ? null : () => _downloadDepartment(key, e.value),
+                ),
+                RoundIconButton(
+                  tooltip: 'تنزيل ملف مرحلة المنسّق لهذا القسم (نيابةً عن المنسّق)',
+                  color: AppColors.gold,
+                  icon: Icons.assignment_return_outlined,
+                  isLoading: isDownloadingStage2,
+                  onPressed: isDownloadingStage2 ? null : () => _downloadStage2OnBehalf(key, e.value),
+                ),
+                RoundIconButton(
+                  tooltip: 'رفع ملف معالج لهذا القسم (نيابةً عن المنسّق)',
+                  color: Colors.deepPurple,
+                  icon: Icons.upload_file_outlined,
+                  isLoading: isUploadingProcessed,
+                  onPressed: isUploadingProcessed
+                      ? null
+                      : () => _pickAndUploadProcessedFileOnBehalf(parts[0], department),
                 ),
               ],
             ),

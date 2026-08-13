@@ -147,6 +147,12 @@ class AdvisingSchedulePdfService {
             .toList()
           ..sort((a, b) => _periodOrder(a.periodLabel).compareTo(_periodOrder(b.periodLabel)));
         if (daySlots.isEmpty) continue;
+        // كل قسم/شطر يبدأ صفحة جديدة دائمًا (بلا هذا كان جدول قسم قد ينتهي
+        // قرب أسفل الصفحة فيظهر عنوان القسم التالي ملتصقًا به مباشرة بشكل
+        // غير احترافي - سليمان 2026-08-13، "قسم الإدارة مع المحاسبة بشكل
+        // غير احترافي"). نفس مبدأ [_daysWithPageBreaks] لكن على مستوى القسم
+        // داخل صفحات اليوم الواحد.
+        if (sections.isNotEmpty) sections.add(pw.NewPage());
         final coordinatorMatch = CollegeRosterLookupService.coordinatorFor(roster, department, shatr);
         final coordinatorLabel = coordinatorMatch == null
             ? null

@@ -12,6 +12,7 @@ import '../utils/name_display.dart';
 import 'admin_nav.dart';
 import 'advising_cases_admin_screen.dart';
 import 'advising_schedule_admin_screen.dart';
+import 'advisor_students_lookup_screen.dart';
 import 'hardship_cases_admin_screen.dart';
 import 'portal_accounts.dart';
 import 'portal_cards.dart';
@@ -199,6 +200,15 @@ class _AdvisingHubScreenState extends State<AdvisingHubScreen> {
           background: AppColors.greenDark,
           onTap: () => Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => const AdvisingCasesAdminScreen()),
+          ),
+        ),
+      if (isSuperAdmin)
+        (
+          icon: Icons.person_search_outlined,
+          title: 'بحث عن مرشد وقائمة طلابه',
+          background: AppColors.greenDark,
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const AdvisorStudentsLookupScreen()),
           ),
         ),
       (
