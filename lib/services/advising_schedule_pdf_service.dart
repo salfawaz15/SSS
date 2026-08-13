@@ -8,6 +8,7 @@ import '../models/advising_schedule.dart';
 import '../services/advising_schedule_excel_service.dart';
 import '../services/college_roster_lookup_service.dart';
 import '../services/college_roster_repository.dart';
+import 'pdf_brand_kit.dart';
 
 /// يبني نسخة PDF موحّدة الهوية البصرية لجدول توزيع فترات الإرشاد الأكاديمي
 /// لقسم وشطر معيّنين - بديل عن التصاميم المتفرّقة التي كان كل قسم يبنيها
@@ -73,13 +74,18 @@ class AdvisingSchedulePdfService {
           coordinator: coordinator,
           unitManagerName: unitManagerName,
         ),
-        footer: (context) => pw.Container(
-          alignment: pw.Alignment.center,
-          margin: const pw.EdgeInsets.only(top: 8),
-          child: pw.Text(
-            'صفحة ${context.pageNumber} من ${context.pagesCount}',
-            style: pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
-          ),
+        footer: (context) => pw.Stack(
+          children: [
+            pw.Container(
+              alignment: pw.Alignment.center,
+              margin: const pw.EdgeInsets.only(top: 8),
+              child: pw.Text(
+                'صفحة ${context.pageNumber} من ${context.pagesCount}',
+                style: pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
+              ),
+            ),
+            pw.Positioned(left: 0, bottom: 0, child: PdfBrandKit.watermark()),
+          ],
         ),
         build: (context) => [
           pw.SizedBox(height: 10),
@@ -183,14 +189,19 @@ class AdvisingSchedulePdfService {
           textDirection: pw.TextDirection.rtl,
           header: (context) => _genericHeader(logo: logo, scale: signage ? 1.6 : 1),
           footer: signage
-              ? null
-              : (context) => pw.Container(
-                    alignment: pw.Alignment.center,
-                    margin: const pw.EdgeInsets.only(top: 8),
-                    child: pw.Text(
-                      'صفحة ${context.pageNumber} من ${context.pagesCount}',
-                      style: pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
-                    ),
+              ? (context) => pw.Align(alignment: pw.Alignment.bottomLeft, child: PdfBrandKit.watermark())
+              : (context) => pw.Stack(
+                    children: [
+                      pw.Container(
+                        alignment: pw.Alignment.center,
+                        margin: const pw.EdgeInsets.only(top: 8),
+                        child: pw.Text(
+                          'صفحة ${context.pageNumber} من ${context.pagesCount}',
+                          style: pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
+                        ),
+                      ),
+                      pw.Positioned(left: 0, bottom: 0, child: PdfBrandKit.watermark()),
+                    ],
                   ),
           build: (context) => [
             pw.SizedBox(height: signage ? 14 : 10),

@@ -4,6 +4,8 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import 'pdf_brand_kit.dart';
+
 /// صف واحد جاهز للطباعة في تقرير النصاب التدريسي - مستقل عن أي حالة شاشة،
 /// يبنيه المستدعي من _QuotaRow.
 class TeachingQuotaPdfRow {
@@ -96,11 +98,16 @@ class TeachingQuotaPdfService {
             ],
           );
         },
-        footer: (context) => pw.Container(
-          alignment: pw.Alignment.center,
-          margin: const pw.EdgeInsets.only(top: 8),
-          child: pw.Text('صفحة ${context.pageNumber} من ${context.pagesCount}',
-              style: pw.TextStyle(fontSize: 9, color: PdfColors.grey600)),
+        footer: (context) => pw.Stack(
+          children: [
+            pw.Container(
+              alignment: pw.Alignment.center,
+              margin: const pw.EdgeInsets.only(top: 8),
+              child: pw.Text('صفحة ${context.pageNumber} من ${context.pagesCount}',
+                  style: pw.TextStyle(fontSize: 9, color: PdfColors.grey600)),
+            ),
+            pw.Positioned(left: 0, bottom: 0, child: PdfBrandKit.watermark()),
+          ],
         ),
         build: (context) => [
           // ترتيب الأعمدة معكوس عمدًا (الملاحظة أولاً..الاسم أخيرًا) لأن

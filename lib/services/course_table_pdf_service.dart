@@ -4,6 +4,8 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import 'pdf_brand_kit.dart';
+
 /// صف واحد جاهز للطباعة في تقرير "دليل مقررات الحذف والإضافة".
 class CourseTablePdfRow {
   final String department;
@@ -108,6 +110,7 @@ class CourseTablePdfService {
         pageFormat: PdfPageFormat.a4.landscape,
         margin: const pw.EdgeInsets.all(20),
         textDirection: pw.TextDirection.rtl,
+        footer: (context) => pw.Align(alignment: pw.Alignment.bottomLeft, child: PdfBrandKit.watermark()),
         header: (context) {
           if (context.pageNumber > 1) return pw.SizedBox();
           return pw.Column(

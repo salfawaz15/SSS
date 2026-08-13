@@ -4,6 +4,8 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import 'pdf_brand_kit.dart';
+
 /// يبني نسختي "الدليل الإرشادي" بصيغة PDF:
 ///  - [buildOfficialStudentGuide]: نسخة "نظامية" موجّهة للطلبة، خالية تمامًا
 ///    من أي ذكر لبوابتنا الداخلية - مُعدّة لتُنشر على صفحة الوحدة الرسمية في
@@ -278,6 +280,7 @@ class UnitGuidePdfService {
         pageFormat: PdfPageFormat.a4,
         textDirection: pw.TextDirection.rtl,
         margin: const pw.EdgeInsets.fromLTRB(28, 18, 28, 18),
+        footer: (context) => pw.Align(alignment: pw.Alignment.bottomLeft, child: PdfBrandKit.watermark()),
         build: (context) => [
           pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -495,6 +498,7 @@ class UnitGuidePdfService {
         pageFormat: PdfPageFormat.a4,
         textDirection: pw.TextDirection.rtl,
         margin: const pw.EdgeInsets.fromLTRB(28, 18, 28, 18),
+        footer: (context) => pw.Align(alignment: pw.Alignment.bottomLeft, child: PdfBrandKit.watermark()),
         build: (context) => [
           pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -1178,6 +1182,7 @@ class UnitGuidePdfService {
           style: pw.TextStyle(fontSize: 9, color: _grayText),
         ),
       ),
+      footer: (context) => pw.Align(alignment: pw.Alignment.bottomLeft, child: PdfBrandKit.watermark()),
       build: (context) => sections,
     );
   }

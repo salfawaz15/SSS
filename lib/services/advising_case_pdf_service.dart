@@ -4,6 +4,8 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import 'pdf_brand_kit.dart';
+
 /// يبني تقرير PDF عام (عنوان + جدول بأعمدة/صفوف نصية جاهزة) بنفس الهوية
 /// البصرية المعتمدة - يُستخدم لكل تقارير "متابعة حالات الإرشاد" الفرعية
 /// (طلاب بلا مرشد، تعارض قسم، توازن التوزيع...) بدل بناء صنف PDF مستقل لكل
@@ -45,6 +47,7 @@ class AdvisingCasePdfService {
         pageFormat: PdfPageFormat.a4.landscape,
         margin: const pw.EdgeInsets.all(20),
         textDirection: pw.TextDirection.rtl,
+        footer: (context) => pw.Align(alignment: pw.Alignment.bottomLeft, child: PdfBrandKit.watermark()),
         header: (context) {
           if (context.pageNumber > 1) return pw.SizedBox();
           return pw.Column(

@@ -8,6 +8,7 @@ import '../models/course_section_record.dart';
 import 'college_roster_lookup_service.dart';
 import 'college_roster_repository.dart';
 import 'instructor_schedule_table.dart';
+import 'pdf_brand_kit.dart';
 
 /// يبني نسخة PDF من الجدول الدراسي لعضو هيئة تدريس واحد، بنفس أعمدة الجدول
 /// الرسمي في البوابة الإلكترونية للجامعة (EduGate): قائمة مسطّحة مرتّبة
@@ -65,6 +66,7 @@ class InstructorSchedulePdfService {
         pageFormat: PdfPageFormat.a4.landscape,
         margin: const pw.EdgeInsets.all(24),
         textDirection: pw.TextDirection.rtl,
+        footer: (context) => pw.Align(alignment: pw.Alignment.bottomLeft, child: PdfBrandKit.watermark()),
         header: (context) {
           if (context.pageNumber > 1) return pw.SizedBox();
           return pw.Column(

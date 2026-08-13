@@ -99,12 +99,25 @@ class PdfBrandKit {
     return pw.Column(
       children: [
         pw.Divider(color: lightGray),
-        pw.Text(
-          'صفحة ${context.pageNumber} من ${context.pagesCount}  -  وحدة الإرشاد الأكاديمي والخريجين',
-          style: pw.TextStyle(fontSize: 8, color: grayText),
-          textAlign: pw.TextAlign.center,
+        pw.Stack(
+          children: [
+            pw.Text(
+              'صفحة ${context.pageNumber} من ${context.pagesCount}  -  وحدة الإرشاد الأكاديمي والخريجين',
+              style: pw.TextStyle(fontSize: 8, color: grayText),
+              textAlign: pw.TextAlign.center,
+            ),
+            pw.Positioned(left: 0, bottom: 0, child: watermark()),
+          ],
         ),
       ],
     );
+  }
+
+  /// علامة مائية خفيفة جدًا ("S/A") أسفل يسار كل صفحة PDF صادرة عن الوحدة -
+  /// بطلب سليمان صراحةً (2026-08-14) على غرار نفس العلامة المستخدَمة بملفات
+  /// Word الرسمية للوحدة. لون رمادي فاتح جدًا (شبه غير مرئي عمدًا، نفس درجة
+  /// الملف المرجعي D9D9D9) حتى لا يُشتِّت القارئ عن محتوى الصفحة الفعلي.
+  static pw.Widget watermark() {
+    return pw.Text('S/A', style: pw.TextStyle(fontSize: 8, color: PdfColor.fromHex('D9D9D9')));
   }
 }
