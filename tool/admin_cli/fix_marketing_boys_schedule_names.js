@@ -30,16 +30,33 @@ function looseDept(s) {
 function xmlEscape(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+function normWord(w) {
+  return w.replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ال/g, '');
+}
+function words(name) {
+  return stripAdvisorTitle(name).split(/\s+/).filter(Boolean).map(normWord);
+}
+function isSubsequence(shortWords, fullWords) {
+  let i = 0;
+  for (const fw of fullWords) {
+    if (i < shortWords.length && fw.startsWith(shortWords[i])) i++;
+  }
+  return i === shortWords.length;
+}
 
+// رقم المكتب غير فريد إطلاقًا بملف منسوبي الكلية (عشرات المكاتب مشتركة بين
+// أعضاء متعددين) - المطابقة هنا بالاسم لا بالمكتب، تفاديًا لتكرار نفس الخلل
+// الذي وقع بالملفات التسعة الأخرى أول محاولة.
 const rosterWb = XLSX.readFile(ROSTER_PATH);
 const rosterRows = XLSX.utils.sheet_to_json(rosterWb.Sheets['منسوبو الكلية'], { defval: '' });
-const officeIndex = new Map();
+const byDeptShatr = new Map();
 for (const r of rosterRows) {
-  const office = String(r['رقم المكتب'] || '').trim();
-  if (!office) continue;
   const dept = looseDept(String(r['القسم / الجهة'] || ''));
   const shatr = String(r['الشطر'] || '').trim();
-  officeIndex.set(`${dept}|${shatr}|${office}`, stripAdvisorTitle(String(r['الاسم الكامل'] || '')));
+  const fullName = String(r['الاسم الكامل'] || '').trim();
+  const key = `${dept}|${shatr}`;
+  if (!byDeptShatr.has(key)) byDeptShatr.set(key, []);
+  byDeptShatr.get(key).push({ name: fullName, words: words(fullName) });
 }
 
 const zip = new AdmZip(FILE_PATH);
@@ -62,6 +79,7 @@ const shatrValue = cellValue(deptShatrRow, 'B', 2) || '';
 const deptValue = cellValue(deptShatrRow, 'D', 2) || '';
 const deptKey = looseDept(deptValue);
 const rosterShatr = shatrValue.includes('طالبات') ? 'طالبات' : 'طلاب';
+const candidates = byDeptShatr.get(`${deptKey}|${rosterShatr}`) || [];
 console.log(`ملف: ${deptValue} - ${shatrValue}`);
 
 let changed = 0;
@@ -83,21 +101,18 @@ sheetXml = sheetXml.replace(rowRegex, (fullRow, rowNum, rowAttrs, inner) => {
   if (n < 4) return fullRow;
 
   const nameCellMatch = inner.match(new RegExp(`<c r="B${n}"[^>]*t="s"[^>]*><v>(\\d+)</v></c>`));
-  const officeValue = cellValue(inner, 'C', n);
   if (!nameCellMatch) return fullRow;
   const currentName = sharedStrings[parseInt(nameCellMatch[1], 10)];
-  const office = (officeValue || '').trim();
-  if (!office) {
-    unmatched.push(`${currentName} (بلا رقم مكتب)`);
+  const shortWords = words(currentName);
+  if (shortWords.length === 0) return fullRow;
+
+  const matches = candidates.filter((c) => isSubsequence(shortWords, c.words));
+  if (matches.length !== 1) {
+    unmatched.push(`${currentName} (${matches.length} تطابق)`);
     return fullRow;
   }
-  const key = `${deptKey}|${rosterShatr}|${office}`;
-  const fullName = officeIndex.get(key);
-  if (!fullName) {
-    unmatched.push(`${currentName} (مكتب ${office} - لا تطابق بملف منسوبي الكلية)`);
-    return fullRow;
-  }
-  if (fullName.trim() === currentName.trim()) return fullRow;
+  const fullName = stripAdvisorTitle(matches[0].name);
+  if (fullName.trim() === stripAdvisorTitle(currentName).trim()) return fullRow;
 
   changed++;
   const newIdx = sharedIndexFor(fullName);

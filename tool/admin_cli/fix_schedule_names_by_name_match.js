@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /*
- * يصحّح أسماء المرشدين المختصرة بملفات "توزيع فترات الإرشاد" العشرة (تظهر
- * كاسمَين فقط - أول وأخير - بدل الاسم الكامل) بمطابقتها برقم المكتب مقابل
- * ملف منسوبي الكلية (المصدر الموثوق) داخل نفس القسم/الشطر - أدق من مطابقة
- * الاسم نفسه لاحتمال تشابه أسماء مختلفة. يعدّل sheet1.xml مباشرة (بلا
- * SheetJS) لتفادي تكرار خلل إفساد numFmtId الذي حدث سابقًا اليوم.
+ * تصحيح الأسماء المختصرة بملفات توزيع فترات الإرشاد - بمطابقة الاسم نفسه (لا
+ * رقم المكتب، تبيّن أنه غير فريد إطلاقًا - عشرات المكاتب مشتركة بين أعضاء
+ * متعددين بملف منسوبي الكلية، فمطابقته أعطت أسماء خاطئة لعدة صفوف). كل كلمة
+ * بالاسم المختصر يجب أن تظهر بنفس الترتيب ضمن كلمات الاسم الكامل بالروستر
+ * (نفس القسم/الشطر) - إن طابق عضوًا واحدًا فقط بثقة، يُستبدَل الاسم؛ غير ذلك
+ * يُترَك كما هو ويُبلَّغ للمراجعة اليدوية.
  */
 const XLSX = require('xlsx');
 const AdmZip = require('adm-zip');
@@ -22,39 +23,49 @@ const SCHEDULE_DIR = path.join(
 const SCHEDULE_FILES = [
   'الإدارة_طالبات.xlsx', 'الإدارة_طلاب.xlsx',
   'الاقتصاد والتمويل_طالبات.xlsx', 'الاقتصاد والتمويل_طلاب.xlsx',
-  'التسويق_طالبات.xlsx', 'التسويق_طلاب.xlsx',
+  'التسويق_طالبات.xlsx',
   'المحاسبة_طالبات.xlsx', 'المحاسبة_طلاب.xlsx',
   'نظم المعلومات الإدارية_طالبات.xlsx', 'نظم المعلومات الإدارية_طلاب.xlsx',
 ];
 
-// نفس منطق AdvisingScheduleEntry.stripAdvisorTitle بالكود (lib/models/advising_schedule.dart)
 function stripAdvisorTitle(name) {
   let n = name.trim();
-  const titlePattern = /^(د|أ)\s*[.\/]\s*/;
-  while (titlePattern.test(n)) n = n.replace(titlePattern, '').trim();
+  const p = /^(د|أ)\s*[.\/]\s*/;
+  while (p.test(n)) n = n.replace(p, '').trim();
   return n;
 }
-
 function looseDept(s) {
   return s.replace(/\s+/g, '').replace(/[أإآ]/g, 'ا');
 }
-
+function normWord(w) {
+  return w.replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ال/g, '');
+}
+function words(name) {
+  return stripAdvisorTitle(name).split(/\s+/).filter(Boolean).map(normWord);
+}
 function xmlEscape(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// فهرس رقم المكتب -> الاسم الكامل (بعد حذف اللقب)، لكل (قسم مطبَّع، شطر)
+// هل كل كلمات shortWords تظهر ضمن fullWords بنفس الترتيب (ليس بالضرورة متتالية)؟
+function isSubsequence(shortWords, fullWords) {
+  let i = 0;
+  for (const fw of fullWords) {
+    if (i < shortWords.length && fw.startsWith(shortWords[i])) i++;
+  }
+  return i === shortWords.length;
+}
+
 const rosterWb = XLSX.readFile(ROSTER_PATH);
 const rosterRows = XLSX.utils.sheet_to_json(rosterWb.Sheets['منسوبو الكلية'], { defval: '' });
-const officeIndex = new Map(); // key: `${loosedept}|${shatr}|${office}` -> fullName
-
+const byDeptShatr = new Map(); // key: dept|shatr -> [{name, words}]
 for (const r of rosterRows) {
-  const office = String(r['رقم المكتب'] || '').trim();
-  if (!office) continue;
   const dept = looseDept(String(r['القسم / الجهة'] || ''));
   const shatr = String(r['الشطر'] || '').trim();
-  const key = `${dept}|${shatr}|${office}`;
-  officeIndex.set(key, stripAdvisorTitle(String(r['الاسم الكامل'] || '')));
+  const fullName = String(r['الاسم الكامل'] || '').trim();
+  const key = `${dept}|${shatr}`;
+  if (!byDeptShatr.has(key)) byDeptShatr.set(key, []);
+  byDeptShatr.get(key).push({ name: fullName, words: words(fullName) });
 }
 
 for (const file of SCHEDULE_FILES) {
@@ -62,38 +73,33 @@ for (const file of SCHEDULE_FILES) {
   const zip = new AdmZip(filePath);
   let xml = zip.getEntry('xl/worksheets/sheet1.xml').getData().toString('utf8');
 
-  const shatrMatch = xml.match(/<c r="B2"[^>]*><v>([^<]*)<\/v><\/c>/);
-  const deptMatch = xml.match(/<c r="D2"[^>]*><v>([^<]*)<\/v><\/c>/);
-  const shatrValue = shatrMatch ? shatrMatch[1] : '';
-  const deptValue = deptMatch ? deptMatch[1] : '';
+  const shatrM = xml.match(/<c r="B2"[^>]*><v>([^<]*)<\/v><\/c>/);
+  const deptM = xml.match(/<c r="D2"[^>]*><v>([^<]*)<\/v><\/c>/);
+  const shatrValue = shatrM ? shatrM[1] : '';
+  const deptValue = deptM ? deptM[1] : '';
   const deptKey = looseDept(deptValue);
-  // الشطر بملفات الجدول "شطر الطلاب"/"شطر الطالبات" مقابل روستر "طلاب"/"طالبات"
   const rosterShatr = shatrValue.includes('طالبات') ? 'طالبات' : 'طلاب';
+  const candidates = byDeptShatr.get(`${deptKey}|${rosterShatr}`) || [];
 
   let changed = 0;
-  let unmatched = [];
-
-  // كل صف بيانات: <row r="N"><c r="AN">...م...</c><c r="BN">...اسم...</c><c r="CN">...مكتب...</c>...
+  const unmatched = [];
   const rowRegex = /<row r="(\d+)">((?:(?!<\/row>).)*)<\/row>/gs;
   xml = xml.replace(rowRegex, (fullRow, rowNum, inner) => {
     const n = parseInt(rowNum, 10);
-    if (n < 4) return fullRow; // صفوف 1-3: بانر/محدِّدات/عناوين
+    if (n < 4) return fullRow;
     const nameMatch = inner.match(new RegExp(`<c r="B${n}"[^>]*><v>([^<]*)</v></c>`));
-    const officeMatch = inner.match(new RegExp(`<c r="C${n}"[^>]*><v>([^<]*)</v></c>`));
     if (!nameMatch) return fullRow;
     const currentName = nameMatch[1];
-    const office = officeMatch ? officeMatch[1].trim() : '';
-    if (!office) {
-      unmatched.push(`${currentName} (بلا رقم مكتب)`);
+    const shortWords = words(currentName);
+    if (shortWords.length === 0) return fullRow;
+
+    const matches = candidates.filter((c) => isSubsequence(shortWords, c.words));
+    if (matches.length !== 1) {
+      unmatched.push(`${currentName} (${matches.length} تطابق)`);
       return fullRow;
     }
-    const key = `${deptKey}|${rosterShatr}|${office}`;
-    const fullName = officeIndex.get(key);
-    if (!fullName) {
-      unmatched.push(`${currentName} (مكتب ${office} - لا تطابق بملف منسوبي الكلية)`);
-      return fullRow;
-    }
-    if (fullName === currentName) return fullRow; // مطابق أصلًا، لا تغيير
+    const fullName = stripAdvisorTitle(matches[0].name);
+    if (fullName === stripAdvisorTitle(currentName)) return fullRow;
     changed++;
     const newCell = `<c r="B${n}" t="str"><v>${xmlEscape(fullName)}</v></c>`;
     const newInner = inner.replace(new RegExp(`<c r="B${n}"[^>]*><v>[^<]*</v></c>`), newCell);
@@ -104,9 +110,9 @@ for (const file of SCHEDULE_FILES) {
   zip.writeZip(filePath);
 
   console.log(`=== ${file} (${deptValue} - ${shatrValue}) ===`);
-  console.log(`  صُحِّح: ${changed} اسمًا`);
+  console.log(`  صُحِّح: ${changed}`);
   if (unmatched.length) {
-    console.log(`  بلا تطابق (${unmatched.length}):`);
+    console.log(`  بلا تطابق مؤكَّد (${unmatched.length}):`);
     unmatched.forEach((u) => console.log(`    - ${u}`));
   }
 }
