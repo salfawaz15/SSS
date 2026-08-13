@@ -220,27 +220,30 @@ class AdvisingSchedulePdfService {
 
   /// عنوان عام لصفحة يوم كامل (بلا قسم/شطر مفرد، لأن الصفحة تجمع عدة أقسام) -
   /// الشعار واسم الوحدة فقط، واسم اليوم كعنوان رئيسي بدل بيانات قسم واحد.
+  /// حجم مصغَّر (سليمان 2026-08-13: "صغّر الشعار") - هذا العنوان يتكرر أعلى
+  /// **كل صفحة** بتقرير "كل الأقسام" (قد يصل عشرات الصفحات)، فحجمه الكبير
+  /// السابق كان يهدر مساحة فعلية تمنع أقسامًا كثيرة من الاكتمال بصفحة واحدة.
   static pw.Widget _genericHeader({required pw.MemoryImage logo, required String title, double scale = 1}) {
     return pw.Container(
-      padding: pw.EdgeInsets.symmetric(horizontal: 14 * scale, vertical: 10 * scale),
-      decoration: pw.BoxDecoration(color: _green, borderRadius: pw.BorderRadius.circular(8)),
+      padding: pw.EdgeInsets.symmetric(horizontal: 12 * scale, vertical: 6 * scale),
+      decoration: pw.BoxDecoration(color: _green, borderRadius: pw.BorderRadius.circular(6)),
       child: pw.Row(
         crossAxisAlignment: pw.CrossAxisAlignment.center,
         children: [
           pw.Expanded(
             flex: 3,
             child: pw.Text('يوم $title',
-                style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 13 * scale)),
+                style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 12 * scale)),
           ),
-          pw.SizedBox(width: 10 * scale),
-          pw.Image(logo, height: 72 * scale),
-          pw.SizedBox(width: 10 * scale),
+          pw.SizedBox(width: 8 * scale),
+          pw.Image(logo, height: 40 * scale),
+          pw.SizedBox(width: 8 * scale),
           pw.Expanded(
             flex: 4,
             child: pw.Text('وحدة الإرشاد الأكاديمي والخريجين',
                 textAlign: pw.TextAlign.right,
                 maxLines: 2,
-                style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 11 * scale)),
+                style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 10 * scale)),
           ),
         ],
       ),
@@ -276,8 +279,40 @@ class AdvisingSchedulePdfService {
           ],
         ),
       ),
-      for (final slot in daySlots) ...(signage ? _periodTableSignage(slot) : _periodTable(slot)),
+      if (signage)
+        for (final slot in daySlots) ..._periodTableSignage(slot)
+      // جدولا الفترتين جنبًا إلى جنب (عمودان) بدل تحت بعض - سليمان
+      // 2026-08-13: "قسم الاقتصاد شطر الطالبات أعدادهم كبيرة، يجب أن يستوعب
+      // الجميع بصفحة واحدة، شرط يوم واحد فيه جدولان". يقلّل الارتفاع
+      // المطلوب للقسم للنصف تقريبًا (بدل تراكم الجدولين رأسيًا)، فيتّسع عدد
+      // أكبر من الأعضاء بصفحة واحدة. **حد أمان**: لا يُطبَّق إلا حين يكون
+      // إجمالي الأعضاء بكلا الفترتين معقولاً (≤70) وعدد الفترات فترتان
+      // بالضبط - وإلا يُستخدَم التكديس الرأسي القابل للتقسيم بين الصفحات
+      // (الأصلي) تفاديًا لخطر تجمّد pw.Column اللانهائي الموثَّق أعلى
+      // [buildAll] لو تجاوز المحتوى ارتفاع صفحة واحدة فعليًا.
+      else if (daySlots.length == 2 &&
+          daySlots.fold<int>(0, (sum, s) => sum + s.entries.length) <= 70)
+        _periodTablesSideBySide(daySlots)
+      else
+        for (final slot in daySlots) ..._periodTable(slot),
     ];
+  }
+
+  static pw.Widget _periodTablesSideBySide(List<AdvisingScheduleSlot> slots) {
+    return pw.Row(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < slots.length; i++) ...[
+          if (i > 0) pw.SizedBox(width: 10),
+          pw.Expanded(
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+              children: _periodTable(slots[i]),
+            ),
+          ),
+        ],
+      ],
+    );
   }
 
   /// نسخة مخصّصة لعرض الجدول على شاشات الإسياب داخل الكلية: اتجاه أفقي
@@ -498,11 +533,14 @@ class AdvisingSchedulePdfService {
     ];
   }
 
+  /// حشو رأسي مصغَّر (3 بدل 5) بين كل اسم والتالي - سليمان 2026-08-13:
+  /// "قلل الفرق بين الأسماء"، لتقليل هدر المساحة العمودية فيسع أعضاء أكثر
+  /// بنفس الصفحة (يقلّل احتمال انقسام جدول قسم بين صفحتين).
   static List<pw.Widget> _periodTable(AdvisingScheduleSlot slot) {
     return [
       pw.Container(
-        margin: const pw.EdgeInsets.only(top: 6),
-        padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        margin: const pw.EdgeInsets.only(top: 4),
+        padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         color: _lightGray,
         child: pw.Text('الفترة: ${slot.periodLabel}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: _green)),
       ),
@@ -516,16 +554,16 @@ class AdvisingSchedulePdfService {
           pw.TableRow(
             decoration: pw.BoxDecoration(color: _green),
             children: [
-              _cell('رقم المكتب', bold: true, color: PdfColors.white),
-              _cell('اسم المرشد الأكاديمي', bold: true, color: PdfColors.white),
+              _cell('رقم المكتب', bold: true, color: PdfColors.white, verticalPadding: 3),
+              _cell('اسم المرشد الأكاديمي', bold: true, color: PdfColors.white, verticalPadding: 3),
             ],
           ),
           for (var i = 0; i < slot.entries.length; i++)
             pw.TableRow(
               decoration: pw.BoxDecoration(color: i.isEven ? PdfColors.white : _lightGray),
               children: [
-                _cell(slot.entries[i].office),
-                _cell(slot.entries[i].advisorName),
+                _cell(slot.entries[i].office, verticalPadding: 3),
+                _cell(slot.entries[i].advisorName, verticalPadding: 3),
               ],
             ),
         ],
@@ -533,9 +571,9 @@ class AdvisingSchedulePdfService {
     ];
   }
 
-  static pw.Widget _cell(String text, {bool bold = false, PdfColor? color, double fontSize = 10}) {
+  static pw.Widget _cell(String text, {bool bold = false, PdfColor? color, double fontSize = 10, double verticalPadding = 5}) {
     return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      padding: pw.EdgeInsets.symmetric(horizontal: 8, vertical: verticalPadding),
       child: pw.Center(
         child: pw.Text(
           text,
