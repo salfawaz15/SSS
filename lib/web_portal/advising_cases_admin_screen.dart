@@ -898,9 +898,10 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
         .toList();
     return _buildPanel(
       title: 'مرشدون من خارج الكلية يرشدون طلبة من داخل الكلية',
-      headers: const ['الطالب', 'الرقم الجامعي', 'القسم', 'الشطر', 'المرشد (من خارج الكلية)'],
+      headers: const ['الطالب', 'الرقم الجامعي', 'القسم', 'الشطر', 'المرشد (من خارج الكلية)', 'رقم منسوب المرشد'],
       rows: [
-        for (final s in list) [s.studentName, s.studentId, s.department, s.shatr, s.advisorNameRaw.ifEmptyDash()],
+        for (final s in list)
+          [s.studentName, s.studentId, s.department, s.shatr, s.advisorNameRaw.ifEmptyDash(), s.advisorId.ifEmptyDash()],
       ],
     );
   }
