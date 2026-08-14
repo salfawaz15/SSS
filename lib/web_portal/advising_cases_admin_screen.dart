@@ -24,6 +24,13 @@ import 'portal_header.dart';
 const String _kAllShatr = 'كل الشطرين';
 const String _kAllDepartments = 'كل الأقسام';
 
+/// حد أقصى للصفوف المعروضة فعليًا داخل أي `DataTable` بهذه الشاشة - يُبنى
+/// **كل** صفوفه دفعة واحدة قبل الرسم (لا تحميل كسول)، فتجمّد الصفحة فعليًا
+/// (لاحظه سليمان 2026-08-14) لو تجاوز عدد الصفوف بضعة آلاف - كما يحدث الآن
+/// مع "طلاب على مرشدهم" لملف "كل الكليات" (الجامعة كاملة). التصدير (Excel/
+/// PDF) يبقى **بلا أي حد** - يشمل كل السجلات دومًا، هذا الحد للعرض المرئي فقط.
+const int _kMaxTableRows = 300;
+
 /// عمود "الشطر" في ملف منسوبي الكلية نص حر تكتبه العمادة (لا قيمة ثابتة
 /// مضمونة) - نتحقق من الكلمة المفتاحية بدل المطابقة التامة، والفحص عن
 /// "طالبات" أولًا لأنها تحتوي حروف "طلاب" لكن بترتيب مختلف فلا تلتبس بها.
@@ -913,6 +920,8 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
   /// حوار "حركات الإرشاد": من المرشد ← إلى المرشد لكل طالب تغيّر مرشده بين
   /// آخر رفعتين لملف "كل الكليات" - طلب سليمان صراحةً (2026-08-14).
   void _showMovementsDialog(List<AdvisorMovement> movements) {
+    final truncated = movements.length > _kMaxTableRows;
+    final visible = truncated ? movements.sublist(0, _kMaxTableRows) : movements;
     showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
@@ -922,30 +931,46 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
           height: 480,
           child: movements.isEmpty
               ? Center(child: Text('لا توجد حركات إرشاد منذ آخر رفعتين', style: TextStyle(color: Colors.grey.shade600)))
-              : SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: DataTable(
-                    headingRowColor: WidgetStateProperty.all(AppColors.green),
-                    headingTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                    columns: const [
-                      DataColumn(label: Text('الطالب')),
-                      DataColumn(label: Text('الرقم الجامعي')),
-                      DataColumn(label: Text('من مرشد')),
-                      DataColumn(label: Text('إلى مرشد')),
-                    ],
-                    rows: [
-                      for (var i = 0; i < movements.length; i++)
-                        DataRow(
-                          color: WidgetStateProperty.all(i.isEven ? Colors.white : const Color(0xFFF7F5EF)),
-                          cells: [
-                            DataCell(Text(movements[i].student.studentName)),
-                            DataCell(Text(movements[i].student.studentId)),
-                            DataCell(Text(movements[i].fromAdvisorNameRaw.isEmpty ? '—' : movements[i].fromAdvisorNameRaw)),
-                            DataCell(Text(movements[i].toAdvisorNameRaw.isEmpty ? '—' : movements[i].toAdvisorNameRaw)),
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (truncated)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Text(
+                          'يُعرض هنا أول $_kMaxTableRows من ${movements.length} حركة فقط (تفاديًا لتجمّد الصفحة) - '
+                          'استخدم Excel أو PDF أدناه لعرض/طباعة الكل.',
+                          style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.bold, fontSize: 12),
+                        ),
+                      ),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: DataTable(
+                          headingRowColor: WidgetStateProperty.all(AppColors.green),
+                          headingTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                          columns: const [
+                            DataColumn(label: Text('الطالب')),
+                            DataColumn(label: Text('الرقم الجامعي')),
+                            DataColumn(label: Text('من مرشد')),
+                            DataColumn(label: Text('إلى مرشد')),
+                          ],
+                          rows: [
+                            for (var i = 0; i < visible.length; i++)
+                              DataRow(
+                                color: WidgetStateProperty.all(i.isEven ? Colors.white : const Color(0xFFF7F5EF)),
+                                cells: [
+                                  DataCell(Text(visible[i].student.studentName)),
+                                  DataCell(Text(visible[i].student.studentId)),
+                                  DataCell(Text(visible[i].fromAdvisorNameRaw.isEmpty ? '—' : visible[i].fromAdvisorNameRaw)),
+                                  DataCell(Text(visible[i].toAdvisorNameRaw.isEmpty ? '—' : visible[i].toAdvisorNameRaw)),
+                                ],
+                              ),
                           ],
                         ),
-                    ],
-                  ),
+                      ),
+                    ),
+                  ],
                 ),
         ),
         actions: [
@@ -1097,40 +1122,56 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
     bool showAdvisor = true,
   }) {
     if (students.isEmpty) return const Center(child: Padding(padding: EdgeInsets.all(20), child: Text('لا توجد بيانات')));
-    return Center(
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: DataTable(
-          headingRowColor: WidgetStateProperty.all(AppColors.green),
-          headingTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-          columns: [
-            const DataColumn(label: Center(child: Text('الاسم'))),
-            const DataColumn(label: Center(child: Text('الرقم الجامعي'))),
-            if (showDepartment) const DataColumn(label: Center(child: Text('القسم'))),
-            if (showShatr) const DataColumn(label: Center(child: Text('الشطر'))),
-            if (showAdvisor) const DataColumn(label: Center(child: Text('المرشد'))),
-            const DataColumn(label: Center(child: Text('النطاق السابق'))),
-            const DataColumn(label: Center(child: Text('النطاق الحالي'))),
-          ],
-          rows: [
-            for (var i = 0; i < students.length; i++)
-              DataRow(
-                color: WidgetStateProperty.all(i.isEven ? Colors.white : const Color(0xFFF7F5EF)),
-                cells: [
-                  DataCell(Center(child: Text(students[i].studentName))),
-                  DataCell(Center(child: Text(students[i].studentId))),
-                  if (showDepartment) DataCell(Center(child: Text(students[i].department))),
-                  if (showShatr) DataCell(Center(child: Text(students[i].shatr))),
-                  if (showAdvisor)
-                    DataCell(Center(
-                        child: Text(students[i].advisorNameRaw.isEmpty ? '—' : students[i].advisorNameRaw))),
-                  DataCell(Center(child: _gpaChip(students[i].previousGpa))),
-                  DataCell(Center(child: _gpaChip(students[i].gpa))),
-                ],
-              ),
-          ],
+    final truncated = students.length > _kMaxTableRows;
+    final visible = truncated ? students.sublist(0, _kMaxTableRows) : students;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (truncated)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              'يُعرض هنا أول $_kMaxTableRows من ${students.length} سجلًا فقط (تفاديًا لتجمّد الصفحة) - '
+              'استخدم Excel أو PDF أدناه لعرض/طباعة كل السجلات كاملة.',
+              style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.bold, fontSize: 12),
+            ),
+          ),
+        Center(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: DataTable(
+              headingRowColor: WidgetStateProperty.all(AppColors.green),
+              headingTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              columns: [
+                const DataColumn(label: Center(child: Text('الاسم'))),
+                const DataColumn(label: Center(child: Text('الرقم الجامعي'))),
+                if (showDepartment) const DataColumn(label: Center(child: Text('القسم'))),
+                if (showShatr) const DataColumn(label: Center(child: Text('الشطر'))),
+                if (showAdvisor) const DataColumn(label: Center(child: Text('المرشد'))),
+                const DataColumn(label: Center(child: Text('النطاق السابق'))),
+                const DataColumn(label: Center(child: Text('النطاق الحالي'))),
+              ],
+              rows: [
+                for (var i = 0; i < visible.length; i++)
+                  DataRow(
+                    color: WidgetStateProperty.all(i.isEven ? Colors.white : const Color(0xFFF7F5EF)),
+                    cells: [
+                      DataCell(Center(child: Text(visible[i].studentName))),
+                      DataCell(Center(child: Text(visible[i].studentId))),
+                      if (showDepartment) DataCell(Center(child: Text(visible[i].department))),
+                      if (showShatr) DataCell(Center(child: Text(visible[i].shatr))),
+                      if (showAdvisor)
+                        DataCell(Center(
+                            child: Text(visible[i].advisorNameRaw.isEmpty ? '—' : visible[i].advisorNameRaw))),
+                      DataCell(Center(child: _gpaChip(visible[i].previousGpa))),
+                      DataCell(Center(child: _gpaChip(visible[i].gpa))),
+                    ],
+                  ),
+              ],
+            ),
+          ),
         ),
-      ),
+      ],
     );
   }
 
@@ -1202,7 +1243,12 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
       final key = c.student.advisorNameRaw.isEmpty ? '(بلا اسم مرشد)' : c.student.advisorNameRaw;
       groups.putIfAbsent(key, () => []).add(c);
     }
-    final advisorNames = groups.keys.toList()..sort();
+    final allAdvisorNames = groups.keys.toList()..sort();
+    // ListView(children: [...]) يبني كل عناصره دفعة واحدة (لا تحميل كسول) -
+    // حد أقصى لعدد المرشدين المعروضين تفاديًا لتجمّد الصفحة مع بيانات "كل
+    // الكليات" الضخمة (نفس قيد `_kMaxTableRows`، هنا على مستوى المجموعات).
+    final groupsTruncated = allAdvisorNames.length > _kMaxTableRows;
+    final advisorNames = groupsTruncated ? allAdvisorNames.sublist(0, _kMaxTableRows) : allAdvisorNames;
 
     showDialog<void>(
       context: context,
@@ -1215,6 +1261,15 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
               ? Center(child: Text(emptyMessage, style: TextStyle(color: Colors.grey.shade600)))
               : ListView(
             children: [
+              if (groupsTruncated)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    'يُعرض هنا أول ${advisorNames.length} من ${allAdvisorNames.length} مرشدًا فقط '
+                    '(تفاديًا لتجمّد الصفحة) - استخدم Excel أو PDF لعرض/طباعة الكل.',
+                    style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.bold, fontSize: 12),
+                  ),
+                ),
               for (final advisorName in advisorNames) ...[
                 Container(
                   margin: const EdgeInsets.only(top: 10, bottom: 6),
