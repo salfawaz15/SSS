@@ -13,6 +13,8 @@ import '../services/advising_case_pdf_service.dart';
 import '../services/advising_report_parser_service.dart';
 import '../services/advising_report_pdf_parser_service.dart';
 import '../services/advising_report_repository.dart';
+import '../services/advisor_name_matching.dart';
+import '../services/college_roster_repository.dart';
 import '../services/web_download.dart';
 import '../services/course_schedule_repository.dart' show Shatr, ShatrLabel;
 import '../theme/app_theme.dart';
@@ -21,6 +23,15 @@ import 'portal_header.dart';
 
 const String _kAllShatr = 'كل الشطرين';
 const String _kAllDepartments = 'كل الأقسام';
+
+/// عمود "الشطر" في ملف منسوبي الكلية نص حر تكتبه العمادة (لا قيمة ثابتة
+/// مضمونة) - نتحقق من الكلمة المفتاحية بدل المطابقة التامة، والفحص عن
+/// "طالبات" أولًا لأنها تحتوي حروف "طلاب" لكن بترتيب مختلف فلا تلتبس بها.
+String? _shatrLabelFromFreeText(String raw) {
+  if (raw.contains('طالبات')) return Shatr.female.label;
+  if (raw.contains('طلاب')) return Shatr.male.label;
+  return null;
+}
 
 /// صفحة "متابعة حالات الإرشاد" - قلب مشروع وحدة الإرشاد الأكاديمي.
 ///
@@ -193,20 +204,62 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
         'جاري معالجة ملف "كل الكليات" - يغطي الجامعة كاملة فقد يستغرق عدة دقائق. '
         'الرجاء عدم إغلاق الصفحة أو تحديث المتصفح حتى الانتهاء.',
       );
-      // يضمن رسم النافذة فعليًا على الشاشة قبل بدء المعالجة الثقيلة - بدونه
-      // قد يُحجَب خيط المتصفح بمعالجة PDF قبل أن تُتاح فرصة رسم الإطار
-      // التالي (النافذة)، فتظهر تحذيرات "الصفحة لا تستجيب" المتكررة بلا أي
-      // مؤشر مرئي بالموقع نفسه - هذا بالضبط ما لاحظه سليمان (2026-08-14).
-      await WidgetsBinding.instance.endOfFrame;
+      // يضمن رسم النافذة فعليًا على الشاشة قبل بدء المعالجة الثقيلة.
+      // `endOfFrame` وحدها لم تكفِ فعليًا (لاحظ سليمان 2026-08-14 أنها لم
+      // تظهر رغم إضافتها) - على الأرجح لأنها تنتظر جدولة الإطار داخليًا فقط
+      // بلا ضمان رسم فعلي على شاشة المتصفح قبل حجب الخيط. `Future.delayed`
+      // بمدة حقيقية تُنفَّذ عبر مؤقّت متصفح فعلي (لا مهمة دقيقة/microtask)،
+      // فتضمن عودة السيطرة فعليًا لحلقة أحداث المتصفح (ورسم الإطار المعلَّق)
+      // قبل استئناف الكود.
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      // خريطة اسم المرشد المطبَّع ← شطره من ملف منسوبي الكلية - ملف "كل
+      // الكليات" الرسمي **لا يحوي عمود "الجنس"** (نفس قيد تقرير "طلاب تابعين
+      // لمرشد" الأصلي)، فيُستنتَج شطر كل صف من شطر مرشده. **قيد معروف**: يعمل
+      // فقط لمرشدينا نحن (الموجودين بملف منسوبي الكلية) - مرشدون من كليات
+      // أخرى لا يمكن تحديد شطرهم بهذه الطريقة، فتظهر صفوفهم استثناءً في كلا
+      // الشطرين (نفس الحالة القديمة الموثَّقة بـ`advising_report_parser_service.dart`)
+      // حتى يُتاح مصدر أفضل لتحديد شطرهم.
+      final roster = await CollegeRosterRepository.load();
+      final advisorShatrByName = {
+        for (final m in roster)
+          if (_shatrLabelFromFreeText(m.shatr) != null)
+            normalizeAdvisorNameForMatch(m.name): _shatrLabelFromFreeText(m.shatr)!,
+      };
+
       final AdvisingReportPdfParseResult r;
       try {
-        r = await AdvisingReportPdfParserService.parseInBackground(bytes);
+        r = await AdvisingReportPdfParserService.parseInBackground(bytes, advisorShatrByName: advisorShatrByName);
       } finally {
         _hideProcessingDialog();
       }
       final records = r.records;
       final male = records.where((r) => r.shatr == Shatr.male.label).toList();
       final female = records.where((r) => r.shatr == Shatr.female.label).toList();
+
+      if (r.unresolvedShatrRows.isNotEmpty) {
+        if (!mounted) return;
+        await showDialog<void>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text('${r.unresolvedShatrRows.length} حالة بمرشد من خارج كليتنا (تعذّر تحديد شطره)'),
+            content: SizedBox(
+              width: 480,
+              child: SingleChildScrollView(
+                child: Text(
+                  'الحالات التالية مرشدها من خارج ملف منسوبي كليتنا (أو بلا اسم مرشد أصلًا) فتعذّر '
+                  'تحديد شطرها - ستظهر مؤقتًا تحت كلا الشطرين معًا حتى يُتاح مصدر أفضل لتحديد شطر '
+                  'مرشدي الكليات الأخرى:\n\n'
+                  '${r.unresolvedShatrRows.join('\n')}',
+                ),
+              ),
+            ),
+            actions: [
+              FilledButton(onPressed: () => Navigator.pop(context), child: const Text('حسنًا')),
+            ],
+          ),
+        );
+      }
 
       if (!mounted) return;
       final confirmed = await showDialog<bool>(
@@ -272,7 +325,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
     setState(() => _health.uploading = true);
     try {
       _showProcessingDialog('جاري معالجة الملف...');
-      await WidgetsBinding.instance.endOfFrame;
+      await Future.delayed(const Duration(milliseconds: 300));
       List<AdvisingCaseRecord> records;
       var exclusionCounts = <String, int>{};
       try {
