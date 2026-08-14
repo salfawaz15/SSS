@@ -722,9 +722,18 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
       ),
     );
     if (confirmed != true) return;
-    await AdvisingReportRepository.clear(Shatr.male, kind: kind);
-    await AdvisingReportRepository.clear(Shatr.female, kind: kind);
-    await _loadAll();
+    try {
+      await AdvisingReportRepository.clear(Shatr.male, kind: kind);
+      await AdvisingReportRepository.clear(Shatr.female, kind: kind);
+      await _loadAll();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تم تفريغ $label بنجاح.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      _showErrorDialog('تعذّر التفريغ', '$e');
+    }
   }
 
   /// شريط الفلترة (شطر/قسم/مرشد/بحث) - يظهر أعلى التبويبات الاثني عشر ويؤثر
