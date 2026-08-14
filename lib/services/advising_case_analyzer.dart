@@ -5,7 +5,20 @@ import '../models/college_roster_member.dart';
 import '../utils/name_display.dart';
 import 'advising_report_repository.dart';
 import 'college_roster_repository.dart';
-import 'course_schedule_repository.dart' show Shatr;
+import 'course_schedule_repository.dart' show Shatr, ShatrLabel;
+
+/// عمود "الشطر" في ملف منسوبي الكلية نص حر تكتبه العمادة (مثال: "طلاب" لا
+/// "شطر الطلاب" بالضرورة) - لا يُقارَن بالمطابقة الحرفية التامة مطلقًا (كانت
+/// تفشل دومًا فيُستبعَد كل الأعضاء بصمت من facultyInScope أدناه - خلل حقيقي
+/// اكتُشف 2026-08-14 أثّر على تبويبات "معفَون ولهم طلاب"/"مرشدون بلا
+/// طلاب"/"تقرير النصاب"/"حالات صحية غير موزَّعة" كلها معًا). نفس منطق
+/// [AdvisingReportParserService]/الشاشات الأخرى - "طالبات" تُفحَص أولًا لأنها
+/// تحتوي حروف "طلاب" بترتيب مختلف فلا تلتبس بها.
+String? _shatrLabelFromFreeText(String raw) {
+  if (raw.contains('طالبات')) return Shatr.female.label;
+  if (raw.contains('طلاب')) return Shatr.male.label;
+  return null;
+}
 
 /// طالب بلا مرشد مسجَّل عليه في التقرير.
 typedef UnassignedStudent = AdvisingCaseRecord;
@@ -520,7 +533,9 @@ class AdvisingCaseAnalyzer {
     final departmentsInScope = activeStudents.map((s) => s.department).toSet();
     final shatrInScope = activeStudents.isEmpty ? null : activeStudents.first.shatr;
     final facultyInScope = facultyByNameKey.values
-        .where((m) => departmentsInScope.contains(m.department) && (shatrInScope == null || m.shatr == shatrInScope))
+        .where((m) =>
+            departmentsInScope.contains(m.department) &&
+            (shatrInScope == null || _shatrLabelFromFreeText(m.shatr) == shatrInScope))
         .toSet()
         .toList();
 
