@@ -532,8 +532,13 @@ class AdvisingCaseAnalyzer {
     // حتى يظهر "مرشد بلا طلاب" حتى لو لم يُذكر اسمه إطلاقًا في التقرير.
     final departmentsInScope = activeStudents.map((s) => s.department).toSet();
     final shatrInScope = activeStudents.isEmpty ? null : activeStudents.first.shatr;
+    // إداريو الكلية (CollegeMemberType.admin) لا يمكن أن يكونوا مرشدين
+    // أكاديميين إطلاقًا - سليمان لاحظ (2026-08-14) احتسابهم خطأً ضمن تقرير
+    // النصاب/المرشدين بلا طلاب. يُستبعَدون هنا صراحةً، لا يكفي الاعتماد على
+    // عبء الإرشاد وحده (قد يُصنَّف إداري "معفى" افتراضيًا فيظهر بالخطأ).
     final facultyInScope = facultyByNameKey.values
         .where((m) =>
+            m.type == CollegeMemberType.faculty &&
             departmentsInScope.contains(m.department) &&
             (shatrInScope == null || _shatrLabelFromFreeText(m.shatr) == shatrInScope))
         .toSet()

@@ -939,8 +939,8 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
         .toList();
     return _buildPanel(
       title: 'مرشدون بلا طلاب',
-      headers: const ['الاسم', 'القسم', 'الشطر', 'السبب'],
-      rows: [for (final m in list) [m.name, m.department, m.shatr, m.advisingReason]],
+      headers: const ['الاسم', 'رقم المنسوب', 'القسم', 'الشطر', 'السبب'],
+      rows: [for (final m in list) [m.name, m.staffNumber.ifEmptyDash(), m.department, m.shatr, m.advisingReason]],
     );
   }
 
@@ -953,7 +953,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
       headers: const ['المرشد', 'القسم', 'العدد الحالي', 'الحصة العادلة', 'الحالة'],
       rows: [
         for (final q in list)
-          [q.advisor.name, q.advisor.department, '${q.actualCount}', q.fairShare.toStringAsFixed(1), _quotaStatusLabel(q.status)],
+          [q.advisor.name, q.advisor.department, '${q.actualCount}', '${q.fairShare.round()}', _quotaStatusLabel(q.status)],
       ],
     );
   }
