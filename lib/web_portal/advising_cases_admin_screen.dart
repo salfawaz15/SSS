@@ -467,7 +467,9 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
   /// فعليًا بسجلات الطلاب (لا من ملف منسوبي الكلية) لضمان تطابق حرفي مع
   /// المطابقة عبر [_advisorMatches] (قد يختلف شكل الاسم بين المصدرين قليلًا).
   List<String> get _advisorFilterOptions {
-    final names = [..._scopedMale, ..._scopedFemale]
+    final male = _shatrFilter == Shatr.female.label ? const <AdvisingCaseRecord>[] : _scopedMale;
+    final female = _shatrFilter == Shatr.male.label ? const <AdvisingCaseRecord>[] : _scopedFemale;
+    final names = [...male, ...female]
         .where((s) => _deptFilter == _kAllDepartments || s.department == _deptFilter)
         .map((s) => s.advisorNameRaw.trim())
         .where((n) => n.isNotEmpty)
@@ -766,7 +768,10 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
               DropdownMenuEntry(value: Shatr.male.label, label: Shatr.male.label),
               DropdownMenuEntry(value: Shatr.female.label, label: Shatr.female.label),
             ],
-            onSelected: (v) => setState(() => _shatrFilter = v ?? _kAllShatr),
+            onSelected: (v) => setState(() {
+              _shatrFilter = v ?? _kAllShatr;
+              _advisorFilter = _kAllAdvisors;
+            }),
           ),
         ),
         SizedBox(
@@ -785,7 +790,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
           ),
         ),
         SizedBox(
-          key: ValueKey(_deptFilter),
+          key: ValueKey('$_deptFilter|$_shatrFilter'),
           width: 240,
           child: DropdownMenu<String>(
             label: const Text('المرشد'),
