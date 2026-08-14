@@ -94,6 +94,32 @@ class AdvisingReportParserService {
   static bool _isAdvisorHeaderRow(List<String> row) =>
       row.length == 3 && _normalize(row.last).contains(_normalize('رقم المرشد'));
 
+  /// أسماء فروع جامعة الطائف خارج المقر الرئيسي - لها كليات بنفس مسمّيات
+  /// كليتنا (مثال: "كلية إدارة الأعمال" موجودة بالخرمة وتربة ورنية أيضًا)
+  /// بنفس أسماء الأقسام تمامًا، فيتعذّر تمييز طلابها عن طلابنا بالاسم وحده -
+  /// سليمان حدَّد (2026-08-14) أن سطر "الكلية" يظهر أسفل كل كتلة مرشد مباشرة
+  /// (تحت "رقم المرشد") ويذكر اسم الفرع صراحةً حين يكون الطالب من فرع، أو
+  /// "كلية إدارة الأعمال" فقط حين يكون من المقر الرئيسي (الصحيح المطلوب قراءته،
+  /// شاملاً حالات انتداب معروفة مثل طارق حلمي رغم كونه من كلية أخرى بالمقر
+  /// الرئيسي - لا يُستبعَد، فقط فروع المحافظات تُستبعَد).
+  static const List<String> _branchCampusNames = ['الخرمة', 'تربة', 'رنية'];
+
+  /// سطر "الكلية" القصير الذي يظهر أسفل كل كتلة مرشد (لا صف بيانات طالب عادي
+  /// - تلك صفوف عريضة بأعمدة كثيرة) - نتحقق من قصر الصف (≤3 خلايا) قبل
+  /// البحث عن كلمة "كلية" حتى لا يلتبس بصف بيانات فيه كلمة "كلية" ضمن نص أطول.
+  static bool _isCollegeLabelRow(List<String> row) =>
+      row.length <= 3 && row.any((c) => _normalize(c).contains(_normalize('كلية')));
+
+  /// يستخرج اسم الفرع من سطر "الكلية" إن وُجد - '' يعني المقر الرئيسي (لا
+  /// استبعاد)، غير فارغ يعني فرعًا يجب استبعاد كل طلابه.
+  static String _branchFromCollegeLabelRow(List<String> row) {
+    final text = row.join(' ');
+    for (final branch in _branchCampusNames) {
+      if (text.contains(branch)) return branch;
+    }
+    return '';
+  }
+
   /// إن كان الملف فارغًا (لا جدول فيه أصلاً - كملف "مرشدين ليس لهم طلاب" حين
   /// لا توجد حالة واحدة) تُرجَع قائمة فارغة بدل رمي استثناء، لأن هذه حالة
   /// طبيعية متوقَّعة وليست خطأً في الملف.
@@ -185,12 +211,21 @@ class AdvisingReportParserService {
     String? currentAdvisorId;
     String? currentAdvisorName;
 
+    // '' يعني المقر الرئيسي (لا استبعاد) - يُعاد ضبطه عند كل سطر "الكلية"
+    // جديد (يظهر أسفل كل كتلة مرشد)، فيسري على كل طلاب تلك الكتلة تحديدًا.
+    var currentBranch = '';
+
     final result = <AdvisingCaseRecord>[];
 
     for (final row in rows) {
       if (_isAdvisorHeaderRow(row)) {
         currentAdvisorName = row[0].trim();
         currentAdvisorId = row[1].trim();
+        continue;
+      }
+
+      if (_isCollegeLabelRow(row)) {
+        currentBranch = _branchFromCollegeLabelRow(row);
         continue;
       }
 
@@ -226,6 +261,11 @@ class AdvisingReportParserService {
       }
 
       if (!sawHeader) continue;
+
+      if (currentBranch.isNotEmpty) {
+        exclusionCounts?.update('طالب من فرع خارج المقر الرئيسي ($currentBranch)', (v) => v + 1, ifAbsent: () => 1);
+        continue;
+      }
 
       final name = _cell(row, nameCol).trim();
       final id = _cell(row, idCol).trim();
