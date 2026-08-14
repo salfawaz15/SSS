@@ -20,6 +20,7 @@ import '../services/college_roster_repository.dart';
 import '../services/web_download.dart';
 import '../services/course_schedule_repository.dart' show Shatr, ShatrLabel;
 import '../theme/app_theme.dart';
+import '../utils/name_display.dart';
 import 'admin_nav.dart';
 import 'portal_header.dart';
 
@@ -465,14 +466,19 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
   /// المختار حاليًا (بلا اعتماد على الشطر) كما طُلب صراحةً (2026-08-14):
   /// "يُضاف اسم المرشد من خلال القسم". تُبنى من `advisorNameRaw` كما وردت
   /// فعليًا بسجلات الطلاب (لا من ملف منسوبي الكلية) لضمان تطابق حرفي مع
-  /// المطابقة عبر [_advisorMatches] (قد يختلف شكل الاسم بين المصدرين قليلًا).
+  /// المطابقة عبر [_advisorMatches] (قد يختلف شكل الاسم بين المصدرين قليلًا)،
+  /// لكن **مقصورة فقط على مرشدين موجودين فعليًا بملف منسوبي الكلية** - سليمان
+  /// لاحظ (2026-08-14) ظهور اسم "إيمان عبدالعزيز أحمد جان طاشكندي" رغم عدم
+  /// وجودها عضوة بالكلية إطلاقًا (مرشدة من خارج الكلية أُسنِد لها طالب من
+  /// قسمنا سهوًا بالمنظومة) - أسماء كهذه تبقى تظهر في تبويب "مرشد خارجي ←
+  /// طلابنا" المخصَّص لها، لكن لا تُقترَح كخيار بقائمة الفلترة العامة.
   List<String> get _advisorFilterOptions {
     final male = _shatrFilter == Shatr.female.label ? const <AdvisingCaseRecord>[] : _scopedMale;
     final female = _shatrFilter == Shatr.male.label ? const <AdvisingCaseRecord>[] : _scopedFemale;
     final names = [...male, ...female]
         .where((s) => _deptFilter == _kAllDepartments || s.department == _deptFilter)
         .map((s) => s.advisorNameRaw.trim())
-        .where((n) => n.isNotEmpty)
+        .where((n) => n.isNotEmpty && _facultyByKey.containsKey(AdvisingCaseAnalyzer.nameKey(displayName(n))))
         .toSet()
         .toList()
       ..sort();
