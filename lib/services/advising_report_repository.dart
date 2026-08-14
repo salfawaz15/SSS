@@ -132,13 +132,17 @@ class AdvisingReportRepository {
   static Future<void> clear(Shatr shatr, {AdvisingReportKind kind = AdvisingReportKind.base}) async {
     final docRef = _col(kind).doc(shatr.docId);
     final chunksSnap = await docRef.collection('chunks').get();
-    await _commitInGroups(
-      [
-        for (final d in chunksSnap.docs) (WriteBatch b) => b.delete(d.reference),
-        (WriteBatch b) => b.delete(docRef),
-      ],
-      450,
-    );
+    try {
+      await _commitInGroups(
+        [
+          for (final d in chunksSnap.docs) (WriteBatch b) => b.delete(d.reference),
+          (WriteBatch b) => b.delete(docRef),
+        ],
+        100,
+      );
+    } catch (e) {
+      throw Exception('فشل حذف ${chunksSnap.docs.length} قطعة (chunks) لـ${kind.name}/${shatr.docId}: $e');
+    }
   }
 
   /// يُستدعى قبل استبدال تقرير "بيانات الطلبة" (القاعدة) مباشرة: ينقل النسخة

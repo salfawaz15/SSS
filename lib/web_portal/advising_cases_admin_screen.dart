@@ -2,6 +2,7 @@
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
 
@@ -197,6 +198,16 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
           child: SingleChildScrollView(child: SelectableText(details)),
         ),
         actions: [
+          TextButton.icon(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: '$title\n$details'));
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم نسخ نص الخطأ')));
+              }
+            },
+            icon: const Icon(Icons.copy_outlined, size: 18),
+            label: const Text('نسخ'),
+          ),
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق')),
         ],
       ),
