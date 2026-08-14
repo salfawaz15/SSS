@@ -286,6 +286,13 @@ service cloud.firestore {
       }
     }
 
+    // سجل حركات الإرشاد الدائم/التراكمي (طالب تغيّر مرشده، عبر كل الرفعات لا
+    // آخر رفعتين فقط) - مستندات مستقلة (لا chunks)، تُضاف فقط ولا تُعدَّل.
+    match /advisingAdvisorMovements/{entryId} {
+      allow read, write: if isSuperAdmin();
+      allow read, write: if isUnitCoordinator();
+    }
+
     // بيانات منسوبي الكلية الرسمية (أعضاء هيئة تدريس وإداريين) - رفع وقراءة
     // مقصوران على حساب المدير العام (salfawaz) فقط، نفس مبدأ courseSchedules.
     match /collegeRoster/{docId} {
