@@ -125,16 +125,20 @@ class AdvisingReportRepository {
     return ts?.toDate();
   }
 
-  /// تفريغ كامل لتقرير معيّن لشطر واحد - لتسهيل إعادة الاختبار.
+  /// تفريغ كامل لتقرير معيّن لشطر واحد - لتسهيل إعادة الاختبار. كانت تحذف كل
+  /// القطع بدفعة واحدة (فشلت فعليًا بخطأ "Transaction too big" مع ملف "كل
+  /// الكليات" الضخم - سليمان 2026-08-14)، نفس مشكلة [save] بالضبط قبل
+  /// إصلاحها - أُصلحت بنفس التقسيم لدفعات صغيرة عبر [_commitInGroups].
   static Future<void> clear(Shatr shatr, {AdvisingReportKind kind = AdvisingReportKind.base}) async {
     final docRef = _col(kind).doc(shatr.docId);
     final chunksSnap = await docRef.collection('chunks').get();
-    final batch = FirebaseFirestore.instance.batch();
-    for (final d in chunksSnap.docs) {
-      batch.delete(d.reference);
-    }
-    batch.delete(docRef);
-    await batch.commit();
+    await _commitInGroups(
+      [
+        for (final d in chunksSnap.docs) (WriteBatch b) => b.delete(d.reference),
+        (WriteBatch b) => b.delete(docRef),
+      ],
+      450,
+    );
   }
 
   /// يُستدعى قبل استبدال تقرير "بيانات الطلبة" (القاعدة) مباشرة: ينقل النسخة
