@@ -49,24 +49,52 @@ class AdvisingReportRepository {
   /// تحت مستند كل شطر بدل حقل مصفوفة واحد بالمستند نفسه.
   static const int _chunkSize = 400;
 
+  /// يُنفِّذ [ops] على دفعات Firestore متتالية (لا دفعة واحدة ضخمة) - حد
+  /// Firestore الأقصى 500 عملية للدفعة الواحدة، بالإضافة لحد حجم إجمالي
+  /// للطلب (~10 ميجابايت) - ملف "كل الكليات" (الجامعة كاملة، آلاف السجلات)
+  /// قد يتجاوز أحد الحدين أو كليهما لو جُمِّعت كل العمليات بدفعة واحدة، وهذا
+  /// بالضبط ما فشل به الحفظ فعليًا عند سليمان (2026-08-14) فور الضغط على
+  /// "اعتماد" لملف الجامعة الكامل. **لم تعد العملية ذرية بالكامل** (تجزئة
+  /// عبر عدة دفعات لا تضمن كل-أو-لا-شيء لو انقطعت الشبكة منتصف الحفظ) - تنازل
+  /// مقبول إذ لا بديل أوسع بلا Cloud Function مخصَّصة.
+  static Future<void> _commitInGroups(List<void Function(WriteBatch)> ops, int perBatch) async {
+    for (var i = 0; i < ops.length; i += perBatch) {
+      final batch = FirebaseFirestore.instance.batch();
+      final end = (i + perBatch < ops.length) ? i + perBatch : ops.length;
+      for (var j = i; j < end; j++) {
+        ops[j](batch);
+      }
+      await batch.commit();
+    }
+  }
+
   static Future<void> save(Shatr shatr, List<AdvisingCaseRecord> records, {AdvisingReportKind kind = AdvisingReportKind.base}) async {
     final docRef = _col(kind).doc(shatr.docId);
     final chunksRef = docRef.collection('chunks');
     final oldChunks = await chunksRef.get();
 
-    final batch = FirebaseFirestore.instance.batch();
-    for (final d in oldChunks.docs) {
-      batch.delete(d.reference);
-    }
-    batch.set(docRef, {
-      'uploadedAt': FieldValue.serverTimestamp(),
-      'studentsCount': records.length,
-    });
+    // حذف القطع القديمة: عملية خفيفة الحجم لكل قطعة (لا بيانات، فقط مرجع) -
+    // تتحمّل دفعات أكبر نسبيًا (قريبة من حد الـ500 عملية).
+    await _commitInGroups(
+      [for (final d in oldChunks.docs) (WriteBatch b) => b.delete(d.reference)],
+      450,
+    );
+
+    // كتابة القطع الجديدة: كل قطعة ثقيلة نسبيًا (حتى 400 سجل/قطعة، قد تصل
+    // ~150 كيلوبايت) - دفعات أصغر بكثير حتى لا يتجاوز حجم الطلب الإجمالي.
+    final writeOps = <void Function(WriteBatch)>[
+      (b) => b.set(docRef, {
+            'uploadedAt': FieldValue.serverTimestamp(),
+            'studentsCount': records.length,
+          }),
+    ];
     for (var i = 0; i < records.length; i += _chunkSize) {
       final chunk = records.sublist(i, i + _chunkSize > records.length ? records.length : i + _chunkSize);
-      batch.set(chunksRef.doc(i.toString()), {'records': chunk.map((r) => r.toJson()).toList()});
+      final chunkDocId = i.toString();
+      final chunkData = {'records': chunk.map((r) => r.toJson()).toList()};
+      writeOps.add((b) => b.set(chunksRef.doc(chunkDocId), chunkData));
     }
-    await batch.commit();
+    await _commitInGroups(writeOps, 20);
   }
 
   static Future<List<AdvisingCaseRecord>> load(Shatr shatr, {AdvisingReportKind kind = AdvisingReportKind.base}) async {

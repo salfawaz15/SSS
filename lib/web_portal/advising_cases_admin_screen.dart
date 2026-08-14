@@ -128,6 +128,56 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
     }
   }
 
+  /// حوار تحميل غير قابل للإغلاق يدويًا - يظهر أثناء معالجة الملف تحديدًا
+  /// (لا طوال الرفع بالكامل) حتى لا يبدو للمستخدم أن الصفحة تجمَّدت بصمت.
+  /// ملف "كل الكليات" PDF يغطي الجامعة كاملة (مئات الصفحات) فقد تستغرق
+  /// معالجته دقائق - سليمان لاحظ ظهور تحذير "الصفحة لا تستجيب" من المتصفح
+  /// أثناء الانتظار بلا أي مؤشر بالموقع نفسه يوضّح أن المعالجة مستمرة فعليًا
+  /// (2026-08-14)، فأُضيف هذا الحوار الصريح بدل الاعتماد فقط على أيقونة
+  /// صغيرة داخل الزر.
+  void _showProcessingDialog(String message) {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: Row(
+            children: [
+              const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 3)),
+              const SizedBox(width: 16),
+              Expanded(child: Text(message)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _hideProcessingDialog() {
+    if (!mounted) return;
+    Navigator.of(context, rootNavigator: true).pop();
+  }
+
+  /// حوار خطأ **لا يختفي تلقائيًا** (بخلاف SnackBar الذي كان يختفي بسرعة قبل
+  /// أن يتمكن سليمان من قراءته/تصويره - 2026-08-14) والنص قابل للنسخ لتسهيل
+  /// إرساله لتشخيص المشكلة.
+  void _showErrorDialog(String title, String details) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title, style: TextStyle(color: Colors.red.shade700)),
+        content: SizedBox(
+          width: 480,
+          child: SingleChildScrollView(child: SelectableText(details)),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق')),
+        ],
+      ),
+    );
+  }
+
   Future<void> _uploadAllColleges() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -139,7 +189,16 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
 
     setState(() => _allColleges.uploading = true);
     try {
-      final r = await AdvisingReportPdfParserService.parseInBackground(bytes);
+      _showProcessingDialog(
+        'جاري معالجة ملف "كل الكليات" - يغطي الجامعة كاملة فقد يستغرق عدة دقائق. '
+        'الرجاء عدم إغلاق الصفحة أو تحديث المتصفح حتى الانتهاء.',
+      );
+      final AdvisingReportPdfParseResult r;
+      try {
+        r = await AdvisingReportPdfParserService.parseInBackground(bytes);
+      } finally {
+        _hideProcessingDialog();
+      }
       final records = r.records;
       final male = records.where((r) => r.shatr == Shatr.male.label).toList();
       final female = records.where((r) => r.shatr == Shatr.female.label).toList();
@@ -190,9 +249,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذّر قراءة الملف: $e'), backgroundColor: Colors.red.shade700),
-      );
+      _showErrorDialog('تعذّر إتمام العملية', '$e');
     } finally {
       if (mounted) setState(() => _allColleges.uploading = false);
     }
@@ -209,15 +266,20 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
 
     setState(() => _health.uploading = true);
     try {
+      _showProcessingDialog('جاري معالجة الملف...');
       List<AdvisingCaseRecord> records;
       var exclusionCounts = <String, int>{};
       try {
-        records = AdvisingReportParserService.parse(
-          bytes,
-          requireDepartment: false,
-          isHealthReport: true,
-          exclusionCounts: exclusionCounts,
-        );
+        try {
+          records = AdvisingReportParserService.parse(
+            bytes,
+            requireDepartment: false,
+            isHealthReport: true,
+            exclusionCounts: exclusionCounts,
+          );
+        } finally {
+          _hideProcessingDialog();
+        }
       } on ShatrRequiredException {
         if (!mounted) return;
         final chosen = await showDialog<Shatr>(
@@ -288,9 +350,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذّر قراءة الملف: $e'), backgroundColor: Colors.red.shade700),
-      );
+      _showErrorDialog('تعذّر إتمام العملية', '$e');
     } finally {
       if (mounted) setState(() => _health.uploading = false);
     }
