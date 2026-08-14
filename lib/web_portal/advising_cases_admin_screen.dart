@@ -1053,8 +1053,21 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
     );
   }
 
+  /// خفيفة عمدًا بطلب سليمان صراحةً (2026-08-14): الموقع نفسه يعرض فقط اسم كل
+  /// مرشد وعدد طلابه (بلا تفاصيل الطلاب أنفسهم) - قاعدة خاصة بهذا القسم
+  /// تحديدًا (الطلاب ومرشدوهم بهذه الصفحة)، لا قاعدة عامة لبقية الحوارات.
+  /// التفاصيل الكاملة (اسم/رقم/قسم كل طالب) تبقى متاحة **فقط** عبر تصدير
+  /// Excel/PDF (يُصدِّر [students] الكاملة كما هي، بلا أي تلخيص).
   Widget _buildAtRiskSection() {
     final students = _scopedStudents;
+    final byAdvisor = <String, int>{};
+    for (final s in students) {
+      final key = s.advisorNameRaw.trim().isEmpty ? 'بلا مرشد' : s.advisorNameRaw.trim();
+      byAdvisor[key] = (byAdvisor[key] ?? 0) + 1;
+    }
+    final advisorNames = byAdvisor.keys.toList()
+      ..sort((a, b) => byAdvisor[b]!.compareTo(byAdvisor[a]!));
+
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -1067,7 +1080,8 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
         children: [
           Row(
             children: [
-              Text('كل الطلاب في النطاق الحالي (${students.length})', style: AppTextStyles.h3(color: AppColors.greenDark)),
+              Text('عدد الطلبة لكل مرشد في النطاق الحالي (إجمالي ${students.length})',
+                  style: AppTextStyles.h3(color: AppColors.greenDark)),
               const Spacer(),
               TextButton.icon(
                 onPressed: students.isEmpty
@@ -1075,21 +1089,42 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
                     : () => _exportExcel('كشف بيانات الطلبة والحالة الأكاديمية', _studentsExportHeaders(),
                         _studentsExportRows(students)),
                 icon: const Icon(Icons.table_chart_outlined, size: 18),
-                label: const Text('Excel'),
+                label: const Text('Excel (بالتفاصيل)'),
               ),
               TextButton.icon(
                 onPressed: students.isEmpty ? null : () => _exportPdf('كشف بيانات الطلبة والحالة الأكاديمية', students),
                 icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
-                label: const Text('PDF/طباعة'),
+                label: const Text('PDF/طباعة (بالتفاصيل)'),
               ),
             ],
           ),
           const SizedBox(height: 10),
-          _studentsTable(
-            students,
-            showDepartment: _deptFilter == _kAllDepartments,
-            showShatr: _shatrFilter == _kAllShatr,
-          ),
+          if (students.isEmpty)
+            const Center(child: Padding(padding: EdgeInsets.all(20), child: Text('لا توجد بيانات')))
+          else
+            Center(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: DataTable(
+                  headingRowColor: WidgetStateProperty.all(AppColors.green),
+                  headingTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  columns: const [
+                    DataColumn(label: Center(child: Text('المرشد'))),
+                    DataColumn(label: Center(child: Text('عدد الطلبة'))),
+                  ],
+                  rows: [
+                    for (var i = 0; i < advisorNames.length; i++)
+                      DataRow(
+                        color: WidgetStateProperty.all(i.isEven ? Colors.white : const Color(0xFFF7F5EF)),
+                        cells: [
+                          DataCell(Center(child: Text(advisorNames[i]))),
+                          DataCell(Center(child: Text('${byAdvisor[advisorNames[i]]}'))),
+                        ],
+                      ),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );
