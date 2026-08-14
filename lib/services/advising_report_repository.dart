@@ -4,12 +4,21 @@ import '../models/advising_case_record.dart';
 import 'course_schedule_repository.dart' show Shatr, ShatrLabel;
 
 enum AdvisingReportKind {
-  base, // بيانات الطلبة الأكاديمية (القاعدة + المعدل)
+  base, // بيانات الطلبة الأكاديمية (القاعدة + المعدل) - مجمَّدة حاليًا، بلا حذف
   basePrevious, // نسخة القاعدة قبل آخر رفعة - مصدر "النطاق السابق" للمعدل
-  assigned, // طلاب تابعين لمرشد
-  unassigned, // طلاب غير تابعين لمرشد
+  assigned, // طلاب تابعين لمرشد (قديم - غير مستخدَم من واجهة الرفع الحالية)
+  unassigned, // طلاب غير تابعين لمرشد (قديم - غير مستخدَم من واجهة الرفع الحالية)
   health, // الحالة الصحية للطلبة (ذوو الإعاقة/الحالات الخاصة)
-  mismatch, // طلاب على غير مرشدهم (تقرير الجامعة الرسمي - للمقارنة والتحقق)
+  mismatch, // طلاب على غير مرشدهم (قديم - غير مستخدَم من واجهة الرفع الحالية)
+
+  /// تقرير "طلاب تابعين لمرشد" الرسمي **غير مفلتَر** (كل كليات الجامعة، لا
+  /// كليتنا فقط) - المصدر الوحيد الحالي لتوزيع الطلبة على المرشدين، يُرفع
+  /// أسبوعيًا. يحل محل base/assigned/unassigned/mismatch مجتمعة لهذا الغرض.
+  allColleges,
+
+  /// نسخة [allColleges] قبل آخر رفعة - مصدر مقارنة "حركات الإرشاد" (تغيّر
+  /// مرشد الطالب بين رفعتين متتاليتين).
+  allCollegesPrevious,
 }
 
 extension on AdvisingReportKind {
@@ -20,6 +29,8 @@ extension on AdvisingReportKind {
         AdvisingReportKind.unassigned => 'advisingUnassignedReports',
         AdvisingReportKind.health => 'advisingHealthReports',
         AdvisingReportKind.mismatch => 'advisingMismatchReports',
+        AdvisingReportKind.allColleges => 'advisingAllCollegesReports',
+        AdvisingReportKind.allCollegesPrevious => 'advisingAllCollegesReportsPrevious',
       };
 }
 
@@ -106,5 +117,15 @@ class AdvisingReportRepository {
     final current = await load(shatr, kind: AdvisingReportKind.base);
     if (current.isEmpty) return;
     await save(shatr, current, kind: AdvisingReportKind.basePrevious);
+  }
+
+  /// نفس مبدأ [promoteBaseToPrevious] لكن لتقرير "كل الكليات" - يُستدعى قبل
+  /// استبدال الرفعة الحالية مباشرة، ليبقى لدينا دومًا نسخة الرفعة السابقة
+  /// كمصدر مقارنة لـ"تقرير حركات الإرشاد" (انظر
+  /// [AdvisingCaseAnalyzer.detectAdvisorMovements]).
+  static Future<void> promoteAllCollegesToPrevious(Shatr shatr) async {
+    final current = await load(shatr, kind: AdvisingReportKind.allColleges);
+    if (current.isEmpty) return;
+    await save(shatr, current, kind: AdvisingReportKind.allCollegesPrevious);
   }
 }

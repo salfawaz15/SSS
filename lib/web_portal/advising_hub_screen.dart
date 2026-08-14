@@ -1,14 +1,8 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-import '../models/advising_case_record.dart';
-import '../models/college_roster_member.dart';
 import '../services/advising_case_analyzer.dart';
-import '../services/advising_report_repository.dart';
-import '../services/college_roster_repository.dart';
-import '../services/course_schedule_repository.dart' show Shatr;
 import '../theme/app_theme.dart';
-import '../utils/name_display.dart';
 import 'admin_nav.dart';
 import 'advising_cases_admin_screen.dart';
 import 'advising_schedule_admin_screen.dart';
@@ -51,49 +45,17 @@ class _AdvisingHubScreenState extends State<AdvisingHubScreen> {
     _loadStats();
   }
 
-  /// يحسب إحصائيات الإرشاد من نفس بيانات ومنطق [AdvisingCasesAdminScreen]
-  /// (تقارير القاعدة/الربط/الحالة الصحية/تعارض القسم + منسوبي الكلية) بلا
-  /// إعادة تنفيذ أي منطق تحليل جديد - فقط استهلاك [AdvisingCaseAnalyzer.analyze]
-  /// الموجود فعلاً.
+  /// يحسب إحصائيات الإرشاد من نفس مصدر [AdvisingCasesAdminScreen] الحالي
+  /// (تقرير "كل الكليات" + ذوو الإعاقة + منسوبي الكلية) عبر
+  /// [AdvisingCaseAnalyzer.loadCollegeScopedStudents] المشترك - بلا إعادة
+  /// تنفيذ أي منطق تحميل/دمج جديد هنا.
   Future<void> _loadStats() async {
     try {
-      final results = await Future.wait([
-        AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.base),
-        AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.base),
-        AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.assigned),
-        AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.assigned),
-        AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.mismatch),
-        AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.mismatch),
-        AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.health),
-        AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.health),
-        AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.basePrevious),
-        AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.basePrevious),
-        CollegeRosterRepository.load(),
-      ]);
+      final loaded = await AdvisingCaseAnalyzer.loadCollegeScopedStudents();
       if (!mounted) return;
 
-      final roster = results[10] as List<CollegeRosterMember>;
-      final facultyByKey = {
-        for (final m in roster) AdvisingCaseAnalyzer.nameKey(displayName(m.name)): m,
-      };
-
-      List<AdvisingCaseRecord> mergedFor(int baseIdx, int assignedIdx, int mismatchIdx, int healthIdx, int previousIdx) {
-        final base = results[baseIdx] as List<AdvisingCaseRecord>;
-        final assigned = results[assignedIdx] as List<AdvisingCaseRecord>;
-        final mismatch = results[mismatchIdx] as List<AdvisingCaseRecord>;
-        final health = results[healthIdx] as List<AdvisingCaseRecord>;
-        final previous = results[previousIdx] as List<AdvisingCaseRecord>;
-        final withAdvisors = AdvisingCaseAnalyzer.mergeAdvisorLinks(base, assigned);
-        final withMismatchGaps = AdvisingCaseAnalyzer.mergeGapsFromMismatchReport(withAdvisors, mismatch);
-        final withHealth = AdvisingCaseAnalyzer.mergeHealthConditions(withMismatchGaps, health);
-        return AdvisingCaseAnalyzer.mergePreviousGpa(withHealth, previous);
-      }
-
-      final maleStudents = mergedFor(0, 2, 4, 6, 8);
-      final femaleStudents = mergedFor(1, 3, 5, 7, 9);
-
-      final maleAnalysis = AdvisingCaseAnalyzer.analyze(students: maleStudents, facultyByNameKey: facultyByKey);
-      final femaleAnalysis = AdvisingCaseAnalyzer.analyze(students: femaleStudents, facultyByNameKey: facultyByKey);
+      final maleAnalysis = AdvisingCaseAnalyzer.analyze(students: loaded.male, facultyByNameKey: loaded.facultyByKey);
+      final femaleAnalysis = AdvisingCaseAnalyzer.analyze(students: loaded.female, facultyByNameKey: loaded.facultyByKey);
 
       int advisorsWithStudents(AdvisingCaseAnalysis a) => a.quotaReport.length - a.advisorsWithNoStudents.length;
       int studentsWithAdvisor(AdvisingCaseAnalysis a) => a.studentsCorrectlyAssigned.length + a.studentsWithWrongDeptAdvisor.length;

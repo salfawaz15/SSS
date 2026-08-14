@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
 
-import '../data/academic_department_names.dart';
 import '../models/advising_case_record.dart';
 import '../models/college_roster_member.dart';
 import '../services/advising_case_analyzer.dart';
@@ -14,32 +13,25 @@ import '../services/advising_case_pdf_service.dart';
 import '../services/advising_report_parser_service.dart';
 import '../services/advising_report_pdf_parser_service.dart';
 import '../services/advising_report_repository.dart';
-import '../services/advisor_name_matching.dart';
-import '../services/college_roster_repository.dart';
 import '../services/web_download.dart';
 import '../services/course_schedule_repository.dart' show Shatr, ShatrLabel;
 import '../theme/app_theme.dart';
-import '../utils/name_display.dart';
 import 'admin_nav.dart';
 import 'portal_header.dart';
 
 const String _kAllShatr = 'كل الشطرين';
 const String _kAllDepartments = 'كل الأقسام';
 
-/// عمود "الشطر" في ملف منسوبي الكلية نص حر تكتبه العمادة (لا قيمة ثابتة
-/// مضمونة) - نتحقق من الكلمة المفتاحية بدل المطابقة التامة، والفحص عن
-/// "طالبات" أولًا لأنها تحتوي حروف "طلاب" لكن بترتيب مختلف فلا تلتبس بها.
-String? _shatrLabelFromFreeText(String raw) {
-  if (raw.contains('طالبات')) return Shatr.female.label;
-  if (raw.contains('طلاب')) return Shatr.male.label;
-  return null;
-}
-
-/// صفحة "متابعة حالات الإرشاد" - قلب مشروع وحدة الإرشاد الأكاديمي: تدمج ثلاثة
-/// تقارير من المنظومة الداخلية (بيانات الطلبة الأكاديمية + طلاب تابعين لمرشد
-/// + طلاب غير تابعين لمرشد) مع بيانات منسوبي الكلية الموجودة أصلاً بالتطبيق
-/// (عبء الإرشاد يُقرأ تلقائيًا من هناك، بلا أي إدخال يدوي جديد هنا) لاستنتاج
-/// كل حالات الإرشاد التي تحتاج متابعة أو تصحيح.
+/// صفحة "متابعة حالات الإرشاد" - قلب مشروع وحدة الإرشاد الأكاديمي.
+///
+/// أُعيدت هيكلتها (2026-08-14) بطلب سليمان صراحةً: "بيانات الطلبة الأكاديمية"
+/// (المعدل/الساعات) يصعب الحصول عليها حاليًا خلال فترة الحذف والإضافة، فجُمِّد
+/// رفعها من هذه الشاشة مؤقتًا (تبقى الخدمات/البيانات القديمة في المشروع بلا
+/// حذف، لحين توفّر الملف). الأولوية الآن: توزيع الطلبة على المرشدين، عبر ملف
+/// أسبوعي واحد "كل الكليات" (تقرير "طلاب تابعين لمرشد" الرسمي **غير مفلتَر**
+/// لكليتنا، يشمل الجامعة كاملة) + ملف ثانٍ لذوي الإعاقة - أيقونتا رفع فقط.
+/// انظر [AdvisingCaseAnalyzer.classifyAllColleges] للتصنيفات الأربعة الجديدة
+/// و[AdvisingCaseAnalyzer.detectAdvisorMovements] لتقرير "حركات الإرشاد".
 class AdvisingCasesAdminScreen extends StatefulWidget {
   const AdvisingCasesAdminScreen({super.key});
 
@@ -58,21 +50,20 @@ class _UploadSlot {
 class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _sectionTab = TabController(length: 2, vsync: this);
-  final _base = _UploadSlot();
-  final _assigned = _UploadSlot();
-  final _unassigned = _UploadSlot();
+  final _allColleges = _UploadSlot();
   final _health = _UploadSlot();
-  final _mismatch = _UploadSlot();
-  List<AdvisingCaseRecord> _basePreviousMale = [];
-  List<AdvisingCaseRecord> _basePreviousFemale = [];
+
+  // نتاج AdvisingCaseAnalyzer.loadCollegeScopedStudents - تُخزَّن هنا بعد كل
+  // تحميل بدل استدعائها مباشرة بالـbuild.
+  List<AdvisingCaseRecord> _scopedMale = [];
+  List<AdvisingCaseRecord> _scopedFemale = [];
+  List<AdvisingCaseRecord> _allCollegesMaleRaw = [];
+  List<AdvisingCaseRecord> _allCollegesFemaleRaw = [];
+  List<AdvisingCaseRecord> _allCollegesMalePrevious = [];
+  List<AdvisingCaseRecord> _allCollegesFemalePrevious = [];
 
   Map<String, CollegeRosterMember> _facultyByKey = {};
   List<String> _departments = [];
-
-  /// خريطة اسم المرشد المطبَّع ← شطره، من قائمة منسوبي الكلية - تُستخدم
-  /// لاستنتاج شطر الطالب تلقائيًا في تقارير ربط المرشد التي لا تحوي عمود
-  /// "الجنس" ولا عنوان صفحة يفرّق الشطرين (انظر توثيق [AdvisingReportParserService.parse]).
-  Map<String, String> _advisorShatrByName = {};
 
   bool _loading = true;
   bool _showAll = false;
@@ -98,67 +89,29 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
     setState(() => _loading = true);
     try {
       final results = await Future.wait([
-        AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.base),
-        AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.base),
-        AdvisingReportRepository.currentUploadDate(Shatr.male, kind: AdvisingReportKind.base),
-        AdvisingReportRepository.currentUploadDate(Shatr.female, kind: AdvisingReportKind.base),
-        AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.assigned),
-        AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.assigned),
-        AdvisingReportRepository.currentUploadDate(Shatr.male, kind: AdvisingReportKind.assigned),
-        AdvisingReportRepository.currentUploadDate(Shatr.female, kind: AdvisingReportKind.assigned),
-        AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.unassigned),
-        AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.unassigned),
-        AdvisingReportRepository.currentUploadDate(Shatr.male, kind: AdvisingReportKind.unassigned),
-        AdvisingReportRepository.currentUploadDate(Shatr.female, kind: AdvisingReportKind.unassigned),
-        AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.health),
-        AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.health),
+        AdvisingReportRepository.currentUploadDate(Shatr.male, kind: AdvisingReportKind.allColleges),
+        AdvisingReportRepository.currentUploadDate(Shatr.female, kind: AdvisingReportKind.allColleges),
         AdvisingReportRepository.currentUploadDate(Shatr.male, kind: AdvisingReportKind.health),
         AdvisingReportRepository.currentUploadDate(Shatr.female, kind: AdvisingReportKind.health),
-        AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.basePrevious),
-        AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.basePrevious),
-        AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.mismatch),
-        AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.mismatch),
-        AdvisingReportRepository.currentUploadDate(Shatr.male, kind: AdvisingReportKind.mismatch),
-        AdvisingReportRepository.currentUploadDate(Shatr.female, kind: AdvisingReportKind.mismatch),
-        CollegeRosterRepository.load(),
       ]);
+      final loaded = await AdvisingCaseAnalyzer.loadCollegeScopedStudents();
       if (!mounted) return;
-      final roster = results[22] as List<CollegeRosterMember>;
       setState(() {
-        _base.male = results[0] as List<AdvisingCaseRecord>;
-        _base.female = results[1] as List<AdvisingCaseRecord>;
-        _base.maleDate = results[2] as DateTime?;
-        _base.femaleDate = results[3] as DateTime?;
-        _assigned.male = results[4] as List<AdvisingCaseRecord>;
-        _assigned.female = results[5] as List<AdvisingCaseRecord>;
-        _assigned.maleDate = results[6] as DateTime?;
-        _assigned.femaleDate = results[7] as DateTime?;
-        _unassigned.male = results[8] as List<AdvisingCaseRecord>;
-        _unassigned.female = results[9] as List<AdvisingCaseRecord>;
-        _unassigned.maleDate = results[10] as DateTime?;
-        _unassigned.femaleDate = results[11] as DateTime?;
-        _health.male = results[12] as List<AdvisingCaseRecord>;
-        _health.female = results[13] as List<AdvisingCaseRecord>;
-        _health.maleDate = results[14] as DateTime?;
-        _health.femaleDate = results[15] as DateTime?;
-        _basePreviousMale = results[16] as List<AdvisingCaseRecord>;
-        _basePreviousFemale = results[17] as List<AdvisingCaseRecord>;
-        _mismatch.male = results[18] as List<AdvisingCaseRecord>;
-        _mismatch.female = results[19] as List<AdvisingCaseRecord>;
-        _mismatch.maleDate = results[20] as DateTime?;
-        _mismatch.femaleDate = results[21] as DateTime?;
-        _facultyByKey = {
-          for (final m in roster) AdvisingCaseAnalyzer.nameKey(displayName(m.name)): m,
-        };
-        _advisorShatrByName = {
-          for (final m in roster)
-            if (_shatrLabelFromFreeText(m.shatr) != null)
-              normalizeAdvisorNameForMatch(m.name): _shatrLabelFromFreeText(m.shatr)!,
-        };
+        _allColleges.maleDate = results[0];
+        _allColleges.femaleDate = results[1];
+        _health.maleDate = results[2];
+        _health.femaleDate = results[3];
+        _scopedMale = loaded.male;
+        _scopedFemale = loaded.female;
+        _allCollegesMaleRaw = loaded.allCollegesMaleRaw;
+        _allCollegesFemaleRaw = loaded.allCollegesFemaleRaw;
+        _allCollegesMalePrevious = loaded.allCollegesMalePrevious;
+        _allCollegesFemalePrevious = loaded.allCollegesFemalePrevious;
+        _facultyByKey = loaded.facultyByKey;
         // فلتر القسم هنا لفرز الطلاب حسب قسمهم العلمي فقط - لا معنى لظهور
         // جهات الإداريين (مكتب العميد، مركز الخدمات...) بينها، فالطلاب لا
         // ينتمون لأي منها أصلاً.
-        _departments = roster
+        _departments = _facultyByKey.values
             .where((m) => m.type == CollegeMemberType.faculty)
             .map((m) => m.department)
             .toSet()
@@ -175,175 +128,37 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
     }
   }
 
-  /// خاص بتقرير "طلاب تابعين لمرشد" عبر PDF فقط: سليمان بدأ يدمج بملف واحد
-  /// كلية إدارة الأعمال كاملة + كلية الحاسبات كاملة (2026-08-13، لضمان شمول
-  /// طلاب د. طارق حلمي المسندين إليه رغم كونه إداريًا بكلية أخرى - انظر
-  /// [[project_tariq_helmy_secondment]] بالذاكرة) بدل ملف مفلتَر لكليتنا فقط
-  /// كسابقًا. تُبقي فقط صفوف "التخصص" المطابقة لأحد الأقسام الخمسة المعروفة
-  /// لكليتنا (`isKnownBachelorDepartment`) - فطلاب كلية الحاسبات بغير تخصص
-  /// "نظم المعلومات الإدارية" (علوم حاسب، هندسة برمجيات...) يُستبعَدون تلقائيًا،
-  /// بينما طلاب طارق حلمي (تخصصهم "نظم المعلومات الإدارية" فعليًا) يمرّون
-  /// بلا أي علم استثناء يدوي. بلا أثر على ملف كليتنا وحدها (كل صفوفه أصلًا
-  /// من الأقسام الخمسة المعروفة).
-  List<AdvisingCaseRecord> _filterToOurCollegeDepartments(
-    List<AdvisingCaseRecord> records,
-    Map<String, int> exclusionCounts,
-  ) {
-    final kept = <AdvisingCaseRecord>[];
-    for (final r in records) {
-      if (isKnownBachelorDepartment(normalizeDepartmentName(r.department))) {
-        kept.add(r);
-      } else {
-        final rawDept = r.department.trim();
-        exclusionCounts.update(
-          'تخصص خارج كليتنا (${rawDept.isEmpty ? "فارغ" : rawDept})',
-          (v) => v + 1,
-          ifAbsent: () => 1,
-        );
-      }
-    }
-    return kept;
-  }
-
-  Future<void> _uploadForKind(
-    AdvisingReportKind kind,
-    _UploadSlot slot,
-    String reportLabel, {
-    bool requireDepartment = true,
-  }) async {
-    // "طلاب تابعين لمرشد" فقط يُقبَل PDF مباشرةً (التقرير الرسمي كما يخرج من
-    // المنظومة، دون تحويله يدويًا إلى Word أولًا كبقية التقارير).
-    final acceptsPdf = kind == AdvisingReportKind.assigned;
+  Future<void> _uploadAllColleges() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: acceptsPdf ? ['docx', 'pdf'] : ['docx'],
+      allowedExtensions: const ['pdf'],
       withData: true,
     );
     if (result == null || result.files.single.bytes == null) return;
     final Uint8List bytes = result.files.single.bytes!;
-    final isPdf = (result.files.single.extension ?? '').toLowerCase() == 'pdf';
 
-    setState(() => slot.uploading = true);
-
+    setState(() => _allColleges.uploading = true);
     try {
-      List<AdvisingCaseRecord> records;
-      List<String> unresolvedShatrRows = const [];
-      var exclusionCounts = <String, int>{};
-      try {
-        if (isPdf) {
-          final r = await AdvisingReportPdfParserService.parseInBackground(bytes, advisorShatrByName: _advisorShatrByName);
-          exclusionCounts = r.exclusionCounts;
-          records = kind == AdvisingReportKind.assigned
-              ? _filterToOurCollegeDepartments(r.records, exclusionCounts)
-              : r.records;
-          unresolvedShatrRows = r.unresolvedShatrRows;
-        } else {
-          exclusionCounts = <String, int>{};
-          final parsed = AdvisingReportParserService.parse(
-            bytes,
-            requireDepartment: requireDepartment,
-            advisorShatrByName: _advisorShatrByName,
-            isHealthReport: kind == AdvisingReportKind.health,
-            exclusionCounts: exclusionCounts,
-          );
-          records = kind == AdvisingReportKind.assigned
-              ? _filterToOurCollegeDepartments(parsed, exclusionCounts)
-              : parsed;
-        }
-      } on ShatrRequiredException {
-        // الملف لا يحوي عمود "الجنس" فلا يمكن فرزه تلقائيًا - يُطلَب من
-        // المستخدم تحديد الشطر الذي يمثّله الملف بالكامل مرة واحدة فقط.
-        if (!mounted) return;
-        final chosen = await showDialog<Shatr>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('تحديد الشطر'),
-            content: Text('ملف "$reportLabel" هذا لا يحتوي عمود "الجنس" فلا يمكن فرزه تلقائيًا - '
-                'حدّد الشطر الذي يمثّله هذا الملف بالكامل.'),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(context, Shatr.male), child: const Text('شطر الطلاب')),
-              TextButton(onPressed: () => Navigator.pop(context, Shatr.female), child: const Text('شطر الطالبات')),
-            ],
-          ),
-        );
-        if (chosen == null) return;
-        if (isPdf) {
-          final r = await AdvisingReportPdfParserService.parseInBackground(bytes, shatr: chosen);
-          exclusionCounts = r.exclusionCounts;
-          records = kind == AdvisingReportKind.assigned
-              ? _filterToOurCollegeDepartments(r.records, exclusionCounts)
-              : r.records;
-          unresolvedShatrRows = r.unresolvedShatrRows;
-        } else {
-          exclusionCounts = <String, int>{};
-          final parsed = AdvisingReportParserService.parse(
-            bytes,
-            shatr: chosen,
-            requireDepartment: requireDepartment,
-            isHealthReport: kind == AdvisingReportKind.health,
-            exclusionCounts: exclusionCounts,
-          );
-          records = kind == AdvisingReportKind.assigned
-              ? _filterToOurCollegeDepartments(parsed, exclusionCounts)
-              : parsed;
-        }
-      }
-
-      // بعض الصفوف قد يتعذّر تحديد شطرها مباشرةً (الحالة الشائعة: مرشد الصف
-      // غير موجود بملف منسوبي الكلية فلا تُعرَف صفته منه) - لم تُستبعَد، بل
-      // أُضيفت لكلا الشطرين وتُفلتَر تلقائيًا للشطر الصحيح عند الدمج ببيانات
-      // الطلبة (انظر التعليق بـadvising_report_parser_service.dart)، فتظهر
-      // تحت "طلاب على غير مرشدهم" لا "بلا مرشد". هذا التنبيه للعلم فقط.
-      if (unresolvedShatrRows.isNotEmpty) {
-        if (!mounted) return;
-        await showDialog<void>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: Text('${unresolvedShatrRows.length} حالة بمرشد غير موثَّق'),
-            content: SizedBox(
-              width: 480,
-              child: SingleChildScrollView(
-                child: Text(
-                  'الحالات التالية لها مرشد غير موجود بملف منسوبي الكلية (أو بلا اسم مرشد أصلًا) '
-                  'فتعذّر تحديد شطرها من اسم مرشدها - ستظهر تحت "طلاب على غير مرشدهم" '
-                  'حتى يُتحقَّق من مرشدها ويُضاف/يُصحَّح بملف منسوبي الكلية:\n\n'
-                  '${unresolvedShatrRows.join('\n')}',
-                ),
-              ),
-            ),
-            actions: [
-              FilledButton(onPressed: () => Navigator.pop(context), child: const Text('حسنًا')),
-            ],
-          ),
-        );
-      }
-
+      final r = await AdvisingReportPdfParserService.parseInBackground(bytes);
+      final records = r.records;
       final male = records.where((r) => r.shatr == Shatr.male.label).toList();
       final female = records.where((r) => r.shatr == Shatr.female.label).toList();
-
-      // ملف فارغ (بلا أي جدول) حالة طبيعية متوقَّعة لبعض التقارير (مثال:
-      // "مرشدين ليس لهم طلاب" حين لا توجد حالة واحدة) - لا يُرفض، فقط يُعتمد
-      // كقائمة فارغة بعد تأكيد صريح.
-      final totalExcluded = exclusionCounts.values.fold<int>(0, (a, b) => a + b);
-      final exclusionLines =
-          exclusionCounts.entries.map((e) => '- ${e.key}: ${e.value}').join('\n');
 
       if (!mounted) return;
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('تأكيد اعتماد التقرير'),
+          title: const Text('تأكيد اعتماد ملف "كل الكليات"'),
           content: SizedBox(
             width: 480,
             child: SingleChildScrollView(
               child: Text(
                 records.isEmpty
-                    ? 'الملف لا يحتوي أي بيانات (تقرير فارغ) - $reportLabel.\n\n'
-                        'سيُعتمد كقائمة فارغة لكلا الشطرين. هل تريد الاعتماد؟'
+                    ? 'الملف لا يحتوي أي بيانات. سيُعتمد كقائمة فارغة لكلا الشطرين. هل تريد الاعتماد؟'
                     : 'تم استخراج ${male.length} سجل لشطر الطلاب و${female.length} سجل لشطر الطالبات '
-                        '(${records.length} إجمالًا) - $reportLabel.\n\n'
-                        '${totalExcluded > 0 ? 'استُبعد $totalExcluded صف من الملف الخام قبل الاعتماد:\n$exclusionLines\n\n' : ''}'
-                        'سيستبدل هذا آخر نسخة معتمدة لكل شطر ظهر في الملف. هل تريد الاعتماد؟',
+                        '(${records.length} إجمالًا، كل كليات الجامعة).\n\n'
+                        'سيستبدل هذا آخر رفعة معتمدة، وتُحفَظ النسخة الحالية تلقائيًا كنسخة سابقة '
+                        'لبناء "تقرير حركات الإرشاد". هل تريد الاعتماد؟',
               ),
             ),
           ),
@@ -356,12 +171,8 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
       if (confirmed != true) return;
 
       Future<void> saveShatr(Shatr shatr, List<AdvisingCaseRecord> shatrRecords) async {
-        // قبل استبدال "بيانات الطلبة" (القاعدة) تحديدًا: احفظ النسخة الحالية
-        // كنسخة سابقة أولاً - مصدر "النطاق السابق" للمعدل في المقارنة القادمة.
-        if (kind == AdvisingReportKind.base) {
-          await AdvisingReportRepository.promoteBaseToPrevious(shatr);
-        }
-        await AdvisingReportRepository.save(shatr, shatrRecords, kind: kind);
+        await AdvisingReportRepository.promoteAllCollegesToPrevious(shatr);
+        await AdvisingReportRepository.save(shatr, shatrRecords, kind: AdvisingReportKind.allColleges);
       }
 
       if (records.isEmpty) {
@@ -375,7 +186,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
       await _loadAll();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تم اعتماد $reportLabel بنجاح (${records.length} سجل).')),
+        SnackBar(content: Text('تم اعتماد ملف "كل الكليات" بنجاح (${records.length} سجل).')),
       );
     } catch (e) {
       if (!mounted) return;
@@ -383,43 +194,113 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
         SnackBar(content: Text('تعذّر قراءة الملف: $e'), backgroundColor: Colors.red.shade700),
       );
     } finally {
-      if (mounted) setState(() => slot.uploading = false);
+      if (mounted) setState(() => _allColleges.uploading = false);
     }
   }
 
-  /// إجمالي حالات الإرشاد المحلَّلة عبر الشطرين وكل الأقسام (بلا أي فلتر
-  /// واجهة) - كل طالب نشط يقع في واحدة فقط من الحالات الثلاث الرئيسية (على
-  /// مرشده/بلا مرشد/على غير مرشده - انظر [AdvisingCaseAnalyzer.analyze])
-  /// بالإضافة للمفصولين المستبعَدين من التحليل الرئيسي، فمجموع الأربعة يجب
-  /// أن يطابق منطقيًا إجمالي "بيانات الطلبة الأكاديمية" المرفوعة إن كانت
-  /// شاملة فعلًا لكل طلاب الكلية - يُستخدَم كبطاقة تحقّق مقابل ذلك الرقم.
-  ({int male, int female}) get _totalAdvisingCasesAnalyzed {
-    final maleAnalysis = AdvisingCaseAnalyzer.analyze(students: _mergedFor(Shatr.male), facultyByNameKey: _facultyByKey);
-    final femaleAnalysis = AdvisingCaseAnalyzer.analyze(students: _mergedFor(Shatr.female), facultyByNameKey: _facultyByKey);
-    int sumOf(AdvisingCaseAnalysis a) =>
-        a.studentsCorrectlyAssigned.length + a.studentsWithoutAdvisor.length + a.studentsWithWrongDeptAdvisor.length + a.dismissedStudents.length;
-    return (male: sumOf(maleAnalysis), female: sumOf(femaleAnalysis));
-  }
+  Future<void> _uploadHealth() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['docx'],
+      withData: true,
+    );
+    if (result == null || result.files.single.bytes == null) return;
+    final Uint8List bytes = result.files.single.bytes!;
 
-  /// دمج بيانات ربط المرشد (طلاب تابعين لمرشد) والحالة الصحية مع القاعدة،
-  /// لكل شطر على حدة.
-  List<AdvisingCaseRecord> _mergedFor(Shatr shatr) {
-    final base = shatr == Shatr.male ? _base.male : _base.female;
-    final assigned = shatr == Shatr.male ? _assigned.male : _assigned.female;
-    final mismatch = shatr == Shatr.male ? _mismatch.male : _mismatch.female;
-    final health = shatr == Shatr.male ? _health.male : _health.female;
-    final previous = shatr == Shatr.male ? _basePreviousMale : _basePreviousFemale;
-    final withAdvisors = AdvisingCaseAnalyzer.mergeAdvisorLinks(base, assigned);
-    final withMismatchGaps = AdvisingCaseAnalyzer.mergeGapsFromMismatchReport(withAdvisors, mismatch);
-    final withHealth = AdvisingCaseAnalyzer.mergeHealthConditions(withMismatchGaps, health);
-    return AdvisingCaseAnalyzer.mergePreviousGpa(withHealth, previous);
+    setState(() => _health.uploading = true);
+    try {
+      List<AdvisingCaseRecord> records;
+      var exclusionCounts = <String, int>{};
+      try {
+        records = AdvisingReportParserService.parse(
+          bytes,
+          requireDepartment: false,
+          isHealthReport: true,
+          exclusionCounts: exclusionCounts,
+        );
+      } on ShatrRequiredException {
+        if (!mounted) return;
+        final chosen = await showDialog<Shatr>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('تحديد الشطر'),
+            content: const Text('ملف "طلبة ذوي الإعاقة" هذا لا يحتوي عمود "الجنس" فلا يمكن فرزه تلقائيًا - '
+                'حدّد الشطر الذي يمثّله هذا الملف بالكامل.'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context, Shatr.male), child: const Text('شطر الطلاب')),
+              TextButton(onPressed: () => Navigator.pop(context, Shatr.female), child: const Text('شطر الطالبات')),
+            ],
+          ),
+        );
+        if (chosen == null) return;
+        exclusionCounts = <String, int>{};
+        records = AdvisingReportParserService.parse(
+          bytes,
+          shatr: chosen,
+          requireDepartment: false,
+          isHealthReport: true,
+          exclusionCounts: exclusionCounts,
+        );
+      }
+
+      final male = records.where((r) => r.shatr == Shatr.male.label).toList();
+      final female = records.where((r) => r.shatr == Shatr.female.label).toList();
+
+      if (!mounted) return;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('تأكيد اعتماد ملف "طلبة ذوي الإعاقة"'),
+          content: SizedBox(
+            width: 480,
+            child: SingleChildScrollView(
+              child: Text(
+                records.isEmpty
+                    ? 'الملف لا يحتوي أي بيانات. سيُعتمد كقائمة فارغة لكلا الشطرين. هل تريد الاعتماد؟'
+                    : 'تم استخراج ${male.length} سجل لشطر الطلاب و${female.length} سجل لشطر الطالبات '
+                        '(${records.length} إجمالًا).\n\n'
+                        'سيستبدل هذا آخر نسخة معتمدة لكل شطر ظهر في الملف. هل تريد الاعتماد؟',
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('اعتماد')),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+
+      if (records.isEmpty) {
+        await AdvisingReportRepository.save(Shatr.male, const [], kind: AdvisingReportKind.health);
+        await AdvisingReportRepository.save(Shatr.female, const [], kind: AdvisingReportKind.health);
+      } else {
+        if (male.isNotEmpty) await AdvisingReportRepository.save(Shatr.male, male, kind: AdvisingReportKind.health);
+        if (female.isNotEmpty) {
+          await AdvisingReportRepository.save(Shatr.female, female, kind: AdvisingReportKind.health);
+        }
+      }
+
+      await _loadAll();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تم اعتماد ملف "طلبة ذوي الإعاقة" بنجاح (${records.length} سجل).')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذّر قراءة الملف: $e'), backgroundColor: Colors.red.shade700),
+      );
+    } finally {
+      if (mounted) setState(() => _health.uploading = false);
+    }
   }
 
   /// نطاق الطلاب الحالي بعد تطبيق فلترَي الشطر والقسم - مرتَّب حسب الشطر ثم
   /// القسم كما طُلب صراحةً.
   List<AdvisingCaseRecord> get _scopedStudents {
-    final male = _shatrFilter == Shatr.female.label ? const <AdvisingCaseRecord>[] : _mergedFor(Shatr.male);
-    final female = _shatrFilter == Shatr.male.label ? const <AdvisingCaseRecord>[] : _mergedFor(Shatr.female);
+    final male = _shatrFilter == Shatr.female.label ? const <AdvisingCaseRecord>[] : _scopedMale;
+    final female = _shatrFilter == Shatr.male.label ? const <AdvisingCaseRecord>[] : _scopedFemale;
     final search = _searchCtrl.text.trim();
     return [...male, ...female]
         .where((s) => _deptFilter == _kAllDepartments || s.department == _deptFilter)
@@ -457,16 +338,16 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
     return i == -1 ? _departmentDisplayOrder.length : i;
   }
 
-  /// التحليل يُبنى لكل شطر على حدة دومًا (حتى مع اختيار "كل الشطرين") لأن
-  /// معايير التوازن والمطابقة (منسوبو الكلية) مرتبطة بشطر واحد لكل عضو -
-  /// ثم تُدمَج النتائج مرتَّبة.
+  /// التحليل (نصاب/توازن/إعادة توزيع/مرشدون معفَون...) يُبنى من سجلات كليتنا
+  /// المفلتَرة (`_scopedMale`/`_scopedFemale`) - **بلا أي تغيير جوهري** بمنطق
+  /// [AdvisingCaseAnalyzer.analyze] نفسه، فقط تغيّر مصدر تغذيته.
   AdvisingCaseAnalysis get _analysis {
     final male = _shatrFilter == Shatr.female.label
         ? const <AdvisingCaseRecord>[]
-        : _mergedFor(Shatr.male).where((s) => _deptFilter == _kAllDepartments || s.department == _deptFilter).toList();
+        : _scopedMale.where((s) => _deptFilter == _kAllDepartments || s.department == _deptFilter).toList();
     final female = _shatrFilter == Shatr.male.label
         ? const <AdvisingCaseRecord>[]
-        : _mergedFor(Shatr.female).where((s) => _deptFilter == _kAllDepartments || s.department == _deptFilter).toList();
+        : _scopedFemale.where((s) => _deptFilter == _kAllDepartments || s.department == _deptFilter).toList();
 
     final a = AdvisingCaseAnalyzer.analyze(students: male, facultyByNameKey: _facultyByKey);
     final b = AdvisingCaseAnalyzer.analyze(students: female, facultyByNameKey: _facultyByKey);
@@ -518,25 +399,29 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
     );
   }
 
-  /// تسوية تقرير "طلاب على غير مرشدهم" الرسمي (كما وصل من الجامعة، دون
-  /// تصحيح) مقابل ملف منسوبي الكلية المصحَّح - يفصل الحالات الحقيقية عن
-  /// استثناءات الانتداب المعروفة (حنان/طارق وأمثالهما) تلقائيًا.
-  OfficialMismatchReconciliation get _officialMismatchReconciliation {
-    final male = _shatrFilter == Shatr.female.label ? const <AdvisingCaseRecord>[] : _mismatch.male;
-    final female = _shatrFilter == Shatr.male.label ? const <AdvisingCaseRecord>[] : _mismatch.female;
-    final baseMale = _shatrFilter == Shatr.female.label ? const <AdvisingCaseRecord>[] : _base.male;
-    final baseFemale = _shatrFilter == Shatr.male.label ? const <AdvisingCaseRecord>[] : _base.female;
-
-    final r = AdvisingCaseAnalyzer.reconcileOfficialMismatchReport(
-      officialMismatchReport: [...male, ...female],
-      base: [...baseMale, ...baseFemale],
+  /// التصنيفات الأربعة الجديدة (على مرشدهم/على غير مرشدهم/مرشد خارجي لطالب
+  /// داخلي/مرشد داخلي لطالب خارجي) - من السجلات الخام غير المفلتَرة (كل
+  /// الكليات) حتى تظهر حالات المرشدين من خارج كليتنا، بخلاف [_analysis] الذي
+  /// يُبنى من السجلات المفلتَرة لكليتنا فقط.
+  CollegeAdvisingClassification get _classification {
+    final male = _shatrFilter == Shatr.female.label ? const <AdvisingCaseRecord>[] : _allCollegesMaleRaw;
+    final female = _shatrFilter == Shatr.male.label ? const <AdvisingCaseRecord>[] : _allCollegesFemaleRaw;
+    return AdvisingCaseAnalyzer.classifyAllColleges(
+      allCollegeRecords: [...male, ...female],
       facultyByNameKey: _facultyByKey,
     );
-    bool inDept(MismatchedAdvisorCase c) => _deptFilter == _kAllDepartments || c.student.department == _deptFilter;
-    return OfficialMismatchReconciliation(
-      confirmed: r.confirmed.where(inDept).toList(),
-      excusedBySecondment: r.excusedBySecondment.where(inDept).toList(),
-    );
+  }
+
+  /// حركات الإرشاد (تغيّر مرشد طالب بين آخر رفعتين لملف "كل الكليات").
+  List<AdvisorMovement> get _advisorMovements {
+    final currentMale = _shatrFilter == Shatr.female.label ? const <AdvisingCaseRecord>[] : _allCollegesMaleRaw;
+    final currentFemale = _shatrFilter == Shatr.male.label ? const <AdvisingCaseRecord>[] : _allCollegesFemaleRaw;
+    final previousMale = _shatrFilter == Shatr.female.label ? const <AdvisingCaseRecord>[] : _allCollegesMalePrevious;
+    final previousFemale = _shatrFilter == Shatr.male.label ? const <AdvisingCaseRecord>[] : _allCollegesFemalePrevious;
+    return [
+      ...AdvisingCaseAnalyzer.detectAdvisorMovements(previous: previousMale, current: currentMale),
+      ...AdvisingCaseAnalyzer.detectAdvisorMovements(previous: previousFemale, current: currentFemale),
+    ];
   }
 
   @override
@@ -553,8 +438,6 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
                   child: Column(
                     children: [
                       _buildUploadBar(),
-                      const SizedBox(height: 16),
-                      _buildValidationSummary(),
                       const SizedBox(height: 16),
                       _buildFilterBar(),
                     ],
@@ -593,85 +476,6 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
     );
   }
 
-  /// بطاقتا تحقّق مقارَنة: عدد "بيانات الطلبة الأكاديمية" المرفوعة فعليًا
-  /// (بتفصيل طلاب/طالبات) مقابل إجمالي حالات الإرشاد المحلَّلة من نفس
-  /// البيانات (على مرشدهم + بلا مرشد + على غير مرشدهم + مفصولون) - يجب أن
-  /// يتطابق الرقمان منطقيًا إن كان الملف المرفوع شاملاً فعلًا لكل طلاب
-  /// الكلية؛ فرق بينهما مؤشر مباشر على نقص ببيانات المصدر لا خلل بالتحليل.
-  Widget _buildValidationSummary() {
-    final baseMale = _base.male.length;
-    final baseFemale = _base.female.length;
-    final baseTotal = baseMale + baseFemale;
-    final analyzed = _totalAdvisingCasesAnalyzed;
-    final analyzedTotal = analyzed.male + analyzed.female;
-    final matches = baseTotal == analyzedTotal;
-
-    Widget box({required String title, required int total, required String breakdown, required IconData icon}) {
-      return Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(AppRadius.md),
-          border: Border.all(color: AppColors.green.withValues(alpha: 0.25)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: AppColors.green, size: 28),
-            const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('$total', style: AppTextStyles.h2(color: AppColors.greenDark)),
-                Text(title, style: AppTextStyles.caption()),
-                Text(breakdown, style: AppTextStyles.caption()),
-              ],
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: matches ? Colors.white : Colors.orange.shade50,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: matches ? AppColors.green.withValues(alpha: 0.25) : Colors.orange.shade300),
-      ),
-      child: Wrap(
-        spacing: 16,
-        runSpacing: 12,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          box(
-            title: 'بيانات الطلبة الأكاديمية المرفوعة',
-            total: baseTotal,
-            breakdown: 'طلاب $baseMale - طالبات $baseFemale',
-            icon: Icons.upload_file_outlined,
-          ),
-          box(
-            title: 'إجمالي حالات الإرشاد المحلَّلة',
-            total: analyzedTotal,
-            breakdown: 'طلاب ${analyzed.male} - طالبات ${analyzed.female}',
-            icon: Icons.summarize_outlined,
-          ),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(matches ? Icons.check_circle : Icons.error_outline, color: matches ? AppColors.green : Colors.orange.shade800),
-              const SizedBox(width: 6),
-              Text(
-                matches ? 'الرقمان متطابقان' : 'فرق ${(baseTotal - analyzedTotal).abs()} - راجع اكتمال ملف "بيانات الطلبة الأكاديمية"',
-                style: TextStyle(fontWeight: FontWeight.bold, color: matches ? AppColors.greenDark : Colors.orange.shade800),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildUploadBar() {
     final fmt = DateFormat('yyyy/MM/dd');
     return Container(
@@ -686,58 +490,24 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
         child: Row(
           children: [
             _uploadTile(
-              label: 'بيانات الطلبة الأكاديمية',
-              uploading: _base.uploading,
-              maleDate: _base.maleDate,
-              femaleDate: _base.femaleDate,
+              label: 'رفع جميع الطلاب (كل الكليات)',
+              uploading: _allColleges.uploading,
+              maleDate: _allColleges.maleDate,
+              femaleDate: _allColleges.femaleDate,
               fmt: fmt,
-              onPressed: () => _uploadForKind(AdvisingReportKind.base, _base, 'بيانات الطلبة الأكاديمية'),
-              onClear: () => _clearKindBoth(AdvisingReportKind.base, 'بيانات الطلبة الأكاديمية'),
+              onPressed: _uploadAllColleges,
+              onClear: () => _clearKindBoth(AdvisingReportKind.allColleges, 'رفع جميع الطلاب (كل الكليات)'),
             ),
             const SizedBox(width: 10),
             _uploadTile(
-              label: 'طلاب تابعين لمرشد',
-              uploading: _assigned.uploading,
-              maleDate: _assigned.maleDate,
-              femaleDate: _assigned.femaleDate,
-              fmt: fmt,
-              color: AppColors.gold,
-              onPressed: () => _uploadForKind(AdvisingReportKind.assigned, _assigned, 'طلاب تابعين لمرشد', requireDepartment: false),
-              onClear: () => _clearKindBoth(AdvisingReportKind.assigned, 'طلاب تابعين لمرشد'),
-            ),
-            const SizedBox(width: 10),
-            _uploadTile(
-              label: 'طلاب غير تابعين لمرشد',
-              uploading: _unassigned.uploading,
-              maleDate: _unassigned.maleDate,
-              femaleDate: _unassigned.femaleDate,
-              fmt: fmt,
-              color: Colors.grey.shade600,
-              onPressed: () =>
-                  _uploadForKind(AdvisingReportKind.unassigned, _unassigned, 'طلاب غير تابعين لمرشد', requireDepartment: false),
-              onClear: () => _clearKindBoth(AdvisingReportKind.unassigned, 'طلاب غير تابعين لمرشد'),
-            ),
-            const SizedBox(width: 10),
-            _uploadTile(
-              label: 'الحالة الصحية للطلبة',
+              label: 'رفع طلبة ذوي الإعاقة',
               uploading: _health.uploading,
               maleDate: _health.maleDate,
               femaleDate: _health.femaleDate,
               fmt: fmt,
               color: Colors.purple.shade700,
-              onPressed: () => _uploadForKind(AdvisingReportKind.health, _health, 'الحالة الصحية للطلبة'),
-              onClear: () => _clearKindBoth(AdvisingReportKind.health, 'الحالة الصحية للطلبة'),
-            ),
-            const SizedBox(width: 10),
-            _uploadTile(
-              label: 'طلاب على غير مرشدهم',
-              uploading: _mismatch.uploading,
-              maleDate: _mismatch.maleDate,
-              femaleDate: _mismatch.femaleDate,
-              fmt: fmt,
-              color: Colors.brown.shade600,
-              onPressed: () => _uploadForKind(AdvisingReportKind.mismatch, _mismatch, 'طلاب على غير مرشدهم', requireDepartment: false),
-              onClear: () => _clearKindBoth(AdvisingReportKind.mismatch, 'طلاب على غير مرشدهم'),
+              onPressed: _uploadHealth,
+              onClear: () => _clearKindBoth(AdvisingReportKind.health, 'رفع طلبة ذوي الإعاقة'),
             ),
           ],
         ),
@@ -878,24 +648,37 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
   /// إعادة توزيع (مرشده السابق ورقم منسوبه، والمرشد المقترح ورقم منسوبه).
   Widget _buildFixSection() {
     final a = _analysis;
+    final c = _classification;
     final cards = [
       (
         'طلاب على مرشدهم',
         Icons.verified_user_outlined,
-        a.studentsCorrectlyAssigned.length,
-        () => _showStudentsDialog('طلاب على مرشدهم', a.studentsCorrectlyAssigned),
+        c.studentsCorrectlyAssigned.length,
+        () => _showStudentsDialog('طلاب على مرشدهم', c.studentsCorrectlyAssigned),
       ),
       (
         'طلاب بلا مرشد',
         Icons.person_off_outlined,
-        a.studentsWithoutAdvisor.length,
-        () => _showStudentsDialog('طلاب بلا مرشد', a.studentsWithoutAdvisor),
+        c.studentsWithoutAdvisor.length,
+        () => _showStudentsDialog('طلاب بلا مرشد', c.studentsWithoutAdvisor),
       ),
       (
         'طلاب على غير مرشدهم',
         Icons.compare_arrows_outlined,
-        a.studentsWithWrongDeptAdvisor.length,
-        () => _showMismatchDialog(a.studentsWithWrongDeptAdvisor),
+        c.studentsWithWrongDeptAdvisor.length,
+        () => _showMismatchDialog(c.studentsWithWrongDeptAdvisor, emptyMessage: 'لا يوجد طلبة على غير مرشدهم'),
+      ),
+      (
+        'مرشدون من خارج الكلية يرشدون طلبة من داخل الكلية',
+        Icons.arrow_circle_left_outlined,
+        c.externalAdvisorsWithOurStudents.length,
+        () => _showStudentsDialog('مرشدون من خارج الكلية يرشدون طلبة من داخل الكلية', c.externalAdvisorsWithOurStudents),
+      ),
+      (
+        'مرشدون من داخل الكلية يرشدون طلبة من خارج الكلية',
+        Icons.arrow_circle_right_outlined,
+        c.ourAdvisorsWithExternalStudents.length,
+        () => _showStudentsDialog('مرشدون من داخل الكلية يرشدون طلبة من خارج الكلية', c.ourAdvisorsWithExternalStudents),
       ),
       (
         'مرشدون معفَون ولديهم طلاب',
@@ -933,76 +716,41 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildCardsGrid(cards),
-        if (_showAll && (a.exemptAdvisorsNoIssue.isNotEmpty || _officialMismatchReconciliation.excusedBySecondment.isNotEmpty)) ...[
+        if (_showAll && a.exemptAdvisorsNoIssue.isNotEmpty) ...[
           const SizedBox(height: 12),
           Wrap(
             spacing: 12,
             runSpacing: 12,
             children: [
-              if (a.exemptAdvisorsNoIssue.isNotEmpty)
-                InkWell(
-                  onTap: () => _showAdvisorsDialog('مرشدون معفَون من الإرشاد (طبيعي، لا خلل)', a.exemptAdvisorsNoIssue, gray: true),
-                  borderRadius: BorderRadius.circular(AppRadius.md),
-                  child: Container(
-                    width: 260,
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(AppRadius.md),
-                      border: Border.all(color: Colors.grey.shade400),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.info_outline, color: Colors.grey.shade600, size: 26),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('${a.exemptAdvisorsNoIssue.length}',
-                                  style: AppTextStyles.h3(color: Colors.grey.shade700)),
-                              Text('مرشدون معفَون (طبيعي)', style: AppTextStyles.caption()),
-                            ],
-                          ),
+              InkWell(
+                onTap: () => _showAdvisorsDialog('مرشدون معفَون من الإرشاد (طبيعي، لا خلل)', a.exemptAdvisorsNoIssue, gray: true),
+                borderRadius: BorderRadius.circular(AppRadius.md),
+                child: Container(
+                  width: 260,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                    border: Border.all(color: Colors.grey.shade400),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.grey.shade600, size: 26),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('${a.exemptAdvisorsNoIssue.length}',
+                                style: AppTextStyles.h3(color: Colors.grey.shade700)),
+                            Text('مرشدون معفَون (طبيعي)', style: AppTextStyles.caption()),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
-              if (_officialMismatchReconciliation.excusedBySecondment.isNotEmpty)
-                InkWell(
-                  onTap: () => _showMismatchDialog(
-                    _officialMismatchReconciliation.excusedBySecondment,
-                    title: 'حالات انتداب مستثناة تلقائيًا (تُحتسب ضمن العبء الفعلي)',
-                    gray: true,
-                  ),
-                  borderRadius: BorderRadius.circular(AppRadius.md),
-                  child: Container(
-                    width: 300,
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(AppRadius.md),
-                      border: Border.all(color: Colors.grey.shade400),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.info_outline, color: Colors.grey.shade600, size: 26),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('${_officialMismatchReconciliation.excusedBySecondment.length}',
-                                  style: AppTextStyles.h3(color: Colors.grey.shade700)),
-                              Text('حالات انتداب مستثناة تلقائيًا (طبيعي)', style: AppTextStyles.caption()),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+              ),
             ],
           ),
         ],
@@ -1010,17 +758,19 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
     );
   }
 
-  /// قسم 2 من 2: "النتائج والإحصائيات" - أرقام النطاقات (المعدل)، إجمالي
-  /// ذوي الإعاقة، الطلاب المفصولون أكاديميًا، وكشف كل الطلاب في النطاق
-  /// الحالي - نتائج للاطلاع لا تحتاج إجراء تصحيح فوري.
+  /// قسم 2 من 2: "النتائج والإحصائيات" - حركات الإرشاد (تغيّر مرشد طالب بين
+  /// آخر رفعتين)، إجمالي ذوي الإعاقة، وكشف كل الطلاب في النطاق الحالي. بطاقتا
+  /// المعدل والمفصولين مُعطَّلتان مؤقتًا (تعتمدان على "بيانات الطلبة
+  /// الأكاديمية" المجمَّدة حاليًا - انظر توثيق الشاشة أعلاه).
   Widget _buildResultsSection() {
+    final movements = _advisorMovements;
     final a = _analysis;
     final cards = [
       (
-        'طلاب بحاجة متابعة (المعدل)',
-        Icons.warning_amber_outlined,
-        a.atRiskStudents.length,
-        () => _showStudentsDialog('طلاب بحاجة متابعة أكاديمية', a.atRiskStudents),
+        'حركات الإرشاد (تغيّر مرشد الطالب)',
+        Icons.sync_alt_outlined,
+        movements.length,
+        () => _showMovementsDialog(movements),
       ),
       (
         'إجمالي حالات ذوي الإعاقة (طلاب ${a.healthCaseStudents.where((s) => s.shatr == Shatr.male.label).length} / '
@@ -1028,12 +778,6 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
         Icons.accessible_outlined,
         a.healthCaseStudents.length,
         () => _showStudentsDialog('كل حالات ذوي الإعاقة', a.healthCaseStudents),
-      ),
-      (
-        'طلاب مفصولون أكاديميًا',
-        Icons.block_outlined,
-        a.dismissedStudents.length,
-        () => _showStudentsDialog('طلاب مفصولون أكاديميًا', a.dismissedStudents),
       ),
     ];
 
@@ -1044,6 +788,78 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
         const SizedBox(height: 16),
         _buildAtRiskSection(),
       ],
+    );
+  }
+
+  /// حوار "حركات الإرشاد": من المرشد ← إلى المرشد لكل طالب تغيّر مرشده بين
+  /// آخر رفعتين لملف "كل الكليات" - طلب سليمان صراحةً (2026-08-14).
+  void _showMovementsDialog(List<AdvisorMovement> movements) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('حركات الإرشاد (${movements.length})'),
+        content: SizedBox(
+          width: 720,
+          height: 480,
+          child: movements.isEmpty
+              ? Center(child: Text('لا توجد حركات إرشاد منذ آخر رفعتين', style: TextStyle(color: Colors.grey.shade600)))
+              : SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: DataTable(
+                    headingRowColor: WidgetStateProperty.all(AppColors.green),
+                    headingTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    columns: const [
+                      DataColumn(label: Text('الطالب')),
+                      DataColumn(label: Text('الرقم الجامعي')),
+                      DataColumn(label: Text('من مرشد')),
+                      DataColumn(label: Text('إلى مرشد')),
+                    ],
+                    rows: [
+                      for (var i = 0; i < movements.length; i++)
+                        DataRow(
+                          color: WidgetStateProperty.all(i.isEven ? Colors.white : const Color(0xFFF7F5EF)),
+                          cells: [
+                            DataCell(Text(movements[i].student.studentName)),
+                            DataCell(Text(movements[i].student.studentId)),
+                            DataCell(Text(movements[i].fromAdvisorNameRaw.isEmpty ? '—' : movements[i].fromAdvisorNameRaw)),
+                            DataCell(Text(movements[i].toAdvisorNameRaw.isEmpty ? '—' : movements[i].toAdvisorNameRaw)),
+                          ],
+                        ),
+                    ],
+                  ),
+                ),
+        ),
+        actions: [
+          TextButton.icon(
+            onPressed: movements.isEmpty
+                ? null
+                : () => _exportExcel(
+                      'حركات الإرشاد',
+                      ['الطالب', 'الرقم الجامعي', 'من مرشد', 'إلى مرشد'],
+                      movements
+                          .map((m) => [m.student.studentName, m.student.studentId, m.fromAdvisorNameRaw, m.toAdvisorNameRaw])
+                          .toList(),
+                    ),
+            icon: const Icon(Icons.table_chart_outlined),
+            label: const Text('Excel'),
+          ),
+          TextButton.icon(
+            onPressed: movements.isEmpty
+                ? null
+                : () async {
+                    final headers = ['الطالب', 'الرقم الجامعي', 'من مرشد', 'إلى مرشد'];
+                    final rows = movements
+                        .map((m) => [m.student.studentName, m.student.studentId, m.fromAdvisorNameRaw, m.toAdvisorNameRaw])
+                        .toList();
+                    final bytes = await AdvisingCasePdfService.build(title: 'حركات الإرشاد', headers: headers, rows: rows);
+                    await Printing.sharePdf(bytes: bytes, filename: 'حركات_الإرشاد.pdf');
+                  },
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+            label: const Text('PDF/طباعة'),
+          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق')),
+        ],
+      ),
     );
   }
 
@@ -1256,7 +1072,12 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
   /// مجمَّعة حسب المرشد (اسمه + رقم منسوبه المسجَّل في التقرير) بدل جدول
   /// مسطَّح - حتى يسهل معالجة كل مرشد على حدة (خصوصًا المرشدين غير الموجودين
   /// في ملف منسوبي الكلية، الذين يحتاجون تحققًا يدويًا من المنظومة الجامعية).
-  void _showMismatchDialog(List<MismatchedAdvisorCase> cases, {String title = 'طلاب على غير مرشدهم', bool gray = false}) {
+  void _showMismatchDialog(
+    List<MismatchedAdvisorCase> cases, {
+    String title = 'طلاب على غير مرشدهم',
+    bool gray = false,
+    String emptyMessage = 'لا توجد حالات',
+  }) {
     final groups = <String, List<MismatchedAdvisorCase>>{};
     for (final c in cases) {
       final key = c.student.advisorNameRaw.isEmpty ? '(بلا اسم مرشد)' : c.student.advisorNameRaw;
@@ -1271,7 +1092,9 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
         content: SizedBox(
           width: 760,
           height: 520,
-          child: ListView(
+          child: cases.isEmpty
+              ? Center(child: Text(emptyMessage, style: TextStyle(color: Colors.grey.shade600)))
+              : ListView(
             children: [
               for (final advisorName in advisorNames) ...[
                 Container(

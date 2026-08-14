@@ -23,7 +23,7 @@ class _AdvisorGroup {
 
 /// بحث عن مرشد أكاديمي واحد وعرض قائمة طلابه كاملة - بطلب سليمان صراحةً
 /// (2026-08-13): "لو أردت فلترة على اسم معين تظهر لي قائمة طلابه". يُبنى
-/// مباشرة على بيانات تقرير "طلاب تابعين لمرشد" (`AdvisingReportKind.assigned`)
+/// مباشرة على بيانات تقرير "كل الكليات" (`AdvisingReportKind.allColleges`)
 /// المرفوعة أصلاً عبر شاشة "متابعة حالات الإرشاد" - بلا أي قارئ أو تخزين
 /// جديد، فقط تجميع/فلترة على بيانات موجودة ومُختبَرة فعلاً.
 class AdvisorStudentsLookupScreen extends StatefulWidget {
@@ -56,8 +56,8 @@ class _AdvisorStudentsLookupScreenState extends State<AdvisorStudentsLookupScree
   Future<void> _load() async {
     try {
       final results = await Future.wait([
-        AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.assigned),
-        AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.assigned),
+        AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.allColleges),
+        AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.allColleges),
       ]);
       final all = [...results[0], ...results[1]];
 
@@ -131,7 +131,7 @@ class _AdvisorStudentsLookupScreenState extends State<AdvisorStudentsLookupScree
     if (_allGroups.isEmpty) {
       return Center(
         child: Text(
-          'لا توجد بيانات مرشدين بعد - ارفع تقرير "طلاب تابعين لمرشد" أولًا '
+          'لا توجد بيانات مرشدين بعد - ارفع ملف "كل الكليات" أولًا '
           'من شاشة "متابعة حالات الإرشاد".',
           textAlign: TextAlign.center,
           style: TextStyle(color: Colors.grey.shade600),

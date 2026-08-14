@@ -1,7 +1,11 @@
+import '../data/academic_department_names.dart';
 import '../data/advising_load_rules.dart';
 import '../models/advising_case_record.dart';
 import '../models/college_roster_member.dart';
 import '../utils/name_display.dart';
+import 'advising_report_repository.dart';
+import 'college_roster_repository.dart';
+import 'course_schedule_repository.dart' show Shatr;
 
 /// طالب بلا مرشد مسجَّل عليه في التقرير.
 typedef UnassignedStudent = AdvisingCaseRecord;
@@ -162,6 +166,58 @@ class AdvisingCaseAnalysis {
   });
 }
 
+/// طالب مسنَد لمرشد من خارج كليتنا (غير موجود بملف منسوبي الكلية) رغم أن
+/// تخصصه أحد الأقسام الخمسة المعروفة لكليتنا.
+typedef ExternalAdvisorCase = AdvisingCaseRecord;
+
+/// طالب من خارج كليتنا (تخصصه ليس أحد الأقسام الخمسة) مسنَد لمرشد من كليتنا.
+typedef ExternalStudentCase = AdvisingCaseRecord;
+
+/// نتيجة تصنيف تقرير "كل الكليات" غير المفلتَر (المصدر الوحيد الحالي لتوزيع
+/// الطلبة على المرشدين) مقابل ملف منسوبي الكلية - تفصل الحالات الأربع التي
+/// طلبها سليمان صراحةً (2026-08-14)، بديلاً عن الاعتماد على أربعة تقارير
+/// منفصلة (قاعدة/تابعين لمرشد/غير تابعين/على غير مرشدهم).
+class CollegeAdvisingClassification {
+  /// طلاب كليتنا مسنَدون لمرشد من كليتنا بنفس تخصصهم - الوضع السليم.
+  final List<AdvisingCaseRecord> studentsCorrectlyAssigned;
+
+  /// طلاب كليتنا مسنَدون لمرشد من كليتنا لكن بتخصص مختلف - فارغة تمامًا يعني
+  /// "لا يوجد طلبة على غير مرشدهم" (لا رسالة خطأ، حالة سليمة متوقَّعة).
+  final List<MismatchedAdvisorCase> studentsWithWrongDeptAdvisor;
+
+  /// طلاب كليتنا (تخصصهم أحد الأقسام الخمسة) لكن مرشدهم من خارج الكلية
+  /// (اسمه غير موجود بملف منسوبي الكلية).
+  final List<ExternalAdvisorCase> externalAdvisorsWithOurStudents;
+
+  /// طلاب من خارج كليتنا (تخصصهم ليس أحد الأقسام الخمسة) مسنَدون لمرشد من
+  /// كليتنا.
+  final List<ExternalStudentCase> ourAdvisorsWithExternalStudents;
+
+  /// طلاب كليتنا بلا مرشد إطلاقًا في هذا التقرير.
+  final List<AdvisingCaseRecord> studentsWithoutAdvisor;
+
+  const CollegeAdvisingClassification({
+    required this.studentsCorrectlyAssigned,
+    required this.studentsWithWrongDeptAdvisor,
+    required this.externalAdvisorsWithOurStudents,
+    required this.ourAdvisorsWithExternalStudents,
+    required this.studentsWithoutAdvisor,
+  });
+}
+
+/// حركة إرشاد واحدة: طالب تغيّر اسم مرشده بين رفعة "كل الكليات" السابقة
+/// والحالية.
+class AdvisorMovement {
+  final AdvisingCaseRecord student;
+  final String fromAdvisorNameRaw;
+  final String toAdvisorNameRaw;
+  const AdvisorMovement({
+    required this.student,
+    required this.fromAdvisorNameRaw,
+    required this.toAdvisorNameRaw,
+  });
+}
+
 class AdvisingCaseAnalyzer {
   /// توحيد اسم للمطابقة فقط - مُصدَّر ليُستخدم بنفس المنطق عند بناء خريطة
   /// منسوبي الكلية في الشاشة (facultyByNameKey) قبل تمريرها لـ [analyze].
@@ -215,6 +271,133 @@ class AdvisingCaseAnalyzer {
         advisorDepartment: m.advisorDepartment,
       );
     }).toList();
+  }
+
+  /// يصنّف سجلات تقرير "كل الكليات" غير المفلتَر (المصدر الوحيد الحالي لتوزيع
+  /// الطلبة على المرشدين) إلى الحالات الأربع + "بلا مرشد" - انظر توثيق
+  /// [CollegeAdvisingClassification]. المطابقة بقسم المرشد **المصحَّح فعليًا**
+  /// من ملف منسوبي الكلية (لا القسم الحرفي الرسمي) - فحالات الانتداب المعروفة
+  /// (طارق حلمي/حنان عامر/غراس أبو الشامات...) تُحسَب تلقائيًا ضمن قسمها
+  /// الفعلي المصحَّح بلا أي استثناء أسماء مكتوب هنا.
+  static CollegeAdvisingClassification classifyAllColleges({
+    required List<AdvisingCaseRecord> allCollegeRecords,
+    required Map<String, CollegeRosterMember> facultyByNameKey,
+  }) {
+    final correctlyAssigned = <AdvisingCaseRecord>[];
+    final wrongDept = <MismatchedAdvisorCase>[];
+    final externalAdvisors = <ExternalAdvisorCase>[];
+    final externalStudents = <ExternalStudentCase>[];
+    final withoutAdvisor = <AdvisingCaseRecord>[];
+
+    for (final r in allCollegeRecords) {
+      final studentInOurCollege = isKnownBachelorDepartment(normalizeDepartmentName(r.department));
+
+      if (!r.hasAdvisor) {
+        if (studentInOurCollege) withoutAdvisor.add(r);
+        continue;
+      }
+
+      final advisor = facultyByNameKey[_key(displayName(r.advisorNameRaw))];
+
+      if (advisor != null && studentInOurCollege) {
+        if (advisor.department == r.department) {
+          correctlyAssigned.add(r);
+        } else {
+          wrongDept.add(MismatchedAdvisorCase(student: r, advisor: advisor));
+        }
+      } else if (advisor == null && studentInOurCollege) {
+        externalAdvisors.add(r);
+      } else if (advisor != null && !studentInOurCollege) {
+        externalStudents.add(r);
+      }
+      // advisor == null && !studentInOurCollege: لا علاقة له بكليتنا إطلاقًا - يُتجاهَل.
+    }
+
+    return CollegeAdvisingClassification(
+      studentsCorrectlyAssigned: correctlyAssigned,
+      studentsWithWrongDeptAdvisor: wrongDept,
+      externalAdvisorsWithOurStudents: externalAdvisors,
+      ourAdvisorsWithExternalStudents: externalStudents,
+      studentsWithoutAdvisor: withoutAdvisor,
+    );
+  }
+
+  /// يقارن رفعة "كل الكليات" السابقة بالحالية (بمطابقة الرقم الجامعي) ويُخرج
+  /// كل طالب تغيّر اسم مرشده بينهما - "تقرير حركات الإرشاد" الذي طلبه سليمان
+  /// صراحةً (2026-08-14) ليعرف كل عملية نقل طالب من مرشد لآخر أولًا بأول.
+  static List<AdvisorMovement> detectAdvisorMovements({
+    required List<AdvisingCaseRecord> previous,
+    required List<AdvisingCaseRecord> current,
+  }) {
+    final previousById = {for (final p in previous) p.studentId: p};
+    final movements = <AdvisorMovement>[];
+    for (final c in current) {
+      final p = previousById[c.studentId];
+      if (p == null) continue;
+      final fromKey = _key(displayName(p.advisorNameRaw));
+      final toKey = _key(displayName(c.advisorNameRaw));
+      if (fromKey.isEmpty && toKey.isEmpty) continue;
+      if (fromKey != toKey) {
+        movements.add(AdvisorMovement(
+          student: c,
+          fromAdvisorNameRaw: p.advisorNameRaw,
+          toAdvisorNameRaw: c.advisorNameRaw,
+        ));
+      }
+    }
+    return movements;
+  }
+
+  /// تحميل مشترك لكل الشاشات الأربع المعتمِدة على تقرير "كل الكليات" (متابعة
+  /// حالات الإرشاد بلوحة الإدارة، لوحة الإرشاد، بحث عن مرشد، صفحة منسّق
+  /// القسم) - بدل تكرار نفس تسلسل التحميل/الفلترة في كل شاشة على حدة. يُرجع
+  /// لكل شطر: سجلات كليتنا فقط (مفلتَرة + مدموجة بذوي الإعاقة) بالإضافة
+  /// للسجلات الخام غير المفلتَرة (لازمة لتصنيفات المرشدين/الطلاب من خارج
+  /// الكلية) وخريطة منسوبي الكلية.
+  static Future<
+      ({
+        List<AdvisingCaseRecord> male,
+        List<AdvisingCaseRecord> female,
+        List<AdvisingCaseRecord> allCollegesMaleRaw,
+        List<AdvisingCaseRecord> allCollegesFemaleRaw,
+        List<AdvisingCaseRecord> allCollegesMalePrevious,
+        List<AdvisingCaseRecord> allCollegesFemalePrevious,
+        Map<String, CollegeRosterMember> facultyByKey,
+      })> loadCollegeScopedStudents() async {
+    final results = await Future.wait([
+      AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.allColleges),
+      AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.allColleges),
+      AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.allCollegesPrevious),
+      AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.allCollegesPrevious),
+      AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.health),
+      AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.health),
+      CollegeRosterRepository.load(),
+    ]);
+    final allMale = results[0] as List<AdvisingCaseRecord>;
+    final allFemale = results[1] as List<AdvisingCaseRecord>;
+    final previousMale = results[2] as List<AdvisingCaseRecord>;
+    final previousFemale = results[3] as List<AdvisingCaseRecord>;
+    final healthMale = results[4] as List<AdvisingCaseRecord>;
+    final healthFemale = results[5] as List<AdvisingCaseRecord>;
+    final roster = results[6] as List<CollegeRosterMember>;
+
+    final facultyByKey = {for (final m in roster) nameKey(displayName(m.name)): m};
+
+    List<AdvisingCaseRecord> scopeToCollege(List<AdvisingCaseRecord> all, List<AdvisingCaseRecord> health) {
+      final scoped =
+          all.where((r) => isKnownBachelorDepartment(normalizeDepartmentName(r.department))).toList();
+      return mergeHealthConditions(scoped, health);
+    }
+
+    return (
+      male: scopeToCollege(allMale, healthMale),
+      female: scopeToCollege(allFemale, healthFemale),
+      allCollegesMaleRaw: allMale,
+      allCollegesFemaleRaw: allFemale,
+      allCollegesMalePrevious: previousMale,
+      allCollegesFemalePrevious: previousFemale,
+      facultyByKey: facultyByKey,
+    );
   }
 
   /// يدمج تقرير "الحالة الصحية للطلبة" (نوع الحالة/الإعاقة) مع القائمة -
