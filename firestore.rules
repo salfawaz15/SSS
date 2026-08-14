@@ -264,6 +264,28 @@ service cloud.firestore {
       }
     }
 
+    // تقرير "كل الكليات" غير المفلتَر (طلاب تابعين لمرشد، الجامعة كاملة) -
+    // المصدر الوحيد الحالي لتوزيع الطلبة على المرشدين، ونسخته السابقة (مصدر
+    // "تقرير حركات الإرشاد") - نفس الصلاحيات ونمط chunks تمامًا مثل
+    // advisingReports. أُضيفتا 2026-08-14 بعد اكتشاف أن غيابهما هنا كان يمنع
+    // كل رفعة بصمت (permission-denied) رغم عمل الكود بشكل صحيح.
+    match /advisingAllCollegesReports/{shatrId} {
+      allow read, write: if isSuperAdmin();
+      allow read, write: if isUnitCoordinator();
+      match /chunks/{chunkId} {
+        allow read, write: if isSuperAdmin();
+        allow read, write: if isUnitCoordinator();
+      }
+    }
+    match /advisingAllCollegesReportsPrevious/{shatrId} {
+      allow read, write: if isSuperAdmin();
+      allow read, write: if isUnitCoordinator();
+      match /chunks/{chunkId} {
+        allow read, write: if isSuperAdmin();
+        allow read, write: if isUnitCoordinator();
+      }
+    }
+
     // بيانات منسوبي الكلية الرسمية (أعضاء هيئة تدريس وإداريين) - رفع وقراءة
     // مقصوران على حساب المدير العام (salfawaz) فقط، نفس مبدأ courseSchedules.
     match /collegeRoster/{docId} {

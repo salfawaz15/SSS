@@ -193,6 +193,11 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
         'جاري معالجة ملف "كل الكليات" - يغطي الجامعة كاملة فقد يستغرق عدة دقائق. '
         'الرجاء عدم إغلاق الصفحة أو تحديث المتصفح حتى الانتهاء.',
       );
+      // يضمن رسم النافذة فعليًا على الشاشة قبل بدء المعالجة الثقيلة - بدونه
+      // قد يُحجَب خيط المتصفح بمعالجة PDF قبل أن تُتاح فرصة رسم الإطار
+      // التالي (النافذة)، فتظهر تحذيرات "الصفحة لا تستجيب" المتكررة بلا أي
+      // مؤشر مرئي بالموقع نفسه - هذا بالضبط ما لاحظه سليمان (2026-08-14).
+      await WidgetsBinding.instance.endOfFrame;
       final AdvisingReportPdfParseResult r;
       try {
         r = await AdvisingReportPdfParserService.parseInBackground(bytes);
@@ -267,6 +272,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
     setState(() => _health.uploading = true);
     try {
       _showProcessingDialog('جاري معالجة الملف...');
+      await WidgetsBinding.instance.endOfFrame;
       List<AdvisingCaseRecord> records;
       var exclusionCounts = <String, int>{};
       try {
