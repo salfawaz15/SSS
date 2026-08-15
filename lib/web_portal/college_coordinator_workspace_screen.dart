@@ -36,6 +36,20 @@ class CollegeCoordinatorWorkspaceScreen extends StatelessWidget {
           .doc(uid)
           .get(),
       builder: (context, snapshot) {
+        // كان الفحص السابق `!snapshot.hasData` فقط - لا يميّز "لا يزال يحمّل"
+        // عن "فشل فعليًا" (مثال: PERMISSION_DENIED)، فيظهر دوّار تحميل بلا
+        // نهاية بدل رسالة خطأ واضحة تكشف السبب الحقيقي (سليمان 2026-08-16،
+        // لاحظه فعليًا بحساب منسّق كلية على الجوال بعد اختبار حي).
+        if (snapshot.hasError) {
+          return Scaffold(
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text('تعذّر تحميل بيانات الحساب: ${snapshot.error}', textAlign: TextAlign.center),
+              ),
+            ),
+          );
+        }
         if (!snapshot.hasData) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
