@@ -22,6 +22,7 @@ import '../services/course_schedule_repository.dart' show Shatr, ShatrLabel;
 import '../theme/app_theme.dart';
 import '../utils/name_display.dart';
 import 'admin_nav.dart';
+import 'portal_cards.dart';
 import 'portal_header.dart';
 
 const String _kAllShatr = 'كل الشطرين';
@@ -638,6 +639,8 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
                     children: [
                       _buildUploadBar(),
                       const SizedBox(height: 16),
+                      _buildStatsGrid(tabs),
+                      const SizedBox(height: 16),
                       _buildFilterBar(tabs),
                     ],
                   ),
@@ -803,6 +806,73 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       if (!mounted) return;
       _showErrorDialog('تعذّر التفريغ', '$e');
     }
+  }
+
+  /// شبكة إحصائيات (10 بطاقات: 5 أعلى + 5 أسفل) بنفس تصميم [PortalStatCard]
+  /// المستخدم بلوحة الإرشاد - بطلب سليمان صراحةً (2026-08-15): "نفس المكان
+  /// بنفس التصميم" لتصنيفات قائمة "عرض" التسعة الأولى (استُبعدت الأربعة
+  /// الأخيرة - تقرير نصاب الإرشاد/خطة التوزيع/الإحصائيات/الحركات - لأنها
+  /// تقارير كاملة لا عدد واحد). كل بطاقة قابلة للنقر فتُبدّل قسم العرض
+  /// مباشرة (نفس أثر اختيار نفس البند من قائمة "عرض" المنسدلة).
+  Widget _buildStatsGrid(List<(String, Widget Function())> tabs) {
+    final counts = <int>[
+      _classification.studentsCorrectlyAssigned.length +
+          _classification.studentsWithoutAdvisor.length +
+          _classification.studentsWithWrongDeptAdvisor.length +
+          _classification.externalAdvisorsWithOurStudents.length +
+          _classification.ourAdvisorsWithExternalStudents.length,
+      _classification.studentsCorrectlyAssigned.length,
+      _analysis.healthCasesWithAmin.length,
+      _classification.studentsWithoutAdvisor.length,
+      _classification.studentsWithWrongDeptAdvisor.length,
+      _analysis.healthCasesNotWithAmin.length,
+      _classification.externalAdvisorsWithOurStudents.length,
+      _classification.ourAdvisorsWithExternalStudents.length,
+      _analysis.exemptAdvisorsWithStudents.length,
+      _analysis.advisorsWithNoStudents.length,
+    ];
+    const icons = <IconData>[
+      Icons.groups_outlined,
+      Icons.school_outlined,
+      Icons.accessible_outlined,
+      Icons.person_search_outlined,
+      Icons.sync_problem_outlined,
+      Icons.accessible_forward_outlined,
+      Icons.login_outlined,
+      Icons.logout_outlined,
+      Icons.no_accounts_outlined,
+      Icons.person_off_outlined,
+    ];
+    final colors = <Color>[
+      AppColors.greenDark,
+      AppColors.green,
+      Colors.teal.shade700,
+      Colors.redAccent,
+      Colors.deepOrange,
+      Colors.purple.shade700,
+      AppColors.gold,
+      Colors.indigo,
+      Colors.blueGrey,
+      Colors.brown,
+    ];
+
+    final isNarrow = MediaQuery.of(context).size.width < 900;
+    return GridView.count(
+      crossAxisCount: isNarrow ? 2 : 5,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 10,
+      crossAxisSpacing: 10,
+      childAspectRatio: isNarrow ? 2.4 : 1.5,
+      children: [
+        for (var i = 0; i < 10; i++)
+          InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: () => setState(() => _sectionIndex = i),
+            child: PortalStatCard(icon: icons[i], value: '${counts[i]}', label: tabs[i].$1, accentColor: colors[i]),
+          ),
+      ],
+    );
   }
 
   /// شريط الفلترة (شطر/قسم/مرشد/بحث) - يظهر أعلى التبويبات الاثني عشر ويؤثر
