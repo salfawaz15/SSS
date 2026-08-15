@@ -56,8 +56,11 @@ class _StaffNumberLoginScreenState extends State<StaffNumberLoginScreen> {
         email: '$staffNumber@sss-advising-tu.internal',
         password: password,
       );
-      // لا حاجة للتنقّل يدويًا - PortalRoot يستمع لتغيّر حالة الدخول ويوجّه
-      // تلقائيًا حسب الدور.
+      // PortalRoot يعيد بناء نفسه تلقائيًا عند تغيّر حالة الدخول ويوجّه حسب
+      // الدور - لكن هذه الشاشة نفسها مدفوعة (Navigator.push) فوقه في نفس
+      // المكدّس، فتبقى ظاهرة تغطّيه ما لم نُرجِعها صراحةً (كانت هذه المشكلة
+      // الفعلية: "لا يدخلني على الصفحة" رغم نجاح الدخول - سليمان 2026-08-15).
+      if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
     } on FirebaseAuthException {
       setState(() => _error = 'رقم المنسوب أو كلمة المرور غير صحيحة');
     } catch (e) {
