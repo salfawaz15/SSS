@@ -1701,6 +1701,7 @@ class _OrgChartSection extends StatelessWidget {
                     icon: Icons.explore_outlined,
                     title: 'منسّقو المسارات النوعية',
                     child: Wrap(
+                      alignment: WrapAlignment.center,
                       spacing: 8,
                       runSpacing: 8,
                       children: trackCoords
