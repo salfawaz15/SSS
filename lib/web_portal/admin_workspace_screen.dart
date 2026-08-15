@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -174,97 +173,6 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
           const SnackBar(content: Text('تم تفريغ البيانات')),
         );
       }
-    }
-  }
-
-  /// أداة نشر تحديث تطبيق الجوال - جُرِّب أولاً استضافة ملف الـAPK على
-  /// Firebase Storage (يتطلب ترقية خطة الفوترة لـBlaze) ثم على Firebase
-  /// Hosting نفسه (رفض الخادم الملف صراحةً: "الملفات التنفيذية ممنوعة على
-  /// خطة Spark") - كلاهما مسدود بلا ترقية الخطة المدفوعة. الحل النهائي:
-  /// إصدار GitHub Release دائم باسم ثابت "app-latest" بمستودع المشروع
-  /// العام (`salfawaz15/SSS`) - رابط تنزيل مباشر مجاني بلا حدود، ويبقى نفس
-  /// الرابط بالضبط عبر كل الإصدارات القادمة (أمر `gh release upload
-  /// app-latest FILE --clobber` يستبدل الملف القديم بلا تغيير الرابط). سليمان
-  /// 2026-08-08/09: حل دائم بدل تكرار نفس العائق (رفع/تحديث يدوي معقّد) في
-  /// كل إصدار قادم. هذه الأداة فقط تكتب رقم/اسم الإصدار وملاحظاته في
-  /// `app_config/cba_advising` بـFirestore - الكتابة الفعلية تتطلب صلاحية
-  /// أدمن (`firestore.rules`)، وهذه الشاشة مفتوحة فقط لحساب الإدارة أصلاً.
-  static const String _kApkDownloadUrl =
-      'https://github.com/salfawaz15/SSS/releases/download/app-latest/app-advising-release.apk';
-
-  Future<void> _publishAppUpdateDialog(BuildContext context) async {
-    final codeCtrl = TextEditingController();
-    final nameCtrl = TextEditingController();
-    final notesCtrl = TextEditingController();
-
-    final doc = await FirebaseFirestore.instance.collection('app_config').doc('cba_advising').get();
-    final data = doc.data();
-    codeCtrl.text = (((data?['latest_version_code'] as num?)?.toInt() ?? 0) + 1).toString();
-    nameCtrl.text = data?['latest_version_name']?.toString() ?? '';
-
-    if (!context.mounted) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('نشر تحديث تطبيق الجوال'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'تأكد أنك رفعت ملف الـAPK الجديد على إصدار GitHub الثابت '
-              '"app-latest" بمستودع المشروع (gh release upload app-latest '
-              'FILE --clobber) قبل الحفظ هنا.',
-              style: TextStyle(fontSize: 12.5, color: Colors.grey),
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: codeCtrl,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'رقم الإصدار (build number)', border: OutlineInputBorder()),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: nameCtrl,
-              decoration: const InputDecoration(labelText: 'اسم الإصدار (مثال: 1.0.6)', border: OutlineInputBorder()),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: notesCtrl,
-              maxLines: 3,
-              decoration: const InputDecoration(labelText: 'ملاحظات الإصدار (اختياري)', border: OutlineInputBorder()),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('إلغاء')),
-          ElevatedButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('نشر')),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
-    final code = int.tryParse(codeCtrl.text.trim());
-    if (code == null || nameCtrl.text.trim().isEmpty) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('رقم الإصدار واسمه مطلوبان')),
-        );
-      }
-      return;
-    }
-
-    await FirebaseFirestore.instance.collection('app_config').doc('cba_advising').set({
-      'latest_version_code': code,
-      'latest_version_name': nameCtrl.text.trim(),
-      'apk_url': _kApkDownloadUrl,
-      'release_notes': notesCtrl.text.trim(),
-    }, SetOptions(merge: true));
-
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم نشر بيانات التحديث بنجاح')),
-      );
     }
   }
 
@@ -575,10 +483,6 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
                     MaterialPageRoute(builder: (_) => const ResetUserPasswordScreen()),
                   ),
                   child: const PortalMenuRow(icon: Icons.vpn_key_outlined, label: 'الحسابات وكلمات المرور'),
-                ),
-                PopupMenuItem(
-                  value: () => _publishAppUpdateDialog(context),
-                  child: const PortalMenuRow(icon: Icons.system_update_outlined, label: 'نشر تحديث تطبيق الجوال'),
                 ),
               ],
               const PopupMenuDivider(),
