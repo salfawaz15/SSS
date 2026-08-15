@@ -6,199 +6,181 @@
  * ودوره يُخزَّن كـ Custom Claim على حسابه (لا كمطابقة بريد حرفية بقواعد
  * الأمان كما كان سابقًا) - إضافية بحتة الآن، لا تلمس تسجيل الدخول الحالي.
  *
+ * أوامر (بدل القوائم التفاعلية - أوثق عند التشغيل الآلي/عبر سكربت):
+ *   node manage_staff_accounts.js list
+ *   node manage_staff_accounts.js create <staffNumber> <role> [--name="..."] [--shatr=male|female] [--department="..."] [--track=...]
+ *   node manage_staff_accounts.js update-role <staffNumber> <role> [--shatr=...] [--department=...] [--track=...]
+ *   node manage_staff_accounts.js reset-password <staffNumber> [newPassword]
+ *   node manage_staff_accounts.js delete <staffNumber> --confirm
+ *
  * البريد الداخلي لكل حساب: <رقم_المنسوب>@sss-advising-tu.internal
  * كلمة المرور المبدئية: رقم المنسوب نفسه (يُطلَب تغييرها إجباريًا بأول دخول
  * عبر علم mustChangePassword في وثيقة Firestore الخاصة بالحساب).
- *
- * Usage: node manage_staff_accounts.js
  */
 
-const readline = require('readline');
 const admin = require('firebase-admin');
 const { initAdmin, PROJECT_ID } = require('./firebase_admin_init');
 
 const DOMAIN = 'sss-advising-tu.internal';
 
-// الأدوار السبعة المعتمدة من الهيكل التنظيمي (2026-08-15) - أي دور جديد
+// الأدوار الثمانية المعتمدة من الهيكل التنظيمي (2026-08-15) - أي دور جديد
 // مستقبلًا (مثل مسار جديد) يُضاف كسطر واحد هنا فقط، بلا لمس قواعد الأمان.
 const ROLES = {
-  1: { code: 'super_admin', label: 'المدير العام (صلاحيات كاملة - سليمان فقط)' },
-  2: { code: 'admin', label: 'الإدارة الكاملة (رئيس/نائب الوحدة)' },
-  3: { code: 'ameen', label: 'أمين الوحدة (عرض فقط)' },
-  4: { code: 'secretary', label: 'سكرتير الوحدة (عرض فقط)' },
-  5: { code: 'unit_coordinator', label: 'منسّق الوحدة للشؤون الإدارية (رفع ملفات فقط)' },
-  6: { code: 'college_coordinator', label: 'منسّق الكلية للشؤون الأكاديمية (يحتاج شطر)' },
-  7: { code: 'dept_coordinator', label: 'منسّق قسم علمي (يحتاج قسم وشطر)' },
-  8: { code: 'track_coordinator', label: 'منسّق مسار نوعي (يحتاج اسم المسار)' },
+  super_admin: 'المدير العام (صلاحيات كاملة - سليمان فقط)',
+  admin: 'الإدارة الكاملة (رئيس/نائب الوحدة)',
+  ameen: 'أمين الوحدة (عرض فقط)',
+  secretary: 'سكرتير الوحدة (عرض فقط)',
+  unit_coordinator: 'منسّق الوحدة للشؤون الإدارية (رفع ملفات فقط)',
+  college_coordinator: 'منسّق الكلية للشؤون الأكاديمية (يحتاج --shatr)',
+  dept_coordinator: 'منسّق قسم علمي (يحتاج --department و --shatr)',
+  track_coordinator: 'منسّق مسار نوعي (يحتاج --track)',
 };
-
-const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-const ask = (q) => new Promise((resolve) => rl.question(q, resolve));
 
 function emailFor(staffNumber) {
   return `${staffNumber}@${DOMAIN}`;
 }
 
-async function chooseRole() {
-  console.log('\nRoles:');
-  for (const [k, v] of Object.entries(ROLES)) console.log(`  ${k}) ${v.label} [${v.code}]`);
-  const choice = (await ask('Role number: ')).trim();
-  const role = ROLES[choice];
-  if (!role) throw new Error('Invalid role choice.');
+function parseFlags(args) {
+  const flags = {};
+  for (const a of args) {
+    const m = a.match(/^--([a-zA-Z]+)=(.*)$/);
+    if (m) flags[m[1]] = m[2];
+    else if (a === '--confirm') flags.confirm = true;
+  }
+  return flags;
+}
 
-  const claims = { role: role.code };
-  if (role.code === 'college_coordinator' || role.code === 'dept_coordinator') {
-    claims.shatr = (await ask('Shatr (male/female): ')).trim();
+function claimsFromFlags(role, flags) {
+  if (!ROLES[role]) {
+    throw new Error(`Unknown role "${role}". Valid roles: ${Object.keys(ROLES).join(', ')}`);
   }
-  if (role.code === 'dept_coordinator') {
-    claims.department = (await ask('Department (e.g. الإدارة, المحاسبة...): ')).trim();
+  const claims = { role };
+  if (role === 'college_coordinator' || role === 'dept_coordinator') {
+    if (!flags.shatr) throw new Error('Role requires --shatr=male|female');
+    claims.shatr = flags.shatr;
   }
-  if (role.code === 'track_coordinator') {
-    claims.track = (await ask('Track code (e.g. academic_advising, student_care, data_quality, graduates, gifted): ')).trim();
+  if (role === 'dept_coordinator') {
+    if (!flags.department) throw new Error('Role requires --department="..."');
+    claims.department = flags.department;
+  }
+  if (role === 'track_coordinator') {
+    if (!flags.track) throw new Error('Role requires --track=...');
+    claims.track = flags.track;
   }
   return claims;
 }
 
-async function createAccount() {
-  const staffNumber = (await ask('Staff number (رقم المنسوب): ')).trim();
-  const name = (await ask('Full name (للعرض فقط): ')).trim();
-  if (!staffNumber) {
-    console.log('Staff number is required.\n');
-    return;
-  }
-  const claims = await chooseRole();
-  const email = emailFor(staffNumber);
-
-  const existing = await admin
-    .auth()
-    .getUserByEmail(email)
-    .catch(() => null);
-  if (existing) {
-    console.log(`Account already exists for staff number ${staffNumber}. Use "update role" or "reset password" instead.\n`);
-    return;
-  }
-
-  const user = await admin.auth().createUser({
-    email,
-    password: staffNumber,
-    displayName: name || undefined,
-  });
-  await admin.auth().setCustomUserClaims(user.uid, claims);
-  await admin.firestore().collection('portal_users').doc(user.uid).set({
-    staffNumber,
-    name,
-    email,
-    ...claims,
-    mustChangePassword: true,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-  });
-
-  console.log(`\nCreated. Staff number: ${staffNumber} | Temp password: ${staffNumber} | Role: ${claims.role}`);
-  console.log('Share the staff number + temp password with the person - they must change it on first login.\n');
-}
-
-async function updateRole() {
-  const staffNumber = (await ask('Staff number: ')).trim();
-  const email = emailFor(staffNumber);
-  const user = await admin.auth().getUserByEmail(email).catch(() => null);
-  if (!user) {
-    console.log('No account found for that staff number.\n');
-    return;
-  }
-  const claims = await chooseRole();
-  await admin.auth().setCustomUserClaims(user.uid, claims);
-  await admin.firestore().collection('portal_users').doc(user.uid).set(claims, { merge: true });
-  console.log(`Role updated for staff number ${staffNumber} -> ${claims.role}\n`);
-}
-
-async function resetPassword() {
-  const staffNumber = (await ask('Staff number: ')).trim();
-  const email = emailFor(staffNumber);
-  const user = await admin.auth().getUserByEmail(email).catch(() => null);
-  if (!user) {
-    console.log('No account found for that staff number.\n');
-    return;
-  }
-  const tempPassword = (await ask(`New temp password (press Enter for staff number "${staffNumber}"): `)).trim() || staffNumber;
-  await admin.auth().updateUser(user.uid, { password: tempPassword });
-  await admin.firestore().collection('portal_users').doc(user.uid).set({ mustChangePassword: true }, { merge: true });
-  console.log(`Password reset for staff number ${staffNumber} -> temp password: ${tempPassword} (must change on next login)\n`);
-}
-
-async function deleteAccount() {
-  const staffNumber = (await ask('Staff number to delete: ')).trim();
-  const email = emailFor(staffNumber);
-  const user = await admin.auth().getUserByEmail(email).catch(() => null);
-  if (!user) {
-    console.log('No account found for that staff number.\n');
-    return;
-  }
-  const confirm = (await ask(`Confirm PERMANENT deletion of staff number ${staffNumber}? Type "delete": `)).trim();
-  if (confirm !== 'delete') {
-    console.log('Cancelled.\n');
-    return;
-  }
-  await admin.auth().deleteUser(user.uid);
-  await admin.firestore().collection('portal_users').doc(user.uid).delete();
-  console.log(`Deleted staff number ${staffNumber}.\n`);
-}
-
 async function listAccounts() {
   const snapshot = await admin.firestore().collection('portal_users').get();
-  console.log(`\nTotal staff accounts: ${snapshot.size}\n`);
+  console.log(`Total staff accounts: ${snapshot.size}`);
   snapshot.forEach((doc) => {
     const d = doc.data();
     console.log(
       `- ${d.staffNumber}  ${d.name || ''}  role=${d.role}${d.department ? ' dept=' + d.department : ''}${d.shatr ? ' shatr=' + d.shatr : ''}${d.track ? ' track=' + d.track : ''}${d.mustChangePassword ? '  [must change password]' : ''}`
     );
   });
-  console.log('');
+}
+
+async function createAccount(staffNumber, role, flags) {
+  const claims = claimsFromFlags(role, flags);
+  const email = emailFor(staffNumber);
+
+  const existing = await admin.auth().getUserByEmail(email).catch(() => null);
+  if (existing) {
+    throw new Error(`Account already exists for staff number ${staffNumber}. Use update-role or reset-password instead.`);
+  }
+
+  const user = await admin.auth().createUser({ email, password: staffNumber, displayName: flags.name || undefined });
+  await admin.auth().setCustomUserClaims(user.uid, claims);
+  await admin.firestore().collection('portal_users').doc(user.uid).set({
+    staffNumber,
+    name: flags.name || '',
+    email,
+    ...claims,
+    mustChangePassword: true,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  console.log(`Created. Staff number: ${staffNumber} | Temp password: ${staffNumber} | Role: ${role}`);
+  console.log('Share the staff number + temp password with the person - they must change it on first login.');
+}
+
+async function updateRole(staffNumber, role, flags) {
+  const claims = claimsFromFlags(role, flags);
+  const email = emailFor(staffNumber);
+  const user = await admin.auth().getUserByEmail(email).catch(() => null);
+  if (!user) throw new Error('No account found for that staff number.');
+  await admin.auth().setCustomUserClaims(user.uid, claims);
+  await admin.firestore().collection('portal_users').doc(user.uid).set(claims, { merge: true });
+  console.log(`Role updated for staff number ${staffNumber} -> ${role}`);
+}
+
+async function resetPassword(staffNumber, newPassword) {
+  const email = emailFor(staffNumber);
+  const user = await admin.auth().getUserByEmail(email).catch(() => null);
+  if (!user) throw new Error('No account found for that staff number.');
+  const tempPassword = newPassword || staffNumber;
+  await admin.auth().updateUser(user.uid, { password: tempPassword });
+  await admin.firestore().collection('portal_users').doc(user.uid).set({ mustChangePassword: true }, { merge: true });
+  console.log(`Password reset for staff number ${staffNumber} -> temp password: ${tempPassword} (must change on next login)`);
+}
+
+async function deleteAccount(staffNumber, flags) {
+  if (!flags.confirm) throw new Error('Add --confirm to permanently delete this account.');
+  const email = emailFor(staffNumber);
+  const user = await admin.auth().getUserByEmail(email).catch(() => null);
+  if (!user) throw new Error('No account found for that staff number.');
+  await admin.auth().deleteUser(user.uid);
+  await admin.firestore().collection('portal_users').doc(user.uid).delete();
+  console.log(`Deleted staff number ${staffNumber}.`);
+}
+
+function printUsage() {
+  console.log('Usage:');
+  console.log('  node manage_staff_accounts.js list');
+  console.log('  node manage_staff_accounts.js create <staffNumber> <role> [--name="..."] [--shatr=male|female] [--department="..."] [--track=...]');
+  console.log('  node manage_staff_accounts.js update-role <staffNumber> <role> [--shatr=...] [--department=...] [--track=...]');
+  console.log('  node manage_staff_accounts.js reset-password <staffNumber> [newPassword]');
+  console.log('  node manage_staff_accounts.js delete <staffNumber> --confirm');
+  console.log('\nRoles:');
+  for (const [k, v] of Object.entries(ROLES)) console.log(`  ${k} - ${v}`);
 }
 
 async function main() {
-  initAdmin();
-  console.log(`Connected to project: ${PROJECT_ID}\n`);
-
-  let running = true;
-  while (running) {
-    console.log('1) List staff accounts');
-    console.log('2) Create staff account');
-    console.log('3) Update role');
-    console.log('4) Reset password');
-    console.log('5) Delete account');
-    console.log('0) Exit');
-    const choice = (await ask('Choice: ')).trim();
-    try {
-      switch (choice) {
-        case '1':
-          await listAccounts();
-          break;
-        case '2':
-          await createAccount();
-          break;
-        case '3':
-          await updateRole();
-          break;
-        case '4':
-          await resetPassword();
-          break;
-        case '5':
-          await deleteAccount();
-          break;
-        case '0':
-          running = false;
-          break;
-        default:
-          console.log('Invalid choice.\n');
-      }
-    } catch (err) {
-      console.log(`Error: ${err.message}\n`);
-    }
+  const [, , cmd, ...rest] = process.argv;
+  if (!cmd || cmd === '--help' || cmd === '-h') {
+    printUsage();
+    return;
   }
-  rl.close();
+
+  initAdmin();
+  console.log(`Connected to project: ${PROJECT_ID}`);
+
+  const flags = parseFlags(rest);
+  const positional = rest.filter((a) => !a.startsWith('--'));
+
+  switch (cmd) {
+    case 'list':
+      await listAccounts();
+      break;
+    case 'create':
+      await createAccount(positional[0], positional[1], flags);
+      break;
+    case 'update-role':
+      await updateRole(positional[0], positional[1], flags);
+      break;
+    case 'reset-password':
+      await resetPassword(positional[0], positional[1]);
+      break;
+    case 'delete':
+      await deleteAccount(positional[0], flags);
+      break;
+    default:
+      printUsage();
+  }
 }
 
 main().catch((err) => {
-  console.error('Fatal error:', err.message);
+  console.error('Error:', err.message);
   process.exit(1);
 });
