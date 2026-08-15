@@ -75,15 +75,48 @@ class ExcelProtectionService {
     }
     _addDropdowns(sheetXml, dropdowns, dataRowCount, headerRowCount);
 
+    // إزالة "شبح الرسم" الفارغ - حزمة `excel` تُصدر دومًا (لكل ملف تولّده،
+    // حتى بلا أي صورة/رسم فعلي): xl/drawings/drawing1.xml فارغ +
+    // xl/worksheets/_rels/sheet1.xml.rels يربطه بـsheet1.xml برقم rId1 +
+    // إدخال Content_Types لذلك الجزء - لكن sheet1.xml نفسه **لا يحتوي أبدًا**
+    // على عنصر `<drawing r:id="rId1"/>` الفعلي يستخدم تلك العلاقة. هذا تناقض
+    // حقيقي بين ملف العلاقات والمحتوى الفعلي يرفضه محلِّل إكسل الصارم لسطح
+    // المكتب (يظهر "وجدنا مشكلة في محتوى..." ويُصلِح الملف تلقائيًا، حاذفًا
+    // معه أحيانًا القوائم المنسدلة المُدرَجة يدويًا) بينما يتجاهله إكسل أونلاين/
+    // المتصفح بتساهل فيفتح الملف بلا مشكلة - بالضبط ما لاحظه سليمان صراحةً
+    // (2026-08-15) بنموذج توزيع فترات الإرشاد. تحقَّقتُ بتوليد ملف فعلي
+    // وفحص محتوى الأرشيف مباشرة قبل هذا الإصلاح لتأكيد التشخيص. الحذف هنا
+    // آمن دومًا حاليًا لأن [addLogoImage] (المسار الوحيد الذي يضيف رسمًا
+    // حقيقيًا) غير مستخدَم فعليًا بأي مكان بالمشروع.
+    const drawingStubPaths = {
+      'xl/drawings/drawing1.xml',
+      'xl/drawings/_rels/drawing1.xml.rels',
+      'xl/worksheets/_rels/sheet1.xml.rels',
+    };
+    final ctFile = archive.findFile('[Content_Types].xml');
+    XmlDocument? ctXml;
+    if (ctFile != null) {
+      ctXml = XmlDocument.parse(utf8.decode(ctFile.content as List<int>));
+      ctXml.rootElement.children
+          .whereType<XmlElement>()
+          .where((e) => e.name.local == 'Override' && e.getAttribute('PartName') == '/xl/drawings/drawing1.xml')
+          .toList()
+          .forEach((e) => e.parent?.children.remove(e));
+    }
+
     final newArchive = Archive();
     for (final file in archive.files) {
       if (!file.isFile) continue;
+      if (drawingStubPaths.contains(file.name)) continue;
 
       if (file.name == 'xl/styles.xml') {
         final bytes = utf8.encode(stylesXml.toXmlString());
         newArchive.addFile(ArchiveFile(file.name, bytes.length, bytes));
       } else if (file.name == 'xl/worksheets/sheet1.xml') {
         final bytes = utf8.encode(sheetXml.toXmlString());
+        newArchive.addFile(ArchiveFile(file.name, bytes.length, bytes));
+      } else if (file.name == '[Content_Types].xml' && ctXml != null) {
+        final bytes = utf8.encode(ctXml.toXmlString());
         newArchive.addFile(ArchiveFile(file.name, bytes.length, bytes));
       } else {
         final content = file.content as List<int>;

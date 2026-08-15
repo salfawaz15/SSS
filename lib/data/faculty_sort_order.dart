@@ -176,12 +176,15 @@ class FacultySortOrder {
 
   /// فهرس "غير متواجد فعليًا" (0 = معار .. الأدنى)، أو null لعضو متواجد.
   /// تعليمات صريحة: يظهرون أسفل القائمة بالكامل (حتى أسفل الأعضاء العاديين
-  /// بلا أي منصب)، بالترتيب: معار، فمجاز، فمبتعث.
+  /// بلا أي منصب)، بالترتيب: معار، فمجاز، فمبتعث، فمطوي القيد. "مطوي" أُضيفت
+  /// (2026-08-14) - كانت غائبة عن هذا الفحص فتُرتَّب حالات كبشرى جمال بكر
+  /// عمر بين الأعضاء المتواجدين فعليًا بدل أسفل القائمة معهم.
   static int? absenceTierIndex(CollegeRosterMember m) {
     final text = _normalizePosition(_combinedPositions(m));
     if (text.contains('معار')) return 0;
     if (text.contains('مجاز')) return 1;
     if (text.contains('مبتعث')) return 2;
+    if (text.contains('مطوي')) return 3;
     return null;
   }
 

@@ -4,6 +4,7 @@ import 'package:excel/excel.dart';
 
 import '../data/academic_department_names.dart';
 import '../models/college_roster_member.dart';
+import '../models/unit_committee_member.dart';
 
 /// يقرأ ملف بيانات منسوبي الكلية المعتمد من عمادة الكلية (ورقات "منسوبو
 /// الكلية"، "الإداريين"، و"المبتعثون") بالاعتماد على أسماء الأعمدة لا
@@ -45,13 +46,6 @@ class CollegeRosterParserService {
   /// الإرشاد حتى يُقارَن قسم الطالب بقسم مرشده بنفس الصيغة تمامًا).
   static String _normalizeDepartment(String raw) => normalizeDepartmentName(raw);
 
-  /// عضو "مطوي القيد" (توفي) يُستبعَد بالكامل من القائمة في كل الأوراق -
-  /// ليس مجرد إعفاء من الإرشاد/النصاب، بل حذف تام فلا يظهر في أي مكان
-  /// بالموقع. لا تُطبَّق هذه التصفية على "موقوف الراتب" (وضع صيفي مؤقت لأعضاء
-  /// متعاقدين غير سعوديين خارج البلد - ما زالوا على رأس العمل فعليًا ولا
-  /// يُستبعَدون من أي حساب).
-  static bool _isDeceased(String employeeStatus) => employeeStatus.contains('مطوي');
-
   static List<CollegeRosterMember> parse(Uint8List bytes) {
     final excel = Excel.decodeBytes(bytes);
     final members = <CollegeRosterMember>[];
@@ -64,7 +58,6 @@ class CollegeRosterParserService {
         final name = _cell(row, index, 'الاسم الكامل');
         if (name.isEmpty) continue;
         final employeeStatus = _cell(row, index, 'حالة الموظف');
-        if (_isDeceased(employeeStatus)) continue;
         members.add(CollegeRosterMember.fromRaw(
           type: CollegeMemberType.faculty,
           name: name,
@@ -101,7 +94,6 @@ class CollegeRosterParserService {
         final name = _cell(row, index, 'الاسم الكامل');
         if (name.isEmpty) continue;
         final employeeStatus = _cell(row, index, 'حالة الموظف');
-        if (_isDeceased(employeeStatus)) continue;
         members.add(CollegeRosterMember.fromRaw(
           type: CollegeMemberType.admin,
           name: name,
@@ -134,7 +126,6 @@ class CollegeRosterParserService {
         final name = _cell(row, index, 'اسم الموظف');
         if (name.isEmpty) continue;
         final employeeStatus = _cell(row, index, 'حالة الموظف');
-        if (_isDeceased(employeeStatus)) continue;
         members.add(CollegeRosterMember.fromRaw(
           type: CollegeMemberType.faculty,
           name: name,
@@ -159,6 +150,32 @@ class CollegeRosterParserService {
       }
     }
 
+    return members;
+  }
+
+  /// يقرأ ورقة "تشكيل الوحدة" (مستقلة تمامًا عن ورقتَي "منسوبو الكلية"/
+  /// "الإداريين" - لا تتأثر مناصب أي منسوب آخر بها) لتغذية صفحة "تواصل
+  /// معنا" وقسم "أعضاء الوحدة" في الموقع العام. قائمة فارغة إن لم توجد
+  /// الورقة (ملف بالقالب القديم لم يُضَف له بعد) - لا يكسر رفع باقي البيانات.
+  static List<UnitCommitteeMember> parseUnitCommittee(Uint8List bytes) {
+    final excel = Excel.decodeBytes(bytes);
+    final members = <UnitCommitteeMember>[];
+
+    final sheet = excel.tables['تشكيل الوحدة'];
+    if (sheet == null || sheet.maxRows <= 1) return members;
+
+    final index = _headerIndex(sheet.row(0));
+    for (var r = 1; r < sheet.maxRows; r++) {
+      final row = sheet.row(r);
+      final name = _cell(row, index, 'الاسم');
+      if (name.isEmpty) continue;
+      members.add(UnitCommitteeMember(
+        name: name,
+        department: _cell(row, index, 'القسم العلمي'),
+        role: _cell(row, index, 'العضوية'),
+        email: _cell(row, index, 'البريد الجامعي'),
+      ));
+    }
     return members;
   }
 }

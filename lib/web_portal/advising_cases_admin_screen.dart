@@ -69,12 +69,12 @@ class _UploadSlot {
   bool uploading = false;
 }
 
-class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
-    with SingleTickerProviderStateMixin {
-  // 12 تبويبًا (بدل تبويبين + بطاقات تفتح نوافذ) بطلب سليمان صراحةً
-  // (2026-08-14): كل تصنيف يصبح تبويبًا مستقلاً، والقائمة تظهر مضمَّنة تحته
-  // مباشرة، وفلاتر الشطر/القسم/المرشد/البحث أعلى التبويبات تؤثر عليها جميعًا.
-  late final TabController _sectionTab = TabController(length: 12, vsync: this);
+class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
+  // 12 قسمًا منطقيًا - كانت أشرطة تبويب أفقية (TabBar) تفيض عن عرض الشاشة
+  // بمظهر غير احترافي كما لاحظ سليمان صراحةً (2026-08-14)؛ استُبدلت بقائمة
+  // منسدلة واحدة ("عرض") توضع أول الفلاتر (قبل "الشطر") بنفس تصميم بقية
+  // فلاتر الشريط - أخف بصريًا وقابلة للتوسّع مستقبلاً بلا فيضان أفقي.
+  int _sectionIndex = 0;
   final _allColleges = _UploadSlot();
   final _health = _UploadSlot();
 
@@ -102,7 +102,6 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
   @override
   void dispose() {
     _searchCtrl.dispose();
-    _sectionTab.dispose();
     super.dispose();
   }
 
@@ -252,10 +251,19 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
           if (_shatrLabelFromFreeText(m.shatr) != null)
             normalizeAdvisorNameForMatch(m.name): _shatrLabelFromFreeText(m.shatr)!,
       };
+      // أسماء مرشدي كليتنا الحقيقيين (بلا فلترة نوع/قسم) - تُستخدم فقط
+      // لاستثناء عضو حقيقي بملفنا (كطارق حلمى) من استبعاد "كلية أخرى" حين لا
+      // يذكر سطر الكلية "إدارة الأعمال" لسبب إداري تاريخي - انظر التعليق
+      // المفصَّل بـ`_branchFromCollegeLabelRow` (2026-08-15).
+      final knownAdvisorNameKeys = {for (final m in roster) normalizeAdvisorNameForMatch(m.name)};
 
       final AdvisingReportPdfParseResult r;
       try {
-        r = await AdvisingReportPdfParserService.parseInBackground(bytes, advisorShatrByName: advisorShatrByName);
+        r = await AdvisingReportPdfParserService.parseInBackground(
+          bytes,
+          advisorShatrByName: advisorShatrByName,
+          knownAdvisorNameKeys: knownAdvisorNameKeys,
+        );
       } finally {
         _hideProcessingDialog();
       }
@@ -462,23 +470,22 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
     }
   }
 
-  /// أسماء المرشدين المرشَّحة لقائمة الفلترة - مقصورة على قسم [_deptFilter]
-  /// المختار حاليًا (بلا اعتماد على الشطر) كما طُلب صراحةً (2026-08-14):
-  /// "يُضاف اسم المرشد من خلال القسم". تُبنى من `advisorNameRaw` كما وردت
-  /// فعليًا بسجلات الطلاب (لا من ملف منسوبي الكلية) لضمان تطابق حرفي مع
-  /// المطابقة عبر [_advisorMatches] (قد يختلف شكل الاسم بين المصدرين قليلًا)،
-  /// لكن **مقصورة فقط على مرشدين موجودين فعليًا بملف منسوبي الكلية** - سليمان
-  /// لاحظ (2026-08-14) ظهور اسم "إيمان عبدالعزيز أحمد جان طاشكندي" رغم عدم
-  /// وجودها عضوة بالكلية إطلاقًا (مرشدة من خارج الكلية أُسنِد لها طالب من
-  /// قسمنا سهوًا بالمنظومة) - أسماء كهذه تبقى تظهر في تبويب "مرشد خارجي ←
-  /// طلابنا" المخصَّص لها، لكن لا تُقترَح كخيار بقائمة الفلترة العامة.
+  /// أسماء المرشدين المرشَّحة لقائمة الفلترة - **كل مرشد موجود فعليًا بقاعدة
+  /// البيانات (ملف "كل الكليات")، حتى لو كان من خارج كليتنا تمامًا** - بطلب
+  /// سليمان الصريح (2026-08-14): "خانة المرشد فيها بحث على أي مرشد موجود في
+  /// قاعدة البيانات حتى لو كان من خارج الكلية". كانت مقصورة سابقًا على من
+  /// يطابق اسمه عضوًا بملف منسوبي الكلية فقط، فتعذّر الفلترة على مرشدين
+  /// ظاهرين بتبويبي "مرشد خارجي ← طلابنا"/"مرشدنا ← طلاب خارجيون" تحديدًا
+  /// (هم بالتعريف من خارج ملف منسوبينا). تُبنى من السجلات الخام غير
+  /// المفلتَرة (`_allCollegesMaleRaw`/`_allCollegesFemaleRaw`) لا المفلتَرة
+  /// لكليتنا فقط، مع إبقاء ربطها بفلتر القسم/الشطر كسابقًا.
   List<String> get _advisorFilterOptions {
-    final male = _shatrFilter == Shatr.female.label ? const <AdvisingCaseRecord>[] : _scopedMale;
-    final female = _shatrFilter == Shatr.male.label ? const <AdvisingCaseRecord>[] : _scopedFemale;
+    final male = _shatrFilter == Shatr.female.label ? const <AdvisingCaseRecord>[] : _allCollegesMaleRaw;
+    final female = _shatrFilter == Shatr.male.label ? const <AdvisingCaseRecord>[] : _allCollegesFemaleRaw;
     final names = [...male, ...female]
         .where((s) => _deptFilter == _kAllDepartments || s.department == _deptFilter)
         .map((s) => s.advisorNameRaw.trim())
-        .where((n) => n.isNotEmpty && _facultyByKey.containsKey(AdvisingCaseAnalyzer.nameKey(displayName(n))))
+        .where((n) => n.isNotEmpty)
         .toSet()
         .toList()
       ..sort();
@@ -558,6 +565,10 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
         ..sort((x, y) => cmp(x.student.shatr, x.student.department, y.student.shatr, y.student.department)),
       healthCaseStudents: [...a.healthCaseStudents, ...b.healthCaseStudents]
         ..sort((x, y) => cmp(x.shatr, x.department, y.shatr, y.department)),
+      healthCasesWithAmin: [...a.healthCasesWithAmin, ...b.healthCasesWithAmin]
+        ..sort((x, y) => cmp(x.shatr, x.department, y.shatr, y.department)),
+      advisorStatistics: [...a.advisorStatistics, ...b.advisorStatistics]
+        ..sort((x, y) => cmp(x.shatr, x.department, y.shatr, y.department)),
     );
   }
 
@@ -568,26 +579,50 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
   CollegeAdvisingClassification get _classification {
     final male = _shatrFilter == Shatr.female.label ? const <AdvisingCaseRecord>[] : _allCollegesMaleRaw;
     final female = _shatrFilter == Shatr.male.label ? const <AdvisingCaseRecord>[] : _allCollegesFemaleRaw;
-    return AdvisingCaseAnalyzer.classifyAllColleges(
+    final c = AdvisingCaseAnalyzer.classifyAllColleges(
       allCollegeRecords: [...male, ...female],
       facultyByNameKey: _facultyByKey,
+    );
+
+    // ترتيب موحَّد حسب الشطر ثم اسم الطالب - كانت هذه القوائم الأربع (خلافًا
+    // لبقية جداول الشاشة) تُعرَض بترتيب الملف الخام بلا أي فرز، فيظهر الرقم
+    // الجامعي عشوائيًا كما رصد سليمان (2026-08-14).
+    int cmp(String shatrX, String nameX, String shatrY, String nameY) {
+      final s = _shatrOrder(shatrX).compareTo(_shatrOrder(shatrY));
+      return s != 0 ? s : nameX.compareTo(nameY);
+    }
+
+    return CollegeAdvisingClassification(
+      studentsCorrectlyAssigned: [...c.studentsCorrectlyAssigned]
+        ..sort((x, y) => cmp(x.shatr, x.studentName, y.shatr, y.studentName)),
+      studentsWithWrongDeptAdvisor: [...c.studentsWithWrongDeptAdvisor]
+        ..sort((x, y) => cmp(x.student.shatr, x.student.studentName, y.student.shatr, y.student.studentName)),
+      externalAdvisorsWithOurStudents: [...c.externalAdvisorsWithOurStudents]
+        ..sort((x, y) => cmp(x.shatr, x.studentName, y.shatr, y.studentName)),
+      ourAdvisorsWithExternalStudents: [...c.ourAdvisorsWithExternalStudents]
+        ..sort((x, y) => cmp(x.shatr, x.studentName, y.shatr, y.studentName)),
+      studentsWithoutAdvisor: [...c.studentsWithoutAdvisor]
+        ..sort((x, y) => cmp(x.shatr, x.studentName, y.shatr, y.studentName)),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    // ترتيب وتسميات التبويبات بالضبط كما حدَّدها سليمان صراحةً (2026-08-15).
     final tabs = <(String, Widget Function())>[
-      ('على مرشدهم', _tabCorrectlyAssigned),
-      ('بلا مرشد', _tabWithoutAdvisor),
-      ('على غير مرشدهم', _tabWrongAdvisor),
-      ('مرشد خارجي ← طلابنا', _tabExternalAdvisors),
-      ('مرشدنا ← طلاب خارجيون', _tabExternalStudents),
-      ('معفَون ولهم طلاب', _tabExemptWithStudents),
-      ('مرشدون بلا طلاب', _tabAdvisorsNoStudents),
-      ('تقرير النصاب', _tabQuota),
-      ('إعادة التوزيع', _tabTransfer),
-      ('حالات صحية غير موزَّعة', _tabHealthMismatch),
-      ('ذوو الإعاقة', _tabHealthCases),
+      ('الكل', _tabAllStudents),
+      ('طلبة تابعين لمرشد', _tabCorrectlyAssigned),
+      ('طلبة تابعين لمرشد – ذوي الإعاقة', _tabHealthCases),
+      ('طلبة بلا مرشد', _tabWithoutAdvisor),
+      ('طلبة على غير مرشدهم', _tabWrongAdvisor),
+      ('طلبة على غير مرشدهم – ذوي الإعاقة', _tabHealthMismatch),
+      ('مرشدون خارج الكلية ← طلابنا', _tabExternalAdvisors),
+      ('مرشدون داخل الكلية ← طلاب خارج الكلية', _tabExternalStudents),
+      ('مرشدون معفون ولهم نصاب', _tabExemptWithStudents),
+      ('مرشدون بلا نصاب', _tabAdvisorsNoStudents),
+      ('تقرير نصاب الإرشاد', _tabQuota),
+      ('خطة إعادة التوزيع العادل', _tabTransfer),
+      ('إحصائيات الإرشاد', _tabAdvisorStatistics),
       ('حركات الإرشاد', _tabMovements),
     ];
     return PortalScaffold(
@@ -603,34 +638,14 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
                     children: [
                       _buildUploadBar(),
                       const SizedBox(height: 16),
-                      _buildFilterBar(),
+                      _buildFilterBar(tabs),
                     ],
-                  ),
-                ),
-                Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(AppRadius.md),
-                    border: Border.all(color: AppColors.green.withValues(alpha: 0.25)),
-                  ),
-                  child: TabBar(
-                    controller: _sectionTab,
-                    isScrollable: true,
-                    labelColor: AppColors.green,
-                    unselectedLabelColor: Colors.grey.shade600,
-                    indicatorColor: AppColors.green,
-                    labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                    tabs: [for (final t in tabs) Tab(text: t.$1)],
                   ),
                 ),
                 Expanded(
-                  child: TabBarView(
-                    controller: _sectionTab,
-                    children: [
-                      for (final t in tabs)
-                        ListView(padding: const EdgeInsets.fromLTRB(16, 0, 16, 16), children: [t.$2()]),
-                    ],
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    children: [tabs[_sectionIndex].$2()],
                   ),
                 ),
               ],
@@ -755,15 +770,65 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
     }
   }
 
+  /// تفريغ سجل "حركات الإرشاد" التراكمي بالكامل - بطلب سليمان الصريح
+  /// (2026-08-15)، لم يكن له زر تفريغ أصلاً (خلافًا لبقية التقارير) لأنه سجل
+  /// مُشتَق تلقائيًا لا رفعة مباشرة، لكن يحتاجه أيضًا لتسهيل إعادة الاختبار.
+  Future<void> _clearMovements() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('تفريغ حركات الإرشاد'),
+        content: const Text(
+            'سيُحذَف كل سجل حركات الإرشاد التراكمي بالكامل (كل الرفعات منذ البداية). هل تريد المتابعة؟'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+            child: const Text('تفريغ'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await AdvisorMovementRepository.clear();
+      final movements = await AdvisorMovementRepository.loadAll();
+      if (!mounted) return;
+      setState(() => _movementsLog = movements);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تم تفريغ حركات الإرشاد بنجاح.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      _showErrorDialog('تعذّر التفريغ', '$e');
+    }
+  }
+
   /// شريط الفلترة (شطر/قسم/مرشد/بحث) - يظهر أعلى التبويبات الاثني عشر ويؤثر
   /// عليها جميعًا فورًا، كما طُلب صراحةً (2026-08-14). قائمة المرشد تُعاد
   /// بناؤها تلقائيًا (عبر `key`) كلما تغيّر القسم لأنها مقصورة عليه.
-  Widget _buildFilterBar() {
+  Widget _buildFilterBar(List<(String, Widget Function())> tabs) {
     return Wrap(
       spacing: 12,
       runSpacing: 10,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
+        SizedBox(
+          // وُسِّع من 260 إلى 420 - بطلب سليمان الصريح (2026-08-15): التسميات
+          // الجديدة أطول من السابقة (مثال: "مرشدون داخل الكلية ← طلاب خارج
+          // الكلية") وكانت تُقتَص بالعرض القديم.
+          width: 420,
+          child: DropdownMenu<int>(
+            label: const Text('عرض'),
+            width: 420,
+            initialSelection: _sectionIndex,
+            dropdownMenuEntries: [
+              for (var i = 0; i < tabs.length; i++) DropdownMenuEntry(value: i, label: tabs[i].$1),
+            ],
+            onSelected: (v) => setState(() => _sectionIndex = v ?? 0),
+          ),
+        ),
         SizedBox(
           width: 160,
           child: DropdownMenu<String>(
@@ -803,7 +868,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
             initialSelection: _advisorFilter,
             dropdownMenuEntries: [
               const DropdownMenuEntry(value: _kAllAdvisors, label: _kAllAdvisors),
-              ..._advisorFilterOptions.map((a) => DropdownMenuEntry(value: a, label: a)),
+              ..._advisorFilterOptions.map((a) => DropdownMenuEntry(value: a, label: displayName(a))),
             ],
             onSelected: (v) => setState(() => _advisorFilter = v ?? _kAllAdvisors),
           ),
@@ -813,7 +878,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
           child: TextField(
             controller: _searchCtrl,
             decoration: const InputDecoration(
-              labelText: 'بحث باسم أو رقم الطالب',
+              labelText: 'بحث باسم/رقم الطالب أو المرشد',
               prefixIcon: Icon(Icons.search),
               border: OutlineInputBorder(),
               isDense: true,
@@ -833,9 +898,29 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
       _advisorFilter == _kAllAdvisors ||
       AdvisingCaseAnalyzer.nameKey(advisorName) == AdvisingCaseAnalyzer.nameKey(_advisorFilter);
 
-  bool _matchesSearch(String name, String id) {
-    final q = _searchCtrl.text.trim();
-    return q.isEmpty || name.contains(q) || id.contains(q);
+  /// رقم منسوب المرشد من ملف منسوبي الكلية عبر اسمه - يُستخدم فقط لتوسيع
+  /// خانة البحث لتشمل رقم المرشد أيضًا (لا اسمه فقط)، لأنه غير مخزَّن مباشرة
+  /// على سجل الطالب نفسه.
+  String _staffNumberFor(String advisorName) =>
+      _facultyByKey[AdvisingCaseAnalyzer.nameKey(advisorName)]?.staffNumber ?? '';
+
+  /// خانة البحث الموحَّدة - بطلب سليمان الصريح (2026-08-14): يجب أن تشمل
+  /// المرشدين وأرقامهم، وكذلك الطلبة وأرقامهم، معًا، بغض النظر عن كون
+  /// التبويب الحالي يعرض طلابًا أم مرشدين.
+  /// توحيد صور الهمزة/التاء المربوطة قبل المقارنة - وإلا يفشل البحث بصمت لو
+  /// كُتب الاستعلام بصورة مختلفة عن الصورة المخزَّنة لنفس الاسم (مثال: "احمد"
+  /// المكتوبة بلا همزة لا تطابق "أحمد" المخزَّنة بها) - لاحظه سليمان صراحةً
+  /// (2026-08-15): "لا أستطيع البحث باسم المرشد".
+  static String _normalizeForSearch(String s) => s.replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ة', 'ه');
+
+  bool _matchesSearch(String name, String id, {String advisorName = '', String advisorId = ''}) {
+    final q = _normalizeForSearch(_searchCtrl.text.trim());
+    if (q.isEmpty) return true;
+    return _normalizeForSearch(name).contains(q) ||
+        id.contains(q) ||
+        _normalizeForSearch(advisorName).contains(q) ||
+        advisorId.contains(q) ||
+        (advisorName.isNotEmpty && _staffNumberFor(advisorName).contains(q));
   }
 
   // ------------------------------- 12 تبويبًا -------------------------------
@@ -843,15 +928,69 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
   // لـ[_buildPanel] المشتركة (عنوان + عدّاد + تصدير Excel/PDF + جدول). الشطر
   // مُطبَّق مسبقًا عند بناء `_classification`/`_analysis`/`_movementsLog`.
 
+  /// "الكل" - كل طلاب التصنيفات الأربعة + بلا مرشد مجتمعين بجدول واحد مع
+  /// عمود "الوضع" يوضّح تصنيف كل طالب - بطلب سليمان الصريح (2026-08-15):
+  /// خيار يعرض كل الطلاب بغض النظر عن وضعهم بدل التنقّل بين التبويبات.
+  Widget _tabAllStudents() {
+    final rows = <List<String>>[];
+    for (final s in _classification.studentsCorrectlyAssigned) {
+      if (_deptMatches(s.department) &&
+          _advisorMatches(s.advisorNameRaw) &&
+          _matchesSearch(s.studentName, s.studentId, advisorName: s.advisorNameRaw)) {
+        rows.add([s.studentName, s.studentId, s.department, s.shatr, displayName(s.advisorNameRaw).ifEmptyDash(), 'على مرشدهم']);
+      }
+    }
+    for (final s in _classification.studentsWithoutAdvisor) {
+      if (_deptMatches(s.department) && _advisorMatches(s.advisorNameRaw) && _matchesSearch(s.studentName, s.studentId)) {
+        rows.add([s.studentName, s.studentId, s.department, s.shatr, '—', 'بلا مرشد']);
+      }
+    }
+    for (final c in _classification.studentsWithWrongDeptAdvisor) {
+      if (_deptMatches(c.student.department) &&
+          _advisorMatches(c.student.advisorNameRaw) &&
+          _matchesSearch(c.student.studentName, c.student.studentId, advisorName: c.student.advisorNameRaw)) {
+        rows.add([
+          c.student.studentName,
+          c.student.studentId,
+          c.student.department,
+          c.student.shatr,
+          displayName(c.student.advisorNameRaw).ifEmptyDash(),
+          'على غير مرشدهم',
+        ]);
+      }
+    }
+    for (final s in _classification.externalAdvisorsWithOurStudents) {
+      if (_deptMatches(s.department) &&
+          _advisorMatches(s.advisorNameRaw) &&
+          _matchesSearch(s.studentName, s.studentId, advisorName: s.advisorNameRaw)) {
+        rows.add([s.studentName, s.studentId, s.department, s.shatr, displayName(s.advisorNameRaw).ifEmptyDash(), 'مرشد خارجي ← طلابنا']);
+      }
+    }
+    for (final s in _classification.ourAdvisorsWithExternalStudents) {
+      if (_deptMatches(s.department) &&
+          _advisorMatches(s.advisorNameRaw) &&
+          _matchesSearch(s.studentName, s.studentId, advisorName: s.advisorNameRaw)) {
+        rows.add([s.studentName, s.studentId, s.department, s.shatr, displayName(s.advisorNameRaw).ifEmptyDash(), 'مرشدنا ← طلاب خارجيون']);
+      }
+    }
+    return _buildPanel(
+      title: 'كل الطلاب (بغض النظر عن وضعهم)',
+      headers: const ['الاسم', 'الرقم الجامعي', 'القسم', 'الشطر', 'المرشد', 'الوضع'],
+      rows: rows,
+    );
+  }
+
   Widget _tabCorrectlyAssigned() {
     final list = _classification.studentsCorrectlyAssigned
-        .where((s) => _deptMatches(s.department) && _advisorMatches(s.advisorNameRaw) && _matchesSearch(s.studentName, s.studentId))
+        .where((s) => _deptMatches(s.department) &&
+            _advisorMatches(s.advisorNameRaw) &&
+            _matchesSearch(s.studentName, s.studentId, advisorName: s.advisorNameRaw))
         .toList();
     return _buildPanel(
       title: 'طلاب على مرشدهم',
       headers: const ['الاسم', 'الرقم الجامعي', 'القسم', 'الشطر', 'المرشد'],
       rows: [
-        for (final s in list) [s.studentName, s.studentId, s.department, s.shatr, s.advisorNameRaw.ifEmptyDash()],
+        for (final s in list) [s.studentName, s.studentId, s.department, s.shatr, displayName(s.advisorNameRaw).ifEmptyDash()],
       ],
     );
   }
@@ -872,7 +1011,8 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
         .where((c) =>
             _deptMatches(c.student.department) &&
             _advisorMatches(c.student.advisorNameRaw) &&
-            _matchesSearch(c.student.studentName, c.student.studentId))
+            _matchesSearch(c.student.studentName, c.student.studentId,
+                advisorName: c.student.advisorNameRaw))
         .toList();
     return _buildPanel(
       title: 'طلاب على غير مرشدهم',
@@ -884,7 +1024,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
             c.student.studentId,
             c.student.department,
             c.student.shatr,
-            c.student.advisorNameRaw.ifEmptyDash(),
+            displayName(c.student.advisorNameRaw).ifEmptyDash(),
             c.advisor?.department ?? 'غير موجود بملف منسوبي الكلية',
           ],
       ],
@@ -894,100 +1034,136 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
 
   Widget _tabExternalAdvisors() {
     final list = _classification.externalAdvisorsWithOurStudents
-        .where((s) => _deptMatches(s.department) && _advisorMatches(s.advisorNameRaw) && _matchesSearch(s.studentName, s.studentId))
+        .where((s) => _deptMatches(s.department) &&
+            _advisorMatches(s.advisorNameRaw) &&
+            _matchesSearch(s.studentName, s.studentId, advisorName: s.advisorNameRaw, advisorId: s.advisorId))
         .toList();
     return _buildPanel(
       title: 'مرشدون من خارج الكلية يرشدون طلبة من داخل الكلية',
       headers: const ['الطالب', 'الرقم الجامعي', 'القسم', 'الشطر', 'المرشد (من خارج الكلية)', 'رقم منسوب المرشد'],
       rows: [
         for (final s in list)
-          [s.studentName, s.studentId, s.department, s.shatr, s.advisorNameRaw.ifEmptyDash(), s.advisorId.ifEmptyDash()],
+          [s.studentName, s.studentId, s.department, s.shatr, displayName(s.advisorNameRaw).ifEmptyDash(), s.advisorId.ifEmptyDash()],
       ],
     );
   }
 
   Widget _tabExternalStudents() {
     final list = _classification.ourAdvisorsWithExternalStudents
-        .where((s) => _deptMatches(s.department) && _advisorMatches(s.advisorNameRaw) && _matchesSearch(s.studentName, s.studentId))
+        .where((s) => _deptMatches(s.department) &&
+            _advisorMatches(s.advisorNameRaw) &&
+            _matchesSearch(s.studentName, s.studentId, advisorName: s.advisorNameRaw))
         .toList();
     return _buildPanel(
       title: 'مرشدون من داخل الكلية يرشدون طلبة من خارج الكلية',
       headers: const ['الطالب', 'الرقم الجامعي', 'التخصص (خارج كليتنا)', 'الشطر', 'المرشد'],
       rows: [
-        for (final s in list) [s.studentName, s.studentId, s.department, s.shatr, s.advisorNameRaw.ifEmptyDash()],
+        for (final s in list) [s.studentName, s.studentId, s.department, s.shatr, displayName(s.advisorNameRaw).ifEmptyDash()],
       ],
     );
   }
 
   Widget _tabExemptWithStudents() {
     final cases = _analysis.exemptAdvisorsWithStudents
-        .where((c) => _deptMatches(c.advisor.department) && _advisorMatches(c.advisor.name))
+        .where((c) => _deptMatches(c.advisor.department) &&
+            _advisorMatches(c.advisor.name) &&
+            _matchesSearch(c.advisor.name, c.advisor.staffNumber))
         .toList();
     return _buildPanel(
       title: 'مرشدون معفَون ولديهم طلاب',
       headers: const ['الطالب', 'الرقم الجامعي', 'القسم', 'المرشد المعفى', 'قسم المرشد'],
       rows: [
         for (final c in cases)
-          for (final s in c.students) [s.studentName, s.studentId, s.department, c.advisor.name, c.advisor.department],
+          for (final s in c.students) [s.studentName, s.studentId, s.department, displayName(c.advisor.name), c.advisor.department],
       ],
     );
   }
 
   Widget _tabAdvisorsNoStudents() {
     final list = _analysis.advisorsWithNoStudents
-        .where((m) => _deptMatches(m.department) && _advisorMatches(m.name))
+        .where((m) => _deptMatches(m.department) &&
+            _advisorMatches(m.name) &&
+            _matchesSearch(m.name, m.staffNumber))
         .toList();
     return _buildPanel(
       title: 'مرشدون بلا طلاب',
       headers: const ['الاسم', 'رقم المنسوب', 'القسم', 'الشطر', 'السبب'],
-      rows: [for (final m in list) [m.name, m.staffNumber.ifEmptyDash(), m.department, m.shatr, m.advisingReason]],
+      rows: [for (final m in list) [displayName(m.name), m.staffNumber.ifEmptyDash(), m.department, m.shatr, m.advisingReason]],
     );
   }
 
   Widget _tabQuota() {
     final list = _analysis.quotaReport
-        .where((q) => _deptMatches(q.advisor.department) && _advisorMatches(q.advisor.name))
+        .where((q) => _deptMatches(q.advisor.department) &&
+            _advisorMatches(q.advisor.name) &&
+            _matchesSearch(q.advisor.name, q.advisor.staffNumber))
         .toList();
     return _buildPanel(
       title: 'تقرير النصاب (فوق/دون الحصة العادلة)',
       headers: const ['المرشد', 'القسم', 'العدد الحالي', 'الحصة العادلة', 'الحالة'],
       rows: [
         for (final q in list)
-          [q.advisor.name, q.advisor.department, '${q.actualCount}', '${q.fairShare.round()}', _quotaStatusLabel(q.status)],
+          [displayName(q.advisor.name), q.advisor.department, '${q.actualCount}', '${q.fairShare.round()}', _quotaStatusLabel(q.status)],
       ],
     );
   }
 
+  /// عدد الطلاب المنقولين بين كل زوج (من مرشد ← إلى مرشد) بدل سرد كل طالب
+  /// بالاسم - كما طلب سليمان صراحةً (2026-08-14): المهم إحصائيًا فقط "كم
+  /// طالب من مرشد أ ينتقل إلى مرشد ب" حتى تصح الموازنة، لا بيانات الطالب.
   Widget _tabTransfer() {
     final list = _analysis.transferSuggestions
-        .where((t) => _deptMatches(t.student.department) && _advisorMatches(t.fromAdvisorNameRaw))
+        .where((t) => _deptMatches(t.student.department) &&
+            _advisorMatches(t.fromAdvisorNameRaw) &&
+            _matchesSearch(t.student.studentName, t.student.studentId, advisorName: t.fromAdvisorNameRaw))
         .toList();
+
+    final counts = <String, int>{};
+    final rowsByKey = <String, List<String>>{};
+    for (final t in list) {
+      final key = [
+        t.student.department,
+        t.fromAdvisorNameRaw,
+        t.fromAdvisor?.staffNumber ?? '',
+        t.toAdvisor?.name ?? 'يلزم قرار يدوي',
+        t.toAdvisor?.staffNumber ?? '',
+      ].join('|');
+      counts[key] = (counts[key] ?? 0) + 1;
+      rowsByKey[key] = [
+        t.student.department,
+        displayName(t.fromAdvisorNameRaw),
+        t.fromAdvisor?.staffNumber.ifEmptyDash() ?? '—',
+        t.toAdvisor != null ? displayName(t.toAdvisor!.name) : 'يلزم قرار يدوي',
+        t.toAdvisor?.staffNumber.ifEmptyDash() ?? '—',
+      ];
+    }
+    final keys = rowsByKey.keys.toList()
+      ..sort((x, y) {
+        final r = rowsByKey[x]![0].compareTo(rowsByKey[y]![0]);
+        return r != 0 ? r : counts[y]!.compareTo(counts[x]!);
+      });
+
     return _buildPanel(
-      title: 'تقرير إعادة التوزيع',
-      headers: const ['الطالب', 'رقمه', 'تخصصه', 'المرشد السابق', 'رقمه', 'المرشد الموصى به', 'رقمه'],
-      rows: [
-        for (final t in list)
-          [
-            t.student.studentName,
-            t.student.studentId,
-            t.student.department,
-            t.fromAdvisorNameRaw,
-            t.fromAdvisor?.staffNumber.ifEmptyDash() ?? '—',
-            t.toAdvisor?.name ?? 'يلزم قرار يدوي',
-            t.toAdvisor?.staffNumber.ifEmptyDash() ?? '—',
-          ],
-      ],
+      title: 'تقرير إعادة التوزيع - إحصائي (${list.length} طالب/ة)',
+      headers: const ['القسم', 'المرشد السابق', 'رقمه', 'المرشد الموصى به', 'رقمه', 'عدد الطلاب المنقولين'],
+      rows: [for (final k in keys) [...rowsByKey[k]!, '${counts[k]}']],
     );
   }
 
+  /// جدول تفصيلي كامل - بطلب سليمان الصريح (2026-08-14): اسم الطالب/ة،
+  /// رقمه الجامعي، تخصصه، المرشد الحالي (المخالف)، والمرشد المفترض حسب
+  /// قاعدة أمين/منسّق القسم (انظر [[feedback_health_case_amin_coordinator_rule]])،
+  /// ونوع الإعاقة - بدل قائمة الأسماء المجرَّدة سابقًا.
   Widget _tabHealthMismatch() {
     final list = _analysis.healthCasesNotWithAmin
         .where((h) => _deptMatches(h.student.department) &&
-            _advisorMatches(h.currentAdvisor?.name ?? h.student.advisorNameRaw))
+            _advisorMatches(h.currentAdvisor?.name ?? h.student.advisorNameRaw) &&
+            _matchesSearch(h.student.studentName, h.student.studentId,
+                advisorName: h.currentAdvisor?.name ?? h.student.advisorNameRaw))
         .toList();
     return _buildPanel(
-      title: 'حالات صحية غير موزَّعة بشكل صحيح',
-      headers: const ['الطالب', 'رقمه', 'تخصصه', 'الحالة الصحية', 'المرشد الحالي', 'المرشد المفترض'],
+      title: 'طلبة ذوي الإعاقة على غير مرشدهم (${list.length})',
+      headers: const ['الاسم', 'الرقم الجامعي', 'التخصص', 'نوع الإعاقة', 'المرشد الحالي', 'المرشد المفترض'],
       rows: [
         for (final h in list)
           [
@@ -995,24 +1171,176 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
             h.student.studentId,
             h.student.department,
             h.student.healthCondition,
-            h.currentAdvisor?.name ?? (h.student.hasAdvisor ? h.student.advisorNameRaw : 'بلا مرشد'),
-            h.departmentAmin?.name ?? 'غير معروف',
+            h.currentAdvisor != null
+                ? displayName(h.currentAdvisor!.name)
+                : (h.student.hasAdvisor ? displayName(h.student.advisorNameRaw) : 'بلا مرشد'),
+            h.departmentAmin != null ? displayName(h.departmentAmin!.name) : 'غير معروف',
           ],
       ],
     );
   }
 
+  /// جدول تفصيلي كامل لطلبة ذوي الإعاقة **الموزَّعين فعليًا حسب القاعدة
+  /// المتَّفَق عليها** (لدى أمين القسم، أو منسّقه إن اختلف تخصص الأمين) -
+  /// نفس أعمدة [_tabHealthMismatch] بالضبط ما عدا عمود "المرشد المفترض"
+  /// (هنا مطابق فعليًا للمرشد الحالي فلا داعي لتكراره) - بطلب سليمان الصريح
+  /// (2026-08-14).
   Widget _tabHealthCases() {
-    final list = _analysis.healthCaseStudents
-        .where((s) => _deptMatches(s.department) && _advisorMatches(s.advisorNameRaw) && _matchesSearch(s.studentName, s.studentId))
+    final list = _analysis.healthCasesWithAmin
+        .where((s) => _deptMatches(s.department) &&
+            _advisorMatches(s.advisorNameRaw) &&
+            _matchesSearch(s.studentName, s.studentId, advisorName: s.advisorNameRaw))
         .toList();
     return _buildPanel(
-      title: 'إجمالي حالات ذوي الإعاقة',
-      headers: const ['الاسم', 'الرقم الجامعي', 'القسم', 'الشطر', 'المرشد', 'الحالة الصحية'],
+      title: 'طلبة ذوي الإعاقة على مرشدهم (${list.length})',
+      headers: const ['الاسم', 'الرقم الجامعي', 'التخصص', 'نوع الإعاقة', 'المرشد الحالي'],
       rows: [
-        for (final s in list)
-          [s.studentName, s.studentId, s.department, s.shatr, s.advisorNameRaw.ifEmptyDash(), s.healthCondition],
+        for (final s in list) [s.studentName, s.studentId, s.department, s.healthCondition, displayName(s.advisorNameRaw).ifEmptyDash()],
       ],
+    );
+  }
+
+  /// "إحصائية المرشدين" - بيانات حيّة 100% من الموقع (نفس مصدر بقية
+  /// التبويبات، `AdvisingCaseAnalyzer.analyze`) لا من أي ملف خارجي؛ ملف
+  /// سليمان المرجعي استُخدم فقط لتصميم منهجية الحساب (الحصة العادلة/الوزن)
+  /// لا كمصدر بيانات - بطلبه الصريح (2026-08-15) لا تُنسَخ كل أعمدته حرفيًا،
+  /// بل تُختصَر لواجهة احترافية مفيدة. كتلة مستقلة لكل قسم/شطر (رأس ملخَّص +
+  /// جدول)، مع فلتر إضافي خاص بهذا التبويب لنوع النصاب (فوق/دون النصاب مثلاً)
+  /// إلى جانب فلاتر الشطر/القسم/المرشد/البحث المشتركة أعلى الصفحة.
+  Widget _tabAdvisorStatistics() {
+    bool rowMatches(AdvisorStatRow r) =>
+        _advisorMatches(r.advisor.name) &&
+        _matchesSearch(r.advisor.name, r.advisor.staffNumber) &&
+        (_advisorStatsFilter == _kAllAdvisorStatuses || _advisorStatusOf(r) == _advisorStatsFilter);
+
+    final blocks = _analysis.advisorStatistics.where((b) => _deptMatches(b.department)).toList();
+    final filteredBlocks = [
+      for (final b in blocks)
+        (
+          b,
+          [
+            for (final r in b.rows) if (rowMatches(r)) r,
+          ]..sort((x, y) => y.diffFromTarget.compareTo(x.diffFromTarget)),
+        ),
+    ].where((e) => e.$2.isNotEmpty).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 240,
+          child: DropdownMenu<String>(
+            label: const Text('حالة النصاب'),
+            initialSelection: _advisorStatsFilter,
+            dropdownMenuEntries: _advisorStatusOptions.map((o) => DropdownMenuEntry(value: o, label: o)).toList(),
+            onSelected: (v) => setState(() => _advisorStatsFilter = v ?? _kAllAdvisorStatuses),
+          ),
+        ),
+        const SizedBox(height: 14),
+        if (filteredBlocks.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              border: Border.all(color: AppColors.gold.withValues(alpha: 0.35)),
+            ),
+            child: Center(child: Text('لا توجد بيانات', style: TextStyle(color: Colors.grey.shade600))),
+          )
+        else
+          for (final e in filteredBlocks) ...[
+            _advisorStatsSummaryCard(e.$1),
+            const SizedBox(height: 10),
+            _buildPanel(
+              title: '${e.$1.department} - ${e.$1.shatr}',
+              headers: const ['م', 'اسم المرشد', 'رقم المرشد', 'نوع النصاب', 'العدد الحالي', 'النصاب المستهدف', 'الفرق', 'الحالة'],
+              rows: [
+                for (var i = 0; i < e.$2.length; i++)
+                  [
+                    '${i + 1}',
+                    displayName(e.$2[i].advisor.name),
+                    e.$2[i].advisor.staffNumber.ifEmptyDash(),
+                    e.$2[i].quotaTypeLabel,
+                    '${e.$2[i].actualCount}',
+                    '${e.$2[i].target}',
+                    '${e.$2[i].diffFromTarget}',
+                    _advisorStatusOf(e.$2[i]),
+                  ],
+              ],
+            ),
+            const SizedBox(height: 20),
+          ],
+      ],
+    );
+  }
+
+  /// حالة مختصرة لكل مرشد (تُستخدم للفلترة وعمود "الحالة") - "معفى وله طلاب"
+  /// حالة شاذة تستحق تمييزًا خاصًا (تعني خللاً يحتاج مراجعة: عضو مُعفى لكنه
+  /// لا يزال مسنَدًا له طلاب فعليًا بمنظومة الجامعة).
+  static const _kAllAdvisorStatuses = 'كل الحالات';
+  static const List<String> _advisorStatusOptions = [
+    _kAllAdvisorStatuses,
+    'فوق النصاب',
+    'دون النصاب',
+    'متوازن',
+    'معفى/مجمَّد',
+    'معفى وله طلاب (يحتاج مراجعة)',
+  ];
+  String _advisorStatusOf(AdvisorStatRow r) {
+    if (r.weight == 0) return r.countInSystem > 0 ? 'معفى وله طلاب (يحتاج مراجعة)' : 'معفى/مجمَّد';
+    if (r.diffFromTarget > 1) return 'فوق النصاب';
+    if (r.diffFromTarget < -1) return 'دون النصاب';
+    return 'متوازن';
+  }
+
+  String _advisorStatsFilter = _kAllAdvisorStatuses;
+
+  Widget _advisorStatsSummaryCard(DepartmentAdvisorStats b) {
+    Widget stat(String label, String value, {Color? color}) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(AppRadius.sm),
+            border: Border.all(color: (color ?? AppColors.green).withValues(alpha: 0.3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(label, style: TextStyle(color: Colors.grey.shade600, fontSize: 11)),
+              Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: color ?? AppColors.greenDark)),
+            ],
+          ),
+        );
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.green.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: AppColors.green.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('${b.department} - ${b.shatr}', style: AppTextStyles.h3(color: AppColors.greenDark)),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              stat('إجمالي المرشدين', '${b.totalAdvisors}'),
+              stat('كامل النصاب', '${b.fullQuotaCount}'),
+              stat('نصاب 50%', '${b.halfQuotaCount}'),
+              stat('معفَون/مجمَّدون', '${b.exemptCount}'),
+              stat('الوزن الفعلي للقسم', '${b.weightEquivalentAdvisors}'),
+              stat('إجمالي الطلاب المسندين', '${b.totalActualCases}'),
+              stat('النصاب العادل (كامل)', '${b.fairShareFull}'),
+              stat('النصاب العادل (50%)', '${b.fairShareHalf}'),
+              if (b.exemptCases > 0) stat('⚠ طلاب لدى معفَين', '${b.exemptCases}', color: Colors.red.shade700),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -1026,24 +1354,39 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
             (_shatrFilter == _kAllShatr || m.shatr == _shatrFilter) &&
             _deptMatches(m.department) &&
             (_advisorMatches(m.toAdvisorNameRaw) || _advisorMatches(m.fromAdvisorNameRaw)) &&
-            _matchesSearch(m.studentName, m.studentId))
+            (_matchesSearch(m.studentName, m.studentId, advisorName: m.toAdvisorNameRaw) ||
+                _matchesSearch(m.studentName, m.studentId, advisorName: m.fromAdvisorNameRaw)))
         .toList();
-    return _buildPanel(
-      title: 'حركات الإرشاد (كل الرفعات)',
-      headers: const ['الطالب', 'الرقم الجامعي', 'القسم', 'الشطر', 'المرشد الحالي', 'المرشد السابق', 'تاريخ الاكتشاف'],
-      rows: [
-        for (final m in list)
-          [
-            m.studentName,
-            m.studentId,
-            m.department,
-            m.shatr,
-            m.toAdvisorNameRaw.ifEmptyDash(),
-            m.fromAdvisorNameRaw.ifEmptyDash(),
-            m.detectedAt != null ? fmt.format(m.detectedAt!) : '—',
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_movementsLog.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: TextButton.icon(
+              onPressed: _clearMovements,
+              icon: Icon(Icons.delete_sweep_outlined, color: Colors.red.shade700, size: 18),
+              label: Text('تفريغ البيانات (للاختبار)', style: TextStyle(color: Colors.red.shade700)),
+            ),
+          ),
+        _buildPanel(
+          title: 'حركات الإرشاد (كل الرفعات)',
+          headers: const ['الطالب', 'الرقم الجامعي', 'القسم', 'الشطر', 'المرشد الحالي', 'المرشد السابق', 'تاريخ الاكتشاف'],
+          rows: [
+            for (final m in list)
+              [
+                m.studentName,
+                m.studentId,
+                m.department,
+                m.shatr,
+                displayName(m.toAdvisorNameRaw).ifEmptyDash(),
+                displayName(m.fromAdvisorNameRaw).ifEmptyDash(),
+                m.detectedAt != null ? fmt.format(m.detectedAt!) : '—',
+              ],
           ],
+          emptyMessage: 'لا توجد حركات إرشاد مسجَّلة بعد',
+        ),
       ],
-      emptyMessage: 'لا توجد حركات إرشاد مسجَّلة بعد',
     );
   }
 
@@ -1066,6 +1409,11 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
   }) {
     final count = rows.length;
     final hasData = count > 0;
+    // اسم الملف المصدَّر يصير اسم المرشد نفسه حين يكون فلتر "المرشد" محدَّدًا
+    // بعضو واحد تحديدًا - بطلب سليمان الصريح (2026-08-15): "حين تنزيل ملف
+    // إكسل طلبة على مرشدهم المفترض يُسمَّى الملف باسم العضو" - بدل عنوان
+    // التبويب العام (غير مفيد حين يكون التصدير مقصورًا فعليًا على مرشد واحد).
+    final fileBaseName = _advisorFilter == _kAllAdvisors ? title : _advisorFilter;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -1080,7 +1428,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
             children: [
               Expanded(child: Text('$title ($count)', style: AppTextStyles.h3(color: AppColors.greenDark))),
               TextButton.icon(
-                onPressed: hasData ? () => _exportExcel(title, headers, rows) : null,
+                onPressed: hasData ? () => _exportExcel(fileBaseName, headers, rows) : null,
                 icon: const Icon(Icons.table_chart_outlined, size: 18),
                 label: const Text('Excel'),
               ),
@@ -1088,7 +1436,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
                 onPressed: hasData
                     ? () async {
                         final bytes = await AdvisingCasePdfService.build(title: title, headers: headers, rows: rows);
-                        await Printing.sharePdf(bytes: bytes, filename: '$title.pdf');
+                        await Printing.sharePdf(bytes: bytes, filename: '$fileBaseName.pdf');
                       }
                     : null,
                 icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
@@ -1103,6 +1451,13 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
     );
   }
 
+  /// فرز الجدول العام - بطلب سليمان الصريح (2026-08-15): الضغط على أي عمود
+  /// برأس الجدول (الرقم الجامعي/التخصص/المرشد/أي عمود آخر) يفرز الصفوف به.
+  /// عام بلا معرفة نوع العمود مسبقًا (يُستخدَم لكل التبويبات) - يقارن رقميًا
+  /// إن أمكن تحويل القيمتين لرقم، وإلا نصيًا.
+  int? _tableSortColumnIndex;
+  bool _tableSortAscending = true;
+
   /// جدول عام من نصوص جاهزة (بلا نوع بيانات محدَّد) - يُبنى مرة واحدة فقط
   /// لكل التبويبات الاثني عشر بدل تكرار كود `DataTable` لكل نوع سجل. يُقلَّص
   /// للعرض المرئي فقط عند تجاوز [_kMaxTableRows] (التصدير يبقى كاملاً دومًا).
@@ -1110,8 +1465,21 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
     if (allRows.isEmpty) {
       return Center(child: Padding(padding: const EdgeInsets.all(20), child: Text(emptyMessage, style: TextStyle(color: Colors.grey.shade600))));
     }
-    final truncated = allRows.length > _kMaxTableRows;
-    final visible = truncated ? allRows.sublist(0, _kMaxTableRows) : allRows;
+    var sortedRows = allRows;
+    final sortIndex = _tableSortColumnIndex;
+    if (sortIndex != null && sortIndex < columns.length) {
+      sortedRows = [...allRows]
+        ..sort((a, b) {
+          final av = a[sortIndex];
+          final bv = b[sortIndex];
+          final an = num.tryParse(av);
+          final bn = num.tryParse(bv);
+          final cmp = (an != null && bn != null) ? an.compareTo(bn) : av.compareTo(bv);
+          return _tableSortAscending ? cmp : -cmp;
+        });
+    }
+    final truncated = sortedRows.length > _kMaxTableRows;
+    final visible = truncated ? sortedRows.sublist(0, _kMaxTableRows) : sortedRows;
     return Column(
       children: [
         if (truncated)
@@ -1129,7 +1497,18 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen>
             child: DataTable(
               headingRowColor: WidgetStateProperty.all(AppColors.green),
               headingTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-              columns: [for (final c in columns) DataColumn(label: Center(child: Text(c)))],
+              sortColumnIndex: sortIndex != null && sortIndex < columns.length ? sortIndex : null,
+              sortAscending: _tableSortAscending,
+              columns: [
+                for (var i = 0; i < columns.length; i++)
+                  DataColumn(
+                    label: Expanded(child: Text(columns[i], textAlign: TextAlign.center)),
+                    onSort: (colIndex, ascending) => setState(() {
+                      _tableSortColumnIndex = colIndex;
+                      _tableSortAscending = ascending;
+                    }),
+                  ),
+              ],
               rows: [
                 for (var i = 0; i < visible.length; i++)
                   DataRow(

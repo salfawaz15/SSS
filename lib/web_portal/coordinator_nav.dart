@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
 
 import 'coordinator_advising_screen.dart';
-import 'hardship_cases_coordinator_screen.dart';
 import 'portal_header.dart';
 import 'portal_root.dart';
 import 'public_landing_screen.dart';
 import 'reports_hub_screen.dart';
-import 'support_cases_coordinator_screen.dart';
 
 /// شريط تنقّل المنسّق الموحّد - نفس فكرة [buildAdminNavItems] لكن لصفحات
 /// منسّق القسم (تحتاج شطر وقسم لتوجيه أزرار الحالات إلى قسمه هو بالتحديد).
@@ -17,13 +15,18 @@ import 'support_cases_coordinator_screen.dart';
 /// أنها أول صفحة بالمكدّس.
 ///
 /// **إعادة بناء كاملة (2026-08-09 بطلب سليمان: "الأصل والمميّز صفحة
-/// الإدارة، عدّل صفحة المنسّقين")**: كل وجهات "لوحة المنسّق" الخمس (الحذف
-/// والإضافة، الإرشاد، حالات الظروف الخاصة، الدعم النفسي، التقارير) بهذا
-/// الشريط حصرًا - جسم الصفحة الرئيسية صار إحصائيات + رسم بياني فقط، تمامًا
-/// بنفس فلسفة admin_workspace_screen.dart (كل الوجهات بالشريط العلوي، بلا
-/// أيقونات وصول بالجسم). "الحذف والإضافة" تحتاج دالة من حالة
+/// الإدارة، عدّل صفحة المنسّقين")**: كل وجهات "لوحة المنسّق" بهذا الشريط
+/// حصرًا - جسم الصفحة الرئيسية صار إحصائيات + رسم بياني فقط، تمامًا بنفس
+/// فلسفة admin_workspace_screen.dart (كل الوجهات بالشريط العلوي، بلا أيقونات
+/// وصول بالجسم). "الحذف والإضافة" تحتاج دالة من حالة
 /// [CoordinatorWorkspaceScreen] نفسها (فيها حالة تحميل/رفع)، فتُمرَّر كدالة
 /// اختيارية.
+///
+/// **إزالة "حالات الظروف الخاصة" و"الدعم النفسي والاجتماعي" (2026-08-15
+/// بطلب سليمان)**: انتقلتا مفهوميًا لتصبحا مسؤولية "منسّق مسار الرعاية
+/// الطلابية" الجديد (جزء من إعادة هيكلة الوحدة)، لا منسّق القسم - الشاشتان
+/// الفعليتان (`HardshipCasesCoordinatorScreen`/`SupportCasesCoordinatorScreen`)
+/// لم تُحذَفا، ستُعاد استخدامهما بصفحة منسّق المسار الجديدة.
 List<PortalNavItem> buildCoordinatorNavItems(
   BuildContext context, {
   required String current,
@@ -59,26 +62,6 @@ List<PortalNavItem> buildCoordinatorNavItems(
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => CoordinatorAdvisingScreen(shatr: shatr, department: department),
-        ),
-      ),
-    ),
-    PortalNavItem(
-      label: 'حالات الظروف الخاصة',
-      icon: Icons.volunteer_activism_outlined,
-      selected: current == 'hardship',
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => HardshipCasesCoordinatorScreen(shatr: shatr, department: department),
-        ),
-      ),
-    ),
-    PortalNavItem(
-      label: 'الدعم النفسي والاجتماعي',
-      icon: Icons.favorite_border,
-      selected: current == 'support',
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => SupportCasesCoordinatorScreen(shatr: shatr, department: department),
         ),
       ),
     ),

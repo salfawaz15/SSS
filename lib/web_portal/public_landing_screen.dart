@@ -6,7 +6,9 @@ import 'package:url_launcher/url_launcher.dart';
 import '../utils/mailto.dart';
 import '../utils/name_display.dart';
 
+import '../models/unit_committee_member.dart';
 import '../services/app_update_service.dart';
+import '../services/unit_committee_repository.dart';
 import '../services/unit_guide_pdf_service.dart';
 import '../services/web_download.dart';
 import '../theme/app_theme.dart';
@@ -52,26 +54,30 @@ const _allLinks = <_ExternalLink>[
   ),
 ];
 
-class _Member {
-  final String name;
-  final String department;
-  final String role;
+// ترتيب هرمي ثابت لبطاقات صفحة "تواصل معنا" (رئيس، نائب، أمين، منسّق
+// الوحدة، سكرتير) - "نائب" يُفحَص قبل "رئيس" لأن "نائب رئيس الوحدة" يحتوي
+// الكلمتين معًا، بصرف النظر عن الصياغة الدقيقة (رئيس/رئيسة، أمين/أمينة...).
+const _unitLeaderKeywordOrder = <String, int>{
+  'نائب': 1,
+  'رئيس': 0,
+  'أمين': 2,
+  'منسّق': 3,
+  'منسق': 3,
+  'سكرتير': 4,
+};
 
-  const _Member(this.name, this.department, this.role);
-}
-
-enum _MemberCategory { leadership, coordinator, member }
-
-_MemberCategory _memberCategory(String role) {
-  if (role == 'عضو') return _MemberCategory.member;
-  if (role.contains('منسق')) return _MemberCategory.coordinator;
-  return _MemberCategory.leadership;
+int _unitLeaderOrder(String role) {
+  for (final entry in _unitLeaderKeywordOrder.entries) {
+    if (role.contains(entry.key)) return entry.value;
+  }
+  return _unitLeaderKeywordOrder.length;
 }
 
 // ترتيب الأقسام الرسمي المعتمد في كل أعمال الوحدة (نفس ترتيب نموذج الحذف
-// والإضافة): الإدارة، المحاسبة، التسويق، الاقتصاد والتمويل، نظم المعلومات.
+// والإضافة، ونفس الصياغة الحرفية لعمود "القسم العلمي" بورقة "تشكيل الوحدة"):
+// الإدارة، المحاسبة، التسويق، الاقتصاد والتمويل، نظم المعلومات الإدارية.
 const _memberDeptOrder = <String>[
-  'إدارة الأعمال',
+  'الإدارة',
   'المحاسبة',
   'التسويق',
   'الاقتصاد والتمويل',
@@ -82,42 +88,6 @@ int _deptIndex(String department) {
   final i = _memberDeptOrder.indexOf(department);
   return i == -1 ? _memberDeptOrder.length : i;
 }
-
-bool _isFemaleRole(String role) => role.contains('منسقة') || role.contains('أمينة');
-
-/// يرتّب: الرجال أولاً (حسب ترتيب الأقسام الرسمي)، ثم النساء (بنفس ترتيب
-/// الأقسام) - بدل خلط الشطرين حسب القسم مباشرة.
-List<_Member> _sortedByDeptThenGender(Iterable<_Member> members) {
-  final list = members.toList();
-  list.sort((a, b) {
-    final genderCompare = (_isFemaleRole(a.role) ? 1 : 0) - (_isFemaleRole(b.role) ? 1 : 0);
-    if (genderCompare != 0) return genderCompare;
-    return _deptIndex(a.department) - _deptIndex(b.department);
-  });
-  return list;
-}
-
-const _members = <_Member>[
-  _Member('د. ألاء عمر بارفعة', 'نظم المعلومات الإدارية', 'رئيس الوحدة'),
-  _Member('أ. سليمان مفوز الفواز', 'نظم المعلومات الإدارية', 'نائب الرئيس'),
-  _Member('د. تماضر عواض السلمي', 'الاقتصاد والتمويل', 'أمينة الوحدة'),
-  _Member('د. الساره سعد علي احمد', 'المحاسبة', 'منسقة قسم المحاسبة'),
-  _Member('د. حسن عبدالرحيم الزبير', 'التسويق', 'أمين ومنسق قسم التسويق'),
-  _Member('د. السيد الحضري احمد', 'إدارة الأعمال', 'عضو'),
-  _Member('د. سوليمة عبدلي', 'الاقتصاد والتمويل', 'منسقة قسم الاقتصاد والتمويل'),
-  _Member('د. صالح حامد العريفي', 'نظم المعلومات الإدارية', 'منسق قسم نظم المعلومات الإدارية'),
-  _Member('د. أميرة سعد الفقيه', 'التسويق', 'منسقة قسم التسويق'),
-  _Member('أ. دلال مفرح العمري', 'نظم المعلومات الإدارية', 'منسقة قسم نظم المعلومات الإدارية'),
-  _Member('د. أكرم محمد بلحاج محمد', 'إدارة الأعمال', 'منسق قسم الإدارة'),
-  _Member('د. محمد ابكر احمد محمد', 'المحاسبة', 'منسق قسم المحاسبة'),
-  _Member('أ. مازن عبدالرحمن محمد المنجومي', 'إدارة الأعمال', 'عضو'),
-  _Member('د. حنان عثمان محمد', 'إدارة الأعمال', 'منسقة قسم الإدارة'),
-  _Member('أ. أشواق علي طامي العتيبي', 'الاقتصاد والتمويل', 'عضو'),
-  _Member('د. الصادق محمد سالم الطيب', 'الاقتصاد والتمويل', 'منسق قسم الاقتصاد والتمويل'),
-  _Member('د. مني النيل مصطفى مرسال', 'إدارة الأعمال', 'عضو'),
-  _Member('د. مزمل عوض طه احمد', 'المحاسبة', 'عضو'),
-  _Member('أ. رهف صالح العصيمي', 'نظم المعلومات الإدارية', 'سكرتير الوحدة'),
-];
 
 class _GoalCategory {
   final String title;
@@ -316,42 +286,55 @@ class ContactPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final cardWidth = constraints.maxWidth < 640
-                    ? constraints.maxWidth
-                    : constraints.maxWidth < 900
-                        ? (constraints.maxWidth - 14) / 2
-                        : (constraints.maxWidth - 14 * 3) / 4;
-                return Wrap(
-                  spacing: 14,
-                  runSpacing: 14,
-                  children: const [
-                    _UnitLeaderCard(
-                      role: 'رئيس الوحدة',
-                      name: 'آلاء عمر معتوق أحمد بارفعه',
-                      email: 'aobarefah@tu.edu.sa',
-                      accent: AppColors.green,
-                    ),
-                    _UnitLeaderCard(
-                      role: 'نائب رئيس الوحدة',
-                      name: 'سليمان مفوز سليم الفواز',
-                      email: 'salfawaz@tu.edu.sa',
-                      accent: AppColors.gold,
-                    ),
-                    _UnitLeaderCard(
-                      role: 'أمينة القسم',
-                      name: 'تماضر عواض نفيع السلمي',
-                      email: 'tamader.a@tu.edu.sa',
-                      accent: AppColors.green,
-                    ),
-                    _UnitLeaderCard(
-                      role: 'سكرتير الوحدة',
-                      name: 'رهف صالح محمد العصيمي',
-                      email: 'rahaf.a.alotaibi@gmail.com',
-                      accent: AppColors.gold,
-                    ),
-                  ].map((card) => SizedBox(width: cardWidth, child: card)).toList(),
+            // البريد الرسمي الموحَّد للوحدة (لا مرتبط بشخص بعينه، يبقى ثابتًا
+            // بتغيّر شاغلي المناصب) - بطلب سليمان صراحةً (2026-08-15) بعد
+            // إنشائه حديثًا. يظهر بطاقة مستقلة أعلى بطاقات القيادات الفردية.
+            const _UnitLeaderCard(
+              role: 'البريد الرسمي للوحدة',
+              name: 'وحدة الإرشاد الأكاديمي والخريجين',
+              email: 'cba.ag@tu.edu.sa',
+              accent: AppColors.green,
+              icon: Icons.mail_outline,
+            ),
+            const SizedBox(height: 14),
+            // بطاقات قيادة الوحدة (رئيس/نائب/أمين/منسّق الوحدة/سكرتير) - تُقرأ
+            // حيًّا من "تشكيل الوحدة" بدل أسماء ثابتة بالكود، فتُحدَّث الصفحة
+            // تلقائيًا عند اعتماد تشكيل جديد. تُستبعَد صراحةً بطاقات منسّقي
+            // الأقسام/الكلية (تظهر في قسم "أعضاء الوحدة" أدناه بدلًا من هنا).
+            StreamBuilder<List<UnitCommitteeMember>>(
+              stream: UnitCommitteeRepository.watch(),
+              builder: (context, snapshot) {
+                final all = snapshot.data ?? const <UnitCommitteeMember>[];
+                final leaders = all.where((m) => m.role.contains('الوحدة')).toList()
+                  ..sort((a, b) => _unitLeaderOrder(a.role) - _unitLeaderOrder(b.role));
+                if (leaders.isEmpty) {
+                  return const Text('لم يُعتمَد تشكيل الوحدة بعد.', style: TextStyle(color: Colors.grey));
+                }
+                return LayoutBuilder(
+                  builder: (context, constraints) {
+                    final cardWidth = constraints.maxWidth < 640
+                        ? constraints.maxWidth
+                        : constraints.maxWidth < 900
+                            ? (constraints.maxWidth - 14) / 2
+                            : (constraints.maxWidth - 14 * 3) / 4;
+                    return Wrap(
+                      spacing: 14,
+                      runSpacing: 14,
+                      children: leaders
+                          .asMap()
+                          .entries
+                          .map((entry) => SizedBox(
+                                width: cardWidth,
+                                child: _UnitLeaderCard(
+                                  role: entry.value.role,
+                                  name: entry.value.name,
+                                  email: entry.value.email,
+                                  accent: entry.key.isEven ? AppColors.green : AppColors.gold,
+                                ),
+                              ))
+                          .toList(),
+                    );
+                  },
                 );
               },
             ),
@@ -557,7 +540,8 @@ class GoalsPage extends StatelessWidget {
   }
 }
 
-/// صفحة "أعضاء الوحدة".
+/// صفحة "الهيكل التنظيمي" - كانت سابقًا "أعضاء الوحدة" (قائمة مسطّحة)،
+/// استُبدلت بمخطط هيكلي بصري بطلب سليمان صراحةً (2026-08-15).
 class MembersPage extends StatelessWidget {
   const MembersPage({super.key});
 
@@ -565,10 +549,309 @@ class MembersPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return InfoPageScaffold(
       child: PageSection(
-        eyebrow: 'فريقنا',
-        title: 'أعضاء الوحدة',
-        icon: Icons.groups_outlined,
-        child: const _MembersSection(),
+        eyebrow: 'هيكلتنا',
+        title: 'الهيكل التنظيمي',
+        icon: Icons.account_tree_outlined,
+        maxWidth: 1180,
+        child: const _OrgChartSection(),
+      ),
+    );
+  }
+}
+
+enum _CalendarCategory { milestone, academic, holiday, exam }
+
+extension on _CalendarCategory {
+  String get label => switch (this) {
+        _CalendarCategory.milestone => 'المحطات الرئيسية',
+        _CalendarCategory.academic => 'الإجراءات الأكاديمية',
+        _CalendarCategory.holiday => 'الإجازات',
+        _CalendarCategory.exam => 'الاختبارات',
+      };
+  Color get color => switch (this) {
+        _CalendarCategory.milestone => AppColors.green,
+        _CalendarCategory.academic => const Color(0xFF2F8F6E),
+        _CalendarCategory.holiday => AppColors.gold,
+        _CalendarCategory.exam => const Color(0xFF7A1F2B),
+      };
+  IconData get icon => switch (this) {
+        _CalendarCategory.milestone => Icons.flag_outlined,
+        _CalendarCategory.academic => Icons.assignment_outlined,
+        _CalendarCategory.holiday => Icons.beach_access_outlined,
+        _CalendarCategory.exam => Icons.event_note_outlined,
+      };
+}
+
+class _CalendarEvent {
+  final int order;
+  final _CalendarCategory category;
+  final String title;
+  final String start;
+  final String? end;
+
+  const _CalendarEvent(this.order, this.category, this.title, this.start, [this.end]);
+}
+
+// التقويم الجامعي المعتمد للفصل الدراسي الأول 1448هـ - نص حر يطابق التقويم
+// الرسمي الصادر عن الجامعة حرفيًا (قابل للتغيير حسب إعلانات الجامعة الرسمية).
+const _academicCalendarEvents = <_CalendarEvent>[
+  _CalendarEvent(1, _CalendarCategory.milestone, 'بداية الدراسة للفصل الدراسي الأول',
+      'الأحد 1448/03/27هـ الموافق 2026/08/30م', 'الخميس 1448/07/29هـ الموافق 2027/01/07م'),
+  _CalendarEvent(2, _CalendarCategory.academic, 'تأجيل الدراسة', 'الثلاثاء 1448/03/12هـ الموافق 2026/08/25م',
+      'الخميس 1448/03/21هـ الموافق 2026/09/03م'),
+  _CalendarEvent(3, _CalendarCategory.academic, 'استقبال طلبات الزيارة', 'الأحد 1448/03/10هـ الموافق 2026/08/23م',
+      'الخميس 1448/03/21هـ الموافق 2026/09/03م'),
+  _CalendarEvent(4, _CalendarCategory.academic, 'طلب إعادة القيد', 'الأحد 1448/03/10هـ الموافق 2026/08/23م',
+      'الخميس 1448/03/21هـ الموافق 2026/09/03م'),
+  _CalendarEvent(5, _CalendarCategory.academic, 'الرفع للكليات بالطلبة المتقطعين بعذر غير معلوم',
+      'الأحد 1448/05/21هـ الموافق 2026/01/11م', 'الخميس 1448/05/25هـ الموافق 2026/11/05م'),
+  _CalendarEvent(6, _CalendarCategory.holiday, 'إجازة اليوم الوطني', 'الأربعاء 1448/04/12هـ الموافق 2026/09/23م',
+      'الخميس 1448/04/13هـ الموافق 2026/09/24م'),
+  _CalendarEvent(7, _CalendarCategory.academic, 'تقديم أعذار الطلبة المتغيّبين عن اختبار الفصل الماضي',
+      'الأحد 1448/04/02هـ الموافق 2026/09/13م', 'الخميس 1448/05/11هـ الموافق 2026/10/22م'),
+  _CalendarEvent(8, _CalendarCategory.academic, 'الاعتذار عن الدراسة', 'الأحد 1448/03/24هـ الموافق 2026/09/06م',
+      'الخميس 1448/06/23هـ الموافق 2026/12/03م'),
+  _CalendarEvent(9, _CalendarCategory.holiday, 'إجازة منتصف الفصل الدراسي الأول',
+      'نهاية دوام الخميس 1448/06/09هـ الموافق 2026/11/19م', 'الأحد 1448/06/19هـ الموافق 2026/11/29م'),
+  _CalendarEvent(10, _CalendarCategory.milestone, 'بداية الدراسة بعد إجازة منتصف الفصل الدراسي الأول',
+      'الأحد 1448/06/19هـ الموافق 2026/11/29م', 'الخميس 1448/07/29هـ الموافق 2027/01/07م'),
+  _CalendarEvent(11, _CalendarCategory.academic, 'الاعتذار عن مقرر دراسي', 'الأحد 1448/06/19هـ الموافق 2026/11/29م',
+      'الخميس 1448/06/23هـ الموافق 2026/12/03م'),
+  _CalendarEvent(12, _CalendarCategory.exam, 'الاختبارات البديلة للطلاب الموافَق على أعذارهم',
+      'الأحد 1448/06/26هـ الموافق 2026/12/06م', 'الخميس 1448/07/01هـ الموافق 2026/12/10م'),
+  _CalendarEvent(13, _CalendarCategory.exam, 'الاختبارات النهائية', 'الأحد 1448/07/11هـ الموافق 2026/12/20م',
+      'الاثنين 1448/07/26هـ الموافق 2027/01/04م'),
+  _CalendarEvent(14, _CalendarCategory.academic, 'إدخال رغبات تغيير التخصص', 'الأحد 1448/07/04هـ الموافق 2026/12/13م',
+      'الأحد 1448/08/02هـ الموافق 2027/01/10م'),
+  _CalendarEvent(15, _CalendarCategory.milestone, 'اعتماد النتائج وإغلاق الفصل',
+      'الأربعاء 1448/07/28هـ الموافق 2027/01/06م'),
+  _CalendarEvent(16, _CalendarCategory.milestone, 'تاريخ التخرّج الرسمي', 'الخميس 1448/07/29هـ الموافق 2027/01/07م'),
+  _CalendarEvent(17, _CalendarCategory.holiday, 'إجازة نهاية الفصل الدراسي الأول',
+      'بداية دوام يوم الخميس 1448/07/29هـ الموافق 2027/01/07م'),
+];
+
+/// صفحة "التقويم الجامعي" - نص حر منسوخ حرفيًا عن التقويم الرسمي الصادر عن
+/// الجامعة للفصل الدراسي الأول 1448هـ (سليمان أرسل صورة التقويم الرسمي
+/// 2026-08-15) - لا يُقرأ من أي مصدر بيانات حي، يُحدَّث يدويًا عند صدور
+/// تقويم جديد من الجامعة.
+const _academicCalendarMonths = <String>['أغسطس 2026', 'سبتمبر 2026', 'أكتوبر 2026', 'نوفمبر 2026', 'ديسمبر 2026', 'يناير 2027'];
+
+/// صفحة "التقويم الجامعي" - أُعيد تصميمها بطلب سليمان صراحةً (2026-08-15)
+/// لمطابقة تصميم البوستر الرسمي الذي أرسله (شريط أشهر زمني، جدول بصفوف
+/// متبادلة الألوان وشارات تصنيف، صندوق ملاحظات) بدل قائمة البطاقات البسيطة.
+class AcademicCalendarPage extends StatelessWidget {
+  const AcademicCalendarPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return InfoPageScaffold(
+      child: PageSection(
+        eyebrow: 'هيكلتنا الزمنية',
+        title: 'التقويم الجامعي للفصل الدراسي الأول لعام 1448هـ',
+        icon: Icons.calendar_month_outlined,
+        maxWidth: 1180,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const _CalendarMonthsStrip(),
+            const SizedBox(height: 24),
+            const _CalendarTable(),
+            const SizedBox(height: 20),
+            const _CalendarNotesBox(),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// شريط الأشهر الزمني أعلى الجدول - أشهر الفصل الدراسي متصلة بخط ونقاط،
+/// أسوة بالبوستر الرسمي.
+class _CalendarMonthsStrip extends StatelessWidget {
+  const _CalendarMonthsStrip();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Row(
+        children: [
+          const CircleAvatar(
+            radius: 16,
+            backgroundColor: Color(0xFFE7EFEA),
+            child: Icon(Icons.calendar_today_outlined, size: 15, color: AppColors.green),
+          ),
+          const SizedBox(width: 8),
+          for (final month in _academicCalendarMonths)
+            Expanded(
+              child: Column(
+                children: [
+                  Text(month.split(' ').first, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: AppColors.greenDark)),
+                  Text(month.split(' ').last, style: const TextStyle(fontSize: 10, color: Colors.black54)),
+                  const SizedBox(height: 6),
+                  Container(width: 9, height: 9, decoration: const BoxDecoration(color: AppColors.gold, shape: BoxShape.circle)),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// جدول التقويم الجامعي - رأس أخضر، صفوف متبادلة الألوان، وشارة تصنيف
+/// ملوَّنة لكل حدث (أسوة بالبوستر الرسمي).
+class _CalendarTable extends StatelessWidget {
+  const _CalendarTable();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 900),
+          child: Table(
+            columnWidths: const {
+              0: FixedColumnWidth(44),
+              1: FlexColumnWidth(1.3),
+              2: FlexColumnWidth(2.2),
+              3: FlexColumnWidth(1.7),
+              4: FlexColumnWidth(1.7),
+            },
+            border: TableBorder(horizontalInside: BorderSide(color: Colors.grey.shade200)),
+            children: [
+              const TableRow(
+                decoration: BoxDecoration(gradient: LinearGradient(colors: [AppColors.greenDark, AppColors.green])),
+                children: [
+                  _CalHeaderCell('م'),
+                  _CalHeaderCell('التصنيف'),
+                  _CalHeaderCell('الحدث'),
+                  _CalHeaderCell('تاريخ البداية'),
+                  _CalHeaderCell('تاريخ النهاية'),
+                ],
+              ),
+              for (final event in _academicCalendarEvents)
+                TableRow(
+                  decoration: BoxDecoration(color: event.order.isEven ? const Color(0xFFF7F5EF) : Colors.white),
+                  children: [
+                    _CalCell(Text('${event.order}', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12))),
+                    _CalCell(_CategoryBadge(category: event.category)),
+                    _CalCell(Text(event.title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12.5))),
+                    _CalCell(Text(event.start, style: const TextStyle(fontSize: 11, color: Colors.black54))),
+                    _CalCell(Text(event.end ?? '—', style: const TextStyle(fontSize: 11, color: Colors.black54))),
+                  ],
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CalHeaderCell extends StatelessWidget {
+  final String text;
+  const _CalHeaderCell(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      child: Text(text, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12.5)),
+    );
+  }
+}
+
+class _CalCell extends StatelessWidget {
+  final Widget child;
+  const _CalCell(this.child);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10), child: child);
+  }
+}
+
+class _CategoryBadge extends StatelessWidget {
+  final _CalendarCategory category;
+  const _CategoryBadge({required this.category});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: category.color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: category.color.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(category.icon, size: 13, color: category.color),
+          const SizedBox(width: 5),
+          Text(category.label, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: category.color)),
+        ],
+      ),
+    );
+  }
+}
+
+/// صندوق "ملاحظات مهمة" أسفل الجدول - أسوة بالبوستر الرسمي.
+class _CalendarNotesBox extends StatelessWidget {
+  const _CalendarNotesBox();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFBF8F1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.gold.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.description_outlined, size: 18, color: AppColors.gold),
+              SizedBox(width: 8),
+              Text('ملاحظات مهمة', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: AppColors.greenDark)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          for (final note in const [
+            'جميع التواريخ أعلاه حسب ما ورد في التقويم الجامعي المعتمد.',
+            'التقويم قابل للتغيير وفق ما يستجدّ من إعلانات رسمية من الجامعة.',
+            'يُرجى متابعة القنوات الرسمية للجامعة للحصول على آخر المستجدات.',
+          ])
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.only(top: 5),
+                    child: Icon(Icons.circle, size: 5, color: AppColors.gold),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(note, style: const TextStyle(fontSize: 12.5, color: Colors.black87))),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -1025,7 +1308,7 @@ class _NavBar extends StatelessWidget {
                 MaterialPageRoute(builder: (_) => const MembersPage()),
               ),
               style: navButtonStyle,
-              child: const Text('أعضاء الوحدة'),
+              child: const Text('الهيكل التنظيمي'),
             ),
             TextButton(
               onPressed: () => Navigator.of(context).push(
@@ -1047,6 +1330,13 @@ class _NavBar extends StatelessWidget {
               ),
               style: navButtonStyle,
               child: const Text('تواصل'),
+            ),
+            IconButton(
+              tooltip: 'التقويم الجامعي',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const AcademicCalendarPage()),
+              ),
+              icon: const Icon(Icons.calendar_month_outlined, color: AppColors.green),
             ),
             PopupMenuButton<String>(
               tooltip: 'روابط مهمة',
@@ -1140,6 +1430,9 @@ class _NavBar extends StatelessWidget {
                     case 8:
                       Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ContactPage()));
                       break;
+                    case 9:
+                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AcademicCalendarPage()));
+                      break;
                   }
                 },
                 itemBuilder: (context) => const [
@@ -1147,11 +1440,12 @@ class _NavBar extends StatelessWidget {
                   PopupMenuItem(value: 1, child: Text('نبذة عن الوحدة')),
                   PopupMenuItem(value: 2, child: Text('الرؤية والرسالة')),
                   PopupMenuItem(value: 3, child: Text('الأهداف')),
-                  PopupMenuItem(value: 4, child: Text('أعضاء الوحدة')),
+                  PopupMenuItem(value: 4, child: Text('الهيكل التنظيمي')),
                   PopupMenuItem(value: 5, child: Text('النماذج')),
                   PopupMenuItem(value: 6, child: Text('روابط مهمة')),
                   PopupMenuItem(value: 7, child: Text('الدليل الإرشادي')),
                   PopupMenuItem(value: 8, child: Text('تواصل')),
+                  PopupMenuItem(value: 9, child: Text('التقويم الجامعي')),
                 ],
               ),
             ],
@@ -1264,6 +1558,7 @@ class PageSection extends StatelessWidget {
   final IconData icon;
   final Widget child;
   final Color? background;
+  final double maxWidth;
 
   const PageSection({
     super.key,
@@ -1272,6 +1567,7 @@ class PageSection extends StatelessWidget {
     required this.icon,
     required this.child,
     this.background,
+    this.maxWidth = 820,
   });
 
   @override
@@ -1283,7 +1579,7 @@ class PageSection extends StatelessWidget {
       padding: EdgeInsets.symmetric(horizontal: 24, vertical: isNarrow ? 32 : 56),
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 820),
+          constraints: BoxConstraints(maxWidth: maxWidth),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1342,125 +1638,379 @@ class _Footer extends StatelessWidget {
   }
 }
 
-/// قائمة أعضاء الوحدة - Column عادي (وليس ListView) لأن هذا القسم يقع داخل
-/// SingleChildScrollView خارجي بالفعل؛ تداخل ListView غير محدود الارتفاع
-/// داخل Column بلا Expanded يفشل بصمت (هذا كان سبب عدم ظهور القسم إطلاقًا).
-class _MembersSection extends StatelessWidget {
-  const _MembersSection();
+/// الهيكل التنظيمي لوحدة الإرشاد الأكاديمي والخريجين - يُقرأ حيًّا من
+/// "تشكيل الوحدة" (نفس البيانات التي تغذّي بطاقات صفحة "تواصل معنا") ويُصنَّف
+/// تلقائيًا إلى مجموعاته الأربع بحسب نص الدور (يحتوي "مسار"/"قسم"/"الكلية"
+/// أو مطابقة صريحة لمسمّيات القيادة) - بلا أي اسم مكتوب يدويًا بالكود، حتى
+/// يعكس أي تحديث لملف منسوبي الكلية تلقائيًا.
+class _OrgChartSection extends StatelessWidget {
+  const _OrgChartSection();
 
   @override
   Widget build(BuildContext context) {
-    final leadership = _members.where((m) => _memberCategory(m.role) == _MemberCategory.leadership).toList();
-    final coordinators = _sortedByDeptThenGender(_members.where((m) => _memberCategory(m.role) == _MemberCategory.coordinator));
-    final regular = _sortedByDeptThenGender(_members.where((m) => _memberCategory(m.role) == _MemberCategory.member));
+    return StreamBuilder<List<UnitCommitteeMember>>(
+      stream: UnitCommitteeRepository.watch(),
+      builder: (context, snapshot) {
+        final members = snapshot.data ?? const <UnitCommitteeMember>[];
+        if (snapshot.connectionState == ConnectionState.waiting && members.isEmpty) {
+          return const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()));
+        }
+        if (members.isEmpty) {
+          return const Text('لم يُعتمَد الهيكل التنظيمي بعد.', style: TextStyle(color: Colors.grey));
+        }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+        UnitCommitteeMember? firstMatch(bool Function(UnitCommitteeMember) test) {
+          for (final m in members) {
+            if (test(m)) return m;
+          }
+          return null;
+        }
+
+        final head = firstMatch((m) => m.role.contains('رئيس') && !m.role.contains('نائب'));
+        final deputy = firstMatch((m) => m.role.contains('نائب'));
+        final unitSecretaryGeneral = firstMatch((m) => m.role.contains('أمين الوحدة'));
+        final unitCoordinator = firstMatch((m) => m.role.contains('منسّق الوحدة') || m.role.contains('منسق الوحدة'));
+        final unitSecretary = firstMatch((m) => m.role.contains('سكرتير الوحدة'));
+
+        final collegeCoords = members.where((m) => m.role.contains('الكلية')).toList();
+        final trackCoords = members.where((m) => m.role.contains('مسار')).toList();
+        final deptCoords = members.where((m) => m.role.contains('قسم')).toList()
+          ..sort((a, b) => _deptIndex(a.department) - _deptIndex(b.department));
+        final depts = deptCoords.map((m) => m.department).toSet().toList()
+          ..sort((a, b) => _deptIndex(a) - _deptIndex(b));
+
+        final chart = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (deputy != null) Expanded(child: _LeaderCard(member: deputy)),
+                if (head != null && deputy != null) const SizedBox(width: 12),
+                if (head != null) Expanded(child: _LeaderCard(member: head)),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Container(height: 2, color: AppColors.gold),
+            const SizedBox(height: 20),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final wide = constraints.maxWidth > 640;
+                final cards = [
+                  _ClusterCard(
+                    icon: Icons.explore_outlined,
+                    title: 'منسّقو المسارات النوعية',
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: trackCoords
+                          .map((m) => _MemberChip(
+                                role: m.role.replaceFirst(RegExp('^منسّ?ق مسار '), ''),
+                                name: displayName(m.name),
+                                width: 140,
+                              ))
+                          .toList(),
+                    ),
+                  ),
+                  _ClusterCard(
+                    icon: Icons.groups_outlined,
+                    title: 'القيادة الإدارية للوحدة',
+                    child: Column(
+                      children: [
+                        if (unitSecretaryGeneral != null)
+                          _MemberChip(role: 'أمين الوحدة', name: displayName(unitSecretaryGeneral.name), accent: true),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            if (unitCoordinator != null)
+                              Expanded(child: _MemberChip(role: 'منسّق الوحدة', name: displayName(unitCoordinator.name))),
+                            if (unitCoordinator != null && unitSecretary != null) const SizedBox(width: 8),
+                            if (unitSecretary != null)
+                              Expanded(child: _MemberChip(role: 'سكرتير الوحدة', name: displayName(unitSecretary.name))),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  _ClusterCard(
+                    icon: Icons.school_outlined,
+                    title: 'منسّقو الكلية للشؤون الأكاديمية',
+                    child: Row(
+                      children: collegeCoords
+                          .map((m) => Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                                  child: _MemberChip(
+                                    // روايا الكلية تُميَّز بالتأنيث ("منسقة") لا بذكر "شطر
+                                    // الطالبات" صراحةً كما في منسّقي الأقسام.
+                                    role: m.role.contains('منسقة') ? 'شطر الطالبات' : 'شطر الطلاب',
+                                    name: displayName(m.name),
+                                  ),
+                                ),
+                              ))
+                          .toList(),
+                    ),
+                  ),
+                  _ClusterCard(
+                    icon: Icons.grid_view_outlined,
+                    title: 'منسّقو الأقسام العلمية',
+                    child: _DeptTable(depts: depts, deptCoords: deptCoords),
+                  ),
+                ];
+                return Wrap(
+                  spacing: 14,
+                  runSpacing: 14,
+                  children: cards
+                      .map((c) => SizedBox(width: wide ? (constraints.maxWidth - 42) / 4 : constraints.maxWidth, child: c))
+                      .toList(),
+                );
+              },
+            ),
+            const SizedBox(height: 28),
+            const _MissionBar(),
+          ],
+        );
+
+        return Stack(
+          children: [
+            Positioned.fill(child: IgnorePointer(child: _SignatureWatermark())),
+            chart,
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// توقيع مائي خفيف "S/A" متكرر بميل قطري - بطلب سليمان صراحةً.
+class _SignatureWatermark extends StatelessWidget {
+  const _SignatureWatermark();
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth;
+        final h = constraints.maxHeight.isFinite ? constraints.maxHeight : 900.0;
+        const step = 150.0;
+        final tiles = <Widget>[];
+        for (double y = -50; y < h + 50; y += step) {
+          for (double x = -50; x < w + 50; x += step) {
+            tiles.add(Positioned(
+              left: x,
+              top: y,
+              child: Transform.rotate(
+                angle: -0.55,
+                child: Text(
+                  'S/A',
+                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: AppColors.green.withValues(alpha: 0.05)),
+                ),
+              ),
+            ));
+          }
+        }
+        return Stack(children: tiles);
+      },
+    );
+  }
+}
+
+class _LeaderCard extends StatelessWidget {
+  final UnitCommitteeMember member;
+
+  const _LeaderCard({required this.member});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(colors: [AppColors.greenDark, AppColors.green]),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.workspace_premium_outlined, size: 18, color: AppColors.goldLight),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(member.role, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13)),
+                const SizedBox(height: 3),
+                Text(displayName(member.name), textAlign: TextAlign.center, style: const TextStyle(color: AppColors.goldLight, fontWeight: FontWeight.w600, fontSize: 12)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ClusterCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final Widget child;
+
+  const _ClusterCard({required this.icon, required this.title, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: Colors.grey.shade300),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+            decoration: const BoxDecoration(gradient: LinearGradient(colors: [AppColors.greenDark, AppColors.green])),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 16, color: AppColors.goldLight),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    title,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 11.5),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(padding: const EdgeInsets.all(10), child: child),
+        ],
+      ),
+    );
+  }
+}
+
+class _MemberChip extends StatelessWidget {
+  final String role;
+  final String name;
+  final double? width;
+  final bool accent;
+
+  const _MemberChip({required this.role, required this.name, this.width, this.accent = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFBF8F1),
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(color: accent ? AppColors.gold : Colors.grey.shade300, width: accent ? 1.4 : 1),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(role, textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 10.5, color: AppColors.green)),
+          const SizedBox(height: 3),
+          Text(name, textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700)),
+        ],
+      ),
+    );
+  }
+}
+
+/// جدول منسّقي الأقسام العلمية (القسم | شطر الطلاب | شطر الطالبات) - اسم
+/// القسم وعنوانا الشطرين يظهران مرة واحدة فقط، لا مكرَّرين لكل قسم.
+class _DeptTable extends StatelessWidget {
+  final List<String> depts;
+  final List<UnitCommitteeMember> deptCoords;
+
+  const _DeptTable({required this.depts, required this.deptCoords});
+
+  @override
+  Widget build(BuildContext context) {
+    UnitCommitteeMember? byShatr(String dept, bool female) => deptCoords.cast<UnitCommitteeMember?>().firstWhere(
+          (m) => m!.department == dept && m.role.contains('الطالبات') == female,
+          orElse: () => null,
+        );
+
+    return Table(
+      border: TableBorder.all(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(6)),
+      columnWidths: const {0: FlexColumnWidth(1.4), 1: FlexColumnWidth(1), 2: FlexColumnWidth(1)},
       children: [
-        Text(
-          'الهيئة الإدارية (${leadership.length})',
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        TableRow(
+          decoration: const BoxDecoration(color: Color(0xFFE7EFEA)),
+          children: [
+            const SizedBox(),
+            _DeptCell('شطر الطلاب', bold: true),
+            _DeptCell('شطر الطالبات', bold: true),
+          ],
         ),
-        const SizedBox(height: 12),
-        _MembersCard(members: leadership),
-        const SizedBox(height: 28),
-        Text(
-          'المنسّقون (${coordinators.length})',
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-        ),
-        const SizedBox(height: 12),
-        _MembersCard(members: coordinators),
-        const SizedBox(height: 28),
-        Text(
-          'الأعضاء (${regular.length})',
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-        ),
-        const SizedBox(height: 12),
-        _MembersCard(members: regular),
+        for (final dept in depts)
+          TableRow(children: [
+            _DeptCell(dept, bold: true, small: true),
+            _DeptCell(displayName(byShatr(dept, false)?.name ?? '—')),
+            _DeptCell(displayName(byShatr(dept, true)?.name ?? '—')),
+          ]),
       ],
     );
   }
 }
 
-class _MembersCard extends StatelessWidget {
-  final List<_Member> members;
+class _DeptCell extends StatelessWidget {
+  final String text;
+  final bool bold;
+  final bool small;
 
-  const _MembersCard({required this.members});
+  const _DeptCell(this.text, {this.bold = false, this.small = false});
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 1,
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      child: Column(
-        children: members.asMap().entries.map((entry) {
-          final index = entry.key;
-          final member = entry.value;
-          final isLeadership = member.role != 'عضو';
-          return Column(
-            children: [
-              if (index > 0) const Divider(height: 1),
-              // بنية مخصّصة (بدل ListTile) - عمود العنوان يأخذ العرض الكامل
-              // المتاح ثم شارة الدور تحته، بدل عمود trailing ثابت العرض إلى
-              // جانب leading كان يضغط الاسم في نصف الشاشة على الجوّال فيتكسّر
-              // حرفًا حرفًا.
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    CircleAvatar(
-                      radius: 18,
-                      backgroundColor:
-                          (isLeadership ? AppColors.gold : AppColors.green).withValues(alpha: 0.12),
-                      child: Icon(
-                        Icons.person_outline,
-                        size: 18,
-                        color: isLeadership ? AppColors.gold : AppColors.green,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            displayName(member.name),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5),
-                          ),
-                          const SizedBox(height: 3),
-                          Text(member.department, style: const TextStyle(fontSize: 11.5)),
-                          const SizedBox(height: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: (isLeadership ? AppColors.gold : Colors.grey).withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(999),
-                              border: Border.all(
-                                color: (isLeadership ? AppColors.gold : Colors.grey).withValues(alpha: 0.4),
-                              ),
-                            ),
-                            child: Text(
-                              member.role,
-                              style: TextStyle(
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.w600,
-                                color: isLeadership ? AppColors.gold : Colors.grey.shade700,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          );
-        }).toList(),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(fontSize: small ? 9.5 : 10, fontWeight: bold ? FontWeight.w700 : FontWeight.w500),
+      ),
+    );
+  }
+}
+
+/// شريط رسالة الوحدة الختامي - أخضر متدرّج ونص ذهبي، أسوة بمثال الهوية
+/// البصرية لوحدة الشراكات.
+class _MissionBar extends StatelessWidget {
+  const _MissionBar();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(colors: [AppColors.greenDark, AppColors.green]),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppColors.gold),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.grain, color: AppColors.gold, size: 20),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Text(
+              'نسعى لإرشاد الطالب ودعمه أكاديميًا ونفسيًا ومهنيًا، ورعاية المتفوقين وذوي الهمم، وبناء تواصل مستدام مع خريجينا.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppColors.goldLight, fontWeight: FontWeight.w600, fontSize: 12.5, height: 1.6),
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Icon(Icons.grain, color: AppColors.gold, size: 20),
+        ],
       ),
     );
   }

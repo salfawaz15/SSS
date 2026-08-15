@@ -60,3 +60,10 @@ final Set<String> knownBachelorDepartments = _canonicalDepartments.values.toSet(
 /// "إدارة الأعمال التنفيذي") - القسم نفسه غير معروف كقسم بكالوريوس فيُستبعَد.
 bool isKnownBachelorDepartment(String normalizedDepartment) =>
     knownBachelorDepartments.contains(normalizedDepartment);
+
+/// برنامج "إدارة الأعمال التنفيذي" (ماجستير تنفيذي) - سليمان طلب صراحةً
+/// (2026-08-14) استبعاد أي طالب/ة فيه من كل الإحصائيات والإرشاد كليًا، أيًا
+/// كان مرشده ووضعه، لا فقط تصنيفه كـ"طالب خارجي". يُطابَق على النص الخام قبل
+/// التوحيد لأن هذا البرنامج ليس أحد الأقسام الخمسة أصلًا فلا يمر بالتوحيد.
+bool isExecutiveMbaProgram(String rawDepartment) =>
+    _looseKey(rawDepartment).contains(_looseKey('الأعمال التنفيذي'));

@@ -7,9 +7,9 @@
 import 'dart:convert';
 import 'dart:io';
 
-import '../lib/models/advisor_roster_entry.dart';
-import '../lib/services/advisor_zip_service.dart';
-import '../lib/services/report_data_service.dart';
+import 'package:sulaiman/models/advisor_roster_entry.dart';
+import 'package:sulaiman/services/advisor_zip_service.dart';
+import 'package:sulaiman/services/report_data_service.dart';
 
 void main() {
   final ticketsJson = jsonDecode(

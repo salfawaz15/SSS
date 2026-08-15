@@ -13,6 +13,7 @@ import '../models/course_section_record.dart';
 import '../services/college_roster_parser_service.dart';
 import '../services/college_roster_repository.dart';
 import '../services/course_schedule_repository.dart';
+import '../services/unit_committee_repository.dart';
 import '../services/xlsx_metadata_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/name_display.dart';
@@ -72,7 +73,11 @@ String _positionsDisplay(CollegeRosterMember m) {
 /// الشارة الحمراء "معفى من الإرشاد" حتى لا يُفهَم أنهم مشغولون بمنصب فقط.
 bool _isAbsentMember(CollegeRosterMember m) {
   final text = '${m.position} ${m.position2} ${m.position3} ${m.employeeStatus}';
-  return text.contains('مبتعث') || text.contains('معار') || text.contains('مجاز');
+  // "مطوي القيد" أُضيفت هنا (2026-08-14) - كانت مفقودة من هذا الفحص المستقل
+  // عن AdvisingLoadRules._frozenKeywords، فظهرت بشرى جمال بكر عمر (حالتها
+  // "مطوي قيدها") بشارة "الحالة مجمّدة" العامة بدل "غير متواجد" الرمادية
+  // الصحيحة، ولم تُخفَ افتراضيًا كبقية غير المتواجدين رغم تطابق حالتها معهم.
+  return text.contains('مبتعث') || text.contains('معار') || text.contains('مجاز') || text.contains('مطوي');
 }
 
 String _absenceLabel(CollegeRosterMember m) {
@@ -348,6 +353,15 @@ class _CollegeRosterAdminScreenState extends State<CollegeRosterAdminScreen> {
       if (confirmed != true) return;
 
       await CollegeRosterRepository.save(members, lastSavedAt: fileSavedAt);
+
+      // ورقة "تشكيل الوحدة" مستقلة تمامًا عن بيانات منسوبي الكلية أعلاه -
+      // لا تُحدَّث إلا إن وُجدت فعليًا بالملف المرفوع (خلاف ذلك يبقى التشكيل
+      // المعتمد سابقًا كما هو، لا يُمسح).
+      final committee = CollegeRosterParserService.parseUnitCommittee(bytes);
+      if (committee.isNotEmpty) {
+        await UnitCommitteeRepository.save(committee);
+      }
+
       await _loadAll();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

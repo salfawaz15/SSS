@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:printing/printing.dart';
 
 import '../models/advising_case_record.dart';
+import '../utils/name_display.dart';
+import '../services/advising_case_excel_service.dart';
+import '../services/advising_case_pdf_service.dart';
 import '../services/advising_report_repository.dart';
 import '../services/course_schedule_repository.dart' show Shatr;
+import '../services/web_download.dart';
 import '../theme/app_theme.dart';
 import 'admin_nav.dart';
 import 'portal_header.dart';
@@ -25,7 +30,10 @@ class _AdvisorGroup {
 /// (2026-08-13): "لو أردت فلترة على اسم معين تظهر لي قائمة طلابه". يُبنى
 /// مباشرة على بيانات تقرير "كل الكليات" (`AdvisingReportKind.allColleges`)
 /// المرفوعة أصلاً عبر شاشة "متابعة حالات الإرشاد" - بلا أي قارئ أو تخزين
-/// جديد، فقط تجميع/فلترة على بيانات موجودة ومُختبَرة فعلاً.
+/// جديد، فقط تجميع/فلترة على بيانات موجودة ومُختبَرة فعلاً. أُعيد تصميمها
+/// (2026-08-15) بنفس الهوية البصرية لبقية جداول الموقع (جدول أخضر منسَّق +
+/// تصدير Excel/PDF) بعد أن لاحظ سليمان أن التصميم السابق (بطاقات قابلة للطي
+/// بلا أي تصدير) غير احترافي ولا يمكن طباعته.
 class AdvisorStudentsLookupScreen extends StatefulWidget {
   const AdvisorStudentsLookupScreen({super.key});
 
@@ -39,7 +47,7 @@ class _AdvisorStudentsLookupScreenState extends State<AdvisorStudentsLookupScree
   List<_AdvisorGroup> _allGroups = [];
   final _searchController = TextEditingController();
   String _query = '';
-  String? _expandedKey;
+  String? _selectedKey;
 
   @override
   void initState() {
@@ -71,10 +79,10 @@ class _AdvisorStudentsLookupScreenState extends State<AdvisorStudentsLookupScree
       final groups = byAdvisor.entries.map((e) {
         final first = e.value.first;
         return _AdvisorGroup(
-          name: first.advisorNameRaw,
+          name: displayName(first.advisorNameRaw),
           advisorId: first.advisorId,
           shatr: first.shatr,
-          students: e.value,
+          students: e.value..sort((a, b) => a.studentName.compareTo(b.studentName)),
         );
       }).toList()
         ..sort((a, b) => a.name.compareTo(b.name));
@@ -113,7 +121,7 @@ class _AdvisorStudentsLookupScreenState extends State<AdvisorStudentsLookupScree
       navItems: buildAdminNavItems(context, current: 'advising-hub'),
       body: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 900),
+          constraints: const BoxConstraints(maxWidth: 1100),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: _loading
@@ -140,84 +148,136 @@ class _AdvisorStudentsLookupScreenState extends State<AdvisorStudentsLookupScree
     }
 
     final results = _filteredGroups;
+    _AdvisorGroup? selected;
+    if (_selectedKey != null) {
+      for (final g in results) {
+        if ('${g.name}|${g.shatr}' == _selectedKey) {
+          selected = g;
+          break;
+        }
+      }
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        TextField(
-          controller: _searchController,
-          decoration: InputDecoration(
-            hintText: 'اكتب اسم المرشد (كل أو جزء من الاسم)',
-            prefixIcon: const Icon(Icons.search),
-            border: const OutlineInputBorder(),
-            suffixIcon: _query.isEmpty
-                ? null
-                : IconButton(
-                    icon: const Icon(Icons.clear),
-                    onPressed: () {
-                      _searchController.clear();
-                      setState(() => _query = '');
-                    },
-                  ),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            border: Border.all(color: AppColors.gold.withValues(alpha: 0.35)),
           ),
-          onChanged: (v) => setState(() => _query = v),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: 'اكتب اسم المرشد (كل أو جزء من الاسم)',
+                  prefixIcon: const Icon(Icons.search),
+                  border: const OutlineInputBorder(),
+                  isDense: true,
+                  suffixIcon: _query.isEmpty
+                      ? null
+                      : IconButton(
+                          icon: const Icon(Icons.clear),
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() {
+                              _query = '';
+                              _selectedKey = null;
+                            });
+                          },
+                        ),
+                ),
+                onChanged: (v) => setState(() {
+                  _query = v;
+                  _selectedKey = null;
+                }),
+              ),
+              const SizedBox(height: 10),
+              if (_query.trim().isEmpty)
+                Text('إجمالي المرشدين المتاحين للبحث: ${_allGroups.length}', style: TextStyle(color: Colors.grey.shade600))
+              else if (results.isEmpty)
+                Text('لا يوجد مرشد مطابق لـ"$_query"', style: TextStyle(color: Colors.grey.shade600))
+              else
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final g in results)
+                      ChoiceChip(
+                        label: Text('${g.name} (${g.students.length})'),
+                        selected: '${g.name}|${g.shatr}' == _selectedKey,
+                        onSelected: (_) => setState(() => _selectedKey = '${g.name}|${g.shatr}'),
+                      ),
+                  ],
+                ),
+            ],
+          ),
         ),
         const SizedBox(height: 16),
-        if (_query.trim().isEmpty)
-          Text(
-            'إجمالي المرشدين المتاحين للبحث: ${_allGroups.length}',
-            style: TextStyle(color: Colors.grey.shade600),
-          )
-        else if (results.isEmpty)
-          Text('لا يوجد مرشد مطابق لـ"$_query"', style: TextStyle(color: Colors.grey.shade600))
-        else
-          Expanded(
-            child: ListView.separated(
-              itemCount: results.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 8),
-              itemBuilder: (context, i) => _buildAdvisorCard(results[i]),
-            ),
-          ),
+        if (selected != null) Expanded(child: SingleChildScrollView(child: _buildAdvisorPanel(selected))),
       ],
     );
   }
 
-  Widget _buildAdvisorCard(_AdvisorGroup group) {
-    final key = '${group.name}|${group.shatr}';
-    final expanded = _expandedKey == key;
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: ExpansionTile(
-        initiallyExpanded: expanded,
-        onExpansionChanged: (v) => setState(() => _expandedKey = v ? key : null),
-        leading: CircleAvatar(
-          backgroundColor: AppColors.green.withValues(alpha: 0.12),
-          child: const Icon(Icons.person_outline, color: AppColors.green),
-        ),
-        title: Text(group.name, style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Text(
-          '${group.shatr}${group.advisorId.isNotEmpty ? ' - رقم المرشد: ${group.advisorId}' : ''} - عدد الطلاب: ${group.students.length}',
-        ),
+  Widget _buildAdvisorPanel(_AdvisorGroup group) {
+    // عمود "التخصص" غير مفيد هنا (كل الطلاب أصلاً لنفس المرشد، غالبًا نفس
+    // القسم) - أُزيل بطلب سليمان الصريح (2026-08-15). مستقبلاً حين تكتمل
+    // بيانات الطلبة الأكاديمية (المعدل/النطاق)، يُضاف عمودا "المعدل"/"النطاق"
+    // بدلاً منه هنا.
+    final title = '${group.name} - ${group.shatr}${group.advisorId.isNotEmpty ? ' (رقم المرشد: ${group.advisorId})' : ''}';
+    final headers = ['الرقم الجامعي', 'اسم الطالب'];
+    final rows = [for (final s in group.students) [s.studentId, s.studentName]];
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: AppColors.gold.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (expanded)
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 420),
-              child: SingleChildScrollView(
-                child: DataTable(
-                  columns: const [
-                    DataColumn(label: Text('الرقم الجامعي')),
-                    DataColumn(label: Text('اسم الطالب')),
-                    DataColumn(label: Text('التخصص')),
-                  ],
-                  rows: group.students
-                      .map((s) => DataRow(cells: [
-                            DataCell(Text(s.studentId)),
-                            DataCell(Text(s.studentName)),
-                            DataCell(Text(s.department)),
-                          ]))
-                      .toList(),
-                ),
+          Row(
+            children: [
+              Expanded(child: Text('$title (${group.students.length})', style: AppTextStyles.h3(color: AppColors.greenDark))),
+              TextButton.icon(
+                onPressed: () {
+                  final bytes = AdvisingCaseExcelService.build(title: group.name, headers: headers, rows: rows);
+                  downloadBytes(bytes, '${group.name}.xlsx');
+                },
+                icon: const Icon(Icons.table_chart_outlined, size: 18),
+                label: const Text('Excel'),
               ),
+              TextButton.icon(
+                onPressed: () async {
+                  final bytes = await AdvisingCasePdfService.build(title: title, headers: headers, rows: rows);
+                  await Printing.sharePdf(bytes: bytes, filename: '${group.name}.pdf');
+                },
+                icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
+                label: const Text('PDF/طباعة'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: DataTable(
+              headingRowColor: WidgetStateProperty.all(AppColors.green),
+              headingTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              columns: [for (final h in headers) DataColumn(label: Expanded(child: Text(h, textAlign: TextAlign.center)))],
+              rows: [
+                for (var i = 0; i < rows.length; i++)
+                  DataRow(
+                    color: WidgetStateProperty.all(i.isEven ? Colors.white : const Color(0xFFF7F5EF)),
+                    cells: [for (final v in rows[i]) DataCell(Center(child: Text(v)))],
+                  ),
+              ],
             ),
+          ),
         ],
       ),
     );

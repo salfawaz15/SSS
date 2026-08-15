@@ -70,6 +70,81 @@ class AdvisorQuotaCase {
   });
 }
 
+/// سطر واحد بتبويب "إحصائية المرشدين" - يطابق تصميم ملف سليمان المرجعي
+/// "تقرير الإرشاد النهائي.xlsx" (ورقة "02 إحصائيات المرشدين") حرفيًا، بطلبه
+/// الصريح (2026-08-14). يشمل **كل** مرشدي القسم/الشطر (حتى المعفَين
+/// والمجمَّدين، بخلاف [AdvisorQuotaCase] الذي يقتصر على أصحاب الوزن > 0).
+class AdvisorStatRow {
+  final CollegeRosterMember advisor;
+
+  /// عدد الطلاب المسنَدين له فعليًا حسب تقرير "كل الكليات" الخام - بلا أي
+  /// تصفير للمعفَين/المجمَّدين (بخلاف [actualCount] أدناه).
+  final int countInSystem;
+
+  /// نفس [countInSystem] إلا للمعفى/المجمَّد (وزنه صفر) فيُصفَّر عمدًا هنا
+  /// تحديدًا - يطابق عمود "عدد الطلاب الفعلي" بالملف المرجعي (يُحتسَب أثناء
+  /// إعادة التوزيع لا كحمل معتمَد عليه).
+  final int actualCount;
+
+  /// "بدون تخفيض نصاب"/"50%"/"معفي من الارشاد" - نص وصفي فقط.
+  final String quotaTypeLabel;
+  final double weight;
+
+  /// الحصة العادلة لهذا المرشد **مقرَّبة للأعلى دومًا** (سقف/ceiling لا
+  /// تقريب عادي) - يطابق منهجية الملف المرجعي بالضبط (تحقَّقتُ حسابيًا: مثال
+  /// حقيقي 901 حالة ÷ 12.5 وزن = 72.08 لعضو كامل النصاب، والملف يعرضها 73 لا
+  /// 72). صفر دومًا للمعفى/المجمَّد.
+  final int target;
+  final int diffFromTarget;
+  final String statusLabel;
+
+  const AdvisorStatRow({
+    required this.advisor,
+    required this.countInSystem,
+    required this.actualCount,
+    required this.quotaTypeLabel,
+    required this.weight,
+    required this.target,
+    required this.diffFromTarget,
+    required this.statusLabel,
+  });
+}
+
+/// كتلة إحصائية واحدة لقسم/شطر معًا (10 كتل نمطيًا: 5 أقسام × شطرين) - رأس
+/// الكتلة يطابق الصف الملخَّص أعلى كل قسم بالملف المرجعي، والصفوف تفاصيل كل
+/// مرشد فيه.
+class DepartmentAdvisorStats {
+  final String department;
+  final String shatr;
+  final int totalAdvisors;
+  final int fullQuotaCount;
+  final int halfQuotaCount;
+  final int exemptCount;
+  final double weightEquivalentAdvisors;
+  final int eligibleCases;
+  final int exemptCases;
+  final int fairShareFull;
+  final int fairShareHalf;
+  final int totalActualCases;
+  final List<AdvisorStatRow> rows;
+
+  const DepartmentAdvisorStats({
+    required this.department,
+    required this.shatr,
+    required this.totalAdvisors,
+    required this.fullQuotaCount,
+    required this.halfQuotaCount,
+    required this.exemptCount,
+    required this.weightEquivalentAdvisors,
+    required this.eligibleCases,
+    required this.exemptCases,
+    required this.fairShareFull,
+    required this.fairShareHalf,
+    required this.totalActualCases,
+    required this.rows,
+  });
+}
+
 /// توصية نقل طالب محدَّد بالاسم من مرشده الحالي إلى مرشد آخر أقل حملاً في
 /// نفس القسم - toAdvisor يكون null إن تعذَّر إيجاد مرشد مناسب آليًا (لا سعة
 /// كافية لدى أي مرشد آخر في القسم)، فيُترك القرار للمنسّق يدويًا.
@@ -162,6 +237,16 @@ class AdvisingCaseAnalysis {
   /// [healthCasesNotWithAmin] الذي يعرض فقط حالات الخطأ.
   final List<AdvisingCaseRecord> healthCaseStudents;
 
+  /// طلاب لهم حالة صحية/إعاقة **وهم فعليًا لدى الجهة الصحيحة** (أمين قسمهم،
+  /// أو منسّق القسم إن اختلف تخصص أمين القسم) - عكس [healthCasesNotWithAmin]
+  /// تمامًا؛ تبويب "طلبة ذوي الإعاقة على مرشدهم" (2026-08-14).
+  final List<AdvisingCaseRecord> healthCasesWithAmin;
+
+  /// تبويب "إحصائية المرشدين" - كتلة لكل قسم (بالشطر الذي يُبنى منه هذا
+  /// التحليل تحديدًا؛ الشاشة تدمج شطرين اثنين معًا) بنفس تصميم ملف سليمان
+  /// المرجعي "تقرير الإرشاد النهائي.xlsx" (2026-08-14).
+  final List<DepartmentAdvisorStats> advisorStatistics;
+
   const AdvisingCaseAnalysis({
     required this.studentsCorrectlyAssigned,
     required this.studentsWithoutAdvisor,
@@ -176,6 +261,8 @@ class AdvisingCaseAnalysis {
     required this.transferSuggestions,
     required this.healthCasesNotWithAmin,
     required this.healthCaseStudents,
+    required this.healthCasesWithAmin,
+    required this.advisorStatistics,
   });
 }
 
@@ -302,7 +389,29 @@ class AdvisingCaseAnalyzer {
     final externalStudents = <ExternalStudentCase>[];
     final withoutAdvisor = <AdvisingCaseRecord>[];
 
+    // ازدواج ظاهري: صف تعذّر تحديد شطره وقت التحليل (الحالة الشائعة: مرشده
+    // خارج كليتنا فلا يمكن معرفة شطره من خريطة شطر المرشدين، ولا عمود جنس
+    // بهذا التقرير) يُضاف لكلا الشطرين معًا وقت القراءة (انظر التعليق أعلى
+    // [unresolvedShatrRows] بـadvising_report_parser_service.dart) - عادة
+    // نسخة الشطر الخطأ تُتجاهَل بصمت لاحقًا لأنها لا تطابق أي طالب حقيقي بذلك
+    // الشطر، لكن هذا التصنيف يُغذَّى من دمج **الشطرين الخامين معًا** مباشرة
+    // (`[...male, ...female]`) بلا مطابقة وسيطة، فتظهر النسختان معًا فعليًا -
+    // لاحظه سليمان (2026-08-14): "فيصل نادر محمد أحمد محمد" مكرر بشطر
+    // الطلاب/الطالبات معًا بتبويب "مرشد خارجي ← طلابنا". يُزال التكرار هنا
+    // بالرقم الجامعي (لا يمكن أن يظهر نفس الرقم الجامعي بشطرين مختلفين
+    // فعليًا)، مع تفضيل النسخة التي لها شطر متوقَّع أوضح لو تعدَّدت.
+    final seenStudentIds = <String>{};
+    final dedupedRecords = <AdvisingCaseRecord>[];
     for (final r in allCollegeRecords) {
+      if (seenStudentIds.add(r.studentId)) dedupedRecords.add(r);
+    }
+
+    for (final r in dedupedRecords) {
+      // استبعاد كامل لطلاب "إدارة الأعمال التنفيذي" - طلب سليمان صراحةً
+      // (2026-08-14): لا يظهرون في أي تصنيف (حتى "طلاب خارجيون") ولا يُحتسبون
+      // في أي إحصائية، أيًا كان مرشدهم.
+      if (isExecutiveMbaProgram(r.department)) continue;
+
       final studentInOurCollege = isKnownBachelorDepartment(normalizeDepartmentName(r.department));
 
       if (!r.hasAdvisor) {
@@ -312,8 +421,19 @@ class AdvisingCaseAnalyzer {
 
       final advisor = facultyByNameKey[_key(displayName(r.advisorNameRaw))];
 
+      // عضو حالته صارت معفاة/مجمَّدة (مجاز/معار/مبتعث/مطوي القيد...) لم يعد
+      // مؤهلاً لإرشاد عام - طلب سليمان صراحةً (2026-08-14): طلابه ينتقلون
+      // إلى "على غير مرشدهم" فورًا عند رفعة جديدة تعكس حالته الجديدة، لا
+      // يبقون "على مرشدهم" لمجرد تطابق القسم. **لا يشمل "حالات خاصة فقط"
+      // (أمين قسم)**: سليمان صحّح (2026-08-14) أن أمين القسم له نصاب إرشاد
+      // فعلي 50% (لا صفر كما كان مفترَضًا)، فطلابه من نفس القسم وضع طبيعي
+      // متوقَّع - الاستثناء المطلوب لاحقًا فقط لو كان الطالب المسنَد ليس من
+      // ذوي الإعاقة (تحقُّق منفصل لم يُطلَب تنفيذه بعد).
+      final advisorNotEligibleForGeneralAdvising =
+          advisor != null && (advisor.advisingLoad == AdvisingLoad.exempt || advisor.advisingLoad == AdvisingLoad.frozen);
+
       if (advisor != null && studentInOurCollege) {
-        if (advisor.department == r.department) {
+        if (advisor.department == r.department && !advisorNotEligibleForGeneralAdvising) {
           correctlyAssigned.add(r);
         } else {
           wrongDept.add(MismatchedAdvisorCase(student: r, advisor: advisor));
@@ -476,8 +596,15 @@ class AdvisingCaseAnalyzer {
         return 1.0;
       case AdvisingLoad.reduced:
         return (m.reducedToPercent ?? 50) / 100.0;
-      case AdvisingLoad.exempt:
+      // أمين القسم ("حالات خاصة فقط") له نصاب إرشاد فعلي 50% - صحّح سليمان
+      // (2026-08-14) أن الوزن صفر كان خطأً، وأكَّده ملفه المرجعي (تقرير
+      // الإرشاد النهائي.xlsx: "محمد عباس الحاج عبدالله محمد" أمين قسم
+      // الإدارة يظهر بنصاب مستهدف 37 = 50% × 73 نصاب الأعضاء كاملي النصاب) -
+      // بوزن صفر كان يُستبعَد كليًا من حساب النصاب العادل للقسم رغم حمله
+      // طلابًا فعليين، فيرتفع نصيب بقية الأعضاء خطأً.
       case AdvisingLoad.specialCasesOnly:
+        return 0.5;
+      case AdvisingLoad.exempt:
       case AdvisingLoad.frozen:
         return 0.0;
     }
@@ -520,11 +647,18 @@ class AdvisingCaseAnalyzer {
     }
 
     final exemptWithStudents = <ExemptAdvisorWithStudentsCase>[];
+    // مرشدون بحالة مجمَّدة (معار/مجاز/مبتعث/موقوف الراتب/مطوي القيد) ولهم
+    // طلاب مسنَدون فعليًا - بطلب سليمان الصريح (2026-08-14): تُدخَل ضمن نفس
+    // آلية "إعادة التوزيع" التلقائية على بقية مرشدي القسم مثل المعفَين
+    // كليًا تمامًا، رغم بقائها منفصلة عن [exemptWithStudents] (لا تظهر
+    // بتبويب "معفَون ولهم طلاب" لأن التجميد ليس إعفاءً دائمًا).
+    final frozenWithStudents = <ExemptAdvisorWithStudentsCase>[];
     final exemptNoIssue = <CollegeRosterMember>[];
     final noStudents = <CollegeRosterMember>[];
     final overloaded = <OverloadedAdvisorCase>[];
     final quotaReport = <AdvisorQuotaCase>[];
     final transfers = <TransferSuggestion>[];
+    final advisorStatistics = <DepartmentAdvisorStats>[];
 
     // مجموعة أعضاء هيئة التدريس الفريدة الظاهرة في نطاق هذا الشطر/الأقسام
     // المرفوعة (لا كل منسوبي الكلية) - نحصرها من المرشدين الظاهرين فعليًا في
@@ -560,10 +694,16 @@ class AdvisingCaseAnalyzer {
         exemptNoIssue.add(member);
         continue;
       }
-      // حالته مجمّدة (موقوف الراتب/مبتعث/معار/مجاز) - لا يُتوقَّع منه إرشاد
-      // حاليًا فلا يُعامَل كـ"مرشد بلا طلاب"، لكنه لا يُعرض ضمن قائمة المعفين
-      // أيضًا لأن التجميد مؤقت وليس قرار إعفاء إرشادي.
-      if (member.advisingLoad == AdvisingLoad.frozen) continue;
+      // حالته مجمّدة (موقوف الراتب/مبتعث/معار/مجاز/مطوي القيد) - لا يُتوقَّع
+      // منه إرشاد حاليًا فلا يُعامَل كـ"مرشد بلا طلاب"، ولا يُعرض ضمن قائمة
+      // المعفين (التجميد مؤقت وليس قرار إعفاء إرشادي دائم)، لكن أي طلاب
+      // مسنَدين له فعليًا يُدخَلون ضمن اقتراحات إعادة التوزيع التلقائية.
+      if (member.advisingLoad == AdvisingLoad.frozen) {
+        if (assigned.isNotEmpty) {
+          frozenWithStudents.add(ExemptAdvisorWithStudentsCase(advisor: member, students: assigned));
+        }
+        continue;
+      }
 
       if (assigned.isEmpty) {
         noStudents.add(member);
@@ -583,6 +723,55 @@ class AdvisingCaseAnalyzer {
 
       final totalAssigned = deptFaculty.fold<int>(0, (sum, m) => sum + countOf(m));
 
+      // تبويب "إحصائية المرشدين" - يطابق تصميم ملف سليمان المرجعي حرفيًا
+      // (2026-08-14): يشمل **كل** أعضاء القسم (حتى المعفَون/المجمَّدون، وزن
+      // صفر) لا أصحاب الوزن > 0 فقط كبقية هذا القسم من الكود. النصاب المستهدف
+      // يُقرَّب للأعلى دومًا (ceiling) لا تقريبًا عاديًا - يطابق حسابيًا مثالاً
+      // حقيقيًا من الملف المرجعي (901 حالة ÷ 12.5 وزن = 72.08 يظهر 73 لا 72).
+      final allDeptMembers = facultyInScope.where((m) => m.department == dept).toList();
+      String quotaTypeLabelOf(CollegeRosterMember m) => switch (m.advisingLoad) {
+            AdvisingLoad.full => 'بدون تخفيض نصاب',
+            AdvisingLoad.reduced => '${m.reducedToPercent ?? 50}%',
+            AdvisingLoad.specialCasesOnly => '50%',
+            AdvisingLoad.exempt || AdvisingLoad.frozen => 'معفي من الارشاد',
+          };
+      final statRows = <AdvisorStatRow>[];
+      for (final m in allDeptMembers) {
+        final countInSystem = countOf(m);
+        final weight = _weightOf(m);
+        final actual = weight > 0 ? countInSystem : 0;
+        final target = weight > 0 ? (weight * (totalAssigned / totalWeight)).ceil() : 0;
+        statRows.add(AdvisorStatRow(
+          advisor: m,
+          countInSystem: countInSystem,
+          actualCount: actual,
+          quotaTypeLabel: quotaTypeLabelOf(m),
+          weight: weight,
+          target: target,
+          diffFromTarget: actual - target,
+          statusLabel: m.advisingReason,
+        ));
+      }
+      advisorStatistics.add(DepartmentAdvisorStats(
+        department: dept,
+        shatr: allDeptMembers.isNotEmpty ? allDeptMembers.first.shatr : '',
+        totalAdvisors: allDeptMembers.length,
+        fullQuotaCount: allDeptMembers.where((m) => m.advisingLoad == AdvisingLoad.full).length,
+        halfQuotaCount: allDeptMembers
+            .where((m) => m.advisingLoad == AdvisingLoad.reduced || m.advisingLoad == AdvisingLoad.specialCasesOnly)
+            .length,
+        exemptCount: allDeptMembers
+            .where((m) => m.advisingLoad == AdvisingLoad.exempt || m.advisingLoad == AdvisingLoad.frozen)
+            .length,
+        weightEquivalentAdvisors: totalWeight,
+        eligibleCases: totalAssigned,
+        exemptCases: statRows.where((r) => r.weight == 0).fold(0, (sum, r) => sum + r.actualCount),
+        fairShareFull: totalWeight > 0 ? (1.0 * (totalAssigned / totalWeight)).ceil() : 0,
+        fairShareHalf: totalWeight > 0 ? (0.5 * (totalAssigned / totalWeight)).ceil() : 0,
+        totalActualCases: statRows.fold(0, (sum, r) => sum + r.actualCount),
+        rows: statRows,
+      ));
+
       // سعة الاستقبال المتاحة لكل مرشد دون الحصة العادلة في هذا القسم -
       // تُستهلَك أدناه عند توزيع طلاب المعفَين والفائضين آليًا.
       final remainingCapacity = <String, int>{};
@@ -590,7 +779,15 @@ class AdvisingCaseAnalyzer {
         final actual = countOf(m);
         final fairShare = _weightOf(m) * (totalAssigned / totalWeight);
         final over = actual - fairShare;
-        if (over >= 1) {
+        // فارق طالب واحد فقط (بالزيادة أو النقصان) يُعتبَر متوازنًا - بطلب
+        // سليمان الصريح (2026-08-14): "لا يمكن أن يكون الرقم مطابقًا 100%".
+        // يُطبَّق على تصنيف "الحالة" بتقرير النصاب **وعلى اقتراحات إعادة
+        // التوزيع معًا** (نفس شرط isOver يغذّي قائمة overloaded أدناه التي
+        // تُبنى منها اقتراحات النقل) - فارق طالب واحد لا يُذكر بإعادة التوزيع
+        // إطلاقًا كما طلب صراحةً في نفس الملاحظة.
+        final isOver = over > 1;
+        final isUnder = (fairShare - actual) > 1;
+        if (isOver) {
           overloaded.add(OverloadedAdvisorCase(
             advisor: m,
             actualCount: actual,
@@ -604,18 +801,25 @@ class AdvisingCaseAnalyzer {
           advisor: m,
           actualCount: actual,
           fairShare: fairShare,
-          status: over >= 1
-              ? QuotaStatus.over
-              : (fairShare - actual >= 0.5 ? QuotaStatus.under : QuotaStatus.balanced),
+          status: isOver ? QuotaStatus.over : (isUnder ? QuotaStatus.under : QuotaStatus.balanced),
         ));
       }
 
+      // دوران بالتساوي على كل الأعضاء النشطين بالقسم (وزن > 0) حين تُستهلَك
+      // كل سعة الاستقبال دون الحصة العادلة - بطلب سليمان الصريح (2026-08-14):
+      // "المفترض تقترح، مثلًا يوزَّع حالات بشرى بالتساوي على الأعضاء
+      // النشطين" بدل ترك القرار يدويًا كليًا ("يلزم قرار يدوي") لمجرد نفاد
+      // السعة الرسمية دون الحصة العادلة - توزيع مقترَح أفضل من لا شيء.
+      var roundRobinIndex = 0;
       CollegeRosterMember? pickReceiver() {
         for (final m in deptFaculty) {
           final k = _key(displayName(m.name));
           if ((remainingCapacity[k] ?? 0) > 0) return m;
         }
-        return null;
+        if (deptFaculty.isEmpty) return null;
+        final receiver = deptFaculty[roundRobinIndex % deptFaculty.length];
+        roundRobinIndex++;
+        return receiver;
       }
 
       void consumeCapacity(CollegeRosterMember m) {
@@ -623,8 +827,10 @@ class AdvisingCaseAnalyzer {
         remainingCapacity[k] = (remainingCapacity[k] ?? 0) - 1;
       }
 
-      // 1) طلاب المرشدين المعفَين وجوبًا (كل طلابهم بلا استثناء).
-      for (final c in exemptWithStudents.where((c) => c.advisor.department == dept)) {
+      // 1) طلاب المرشدين المعفَين وجوبًا (كل طلابهم بلا استثناء) + المرشدين
+      // ذوي الحالة المجمَّدة (معار/مجاز/مبتعث/مطوي القيد...) - بطلب سليمان
+      // الصريح (2026-08-14) تُعامَل نفس معاملة الإعفاء الكامل هنا تحديدًا.
+      for (final c in [...exemptWithStudents, ...frozenWithStudents].where((c) => c.advisor.department == dept)) {
         for (final s in c.students) {
           final receiver = pickReceiver();
           if (receiver != null) consumeCapacity(receiver);
@@ -645,11 +851,18 @@ class AdvisingCaseAnalyzer {
         }
       }
 
-      // 3) طلاب "على غير مرشدهم" (قسم المرشد يخالف قسمهم، أو المرشد غير
-      // معروف إطلاقًا في ملف منسوبي الكلية) - يُقترح لهم مرشد من قسمهم
-      // الصحيح بنفس آلية الحصة العادلة، ليعرف المنسّق فورًا لمن يُحوَّل
-      // الطالب بدل البحث يدويًا.
-      for (final c in wrongDept.where((c) => c.student.department == dept)) {
+      // 3) طلاب "على غير مرشدهم" بمرشد **من كليتنا فعليًا** لكن بقسم مخالف
+      // (حالة إعادة توزيع داخلية حقيقية) - يُقترح لهم مرشد من قسمهم الصحيح.
+      // **لا يشمل حالة المرشد غير المعروف إطلاقًا** (`c.advisor == null`،
+      // اسمه لا يطابق أي عضو بملف منسوبي الكلية إطلاقًا) - سليمان لاحظ
+      // (2026-08-14) ظهور أسماء لا تتبع كليتنا مطلقًا ("عمر محمد حميدة"،
+      // "لجين زهير"، "ايمان عبدالعزيز أحمد جان طاشكندي" - تحقَّقتُ: لا وجود
+      // لها بملف منسوبي الكلية إطلاقًا) بعمود "المرشد السابق" بإعادة التوزيع،
+      // موحية بأنها حالة إعادة توزيع داخلية عادية رغم أنها فعليًا خطأ ربط
+      // بمنظومة الجامعة (طالب مرتبط بشخص من خارج الكلية تمامًا) يحتاج تحقُّقًا
+      // يدويًا لا نقلاً تلقائيًا لمرشد آخر - يبقى ظاهرًا بتبويب "على غير
+      // مرشدهم" بوضوح ("غير موجود بملف منسوبي الكلية") بدل اقتراح نقل مضلِّل.
+      for (final c in wrongDept.where((c) => c.student.department == dept && c.advisor != null)) {
         final receiver = pickReceiver();
         if (receiver != null) consumeCapacity(receiver);
         transfers.add(TransferSuggestion(
@@ -683,6 +896,7 @@ class AdvisingCaseAnalyzer {
       for (final m in facultyInScope.where(isDeptCoordinator)) m.department: m,
     };
     final healthMismatches = <HealthCaseMismatch>[];
+    final healthCasesWithAmin = <AdvisingCaseRecord>[];
     final healthCaseStudents = activeStudents.where((s) => s.hasHealthCondition).toList();
     for (final s in healthCaseStudents) {
       final responsible = aminByDept[s.department] ?? coordinatorByDept[s.department];
@@ -690,7 +904,9 @@ class AdvisingCaseAnalyzer {
       final isWithResponsible = responsible != null &&
           currentAdvisor != null &&
           _key(displayName(responsible.name)) == _key(displayName(currentAdvisor.name));
-      if (!isWithResponsible) {
+      if (isWithResponsible) {
+        healthCasesWithAmin.add(s);
+      } else {
         healthMismatches.add(HealthCaseMismatch(student: s, currentAdvisor: currentAdvisor, departmentAmin: responsible));
       }
     }
@@ -701,6 +917,8 @@ class AdvisingCaseAnalyzer {
       studentsWithWrongDeptAdvisor: wrongDept,
       healthCasesNotWithAmin: healthMismatches,
       healthCaseStudents: healthCaseStudents,
+      healthCasesWithAmin: healthCasesWithAmin,
+      advisorStatistics: advisorStatistics,
       exemptAdvisorsWithStudents: exemptWithStudents,
       advisorsWithNoStudents: noStudents,
       overloadedAdvisors: overloaded,

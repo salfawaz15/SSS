@@ -1783,7 +1783,7 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
   /// من قائمة "عضو هيئة التدريس" ما لم تُفعَّل خانة "إظهار الكل".
   bool _isAbsentRosterMember(CollegeRosterMember m) {
     final text = '${m.position} ${m.position2} ${m.position3} ${m.employeeStatus}';
-    return text.contains('مبتعث') || text.contains('معار') || text.contains('مجاز');
+    return text.contains('مبتعث') || text.contains('معار') || text.contains('مجاز') || text.contains('مطوي');
   }
 
   /// أسماء الأعضاء ضمن نطاق القسم/الشطر المحدَّد حاليًا (شاشة عضو هيئة

@@ -11,7 +11,8 @@ class _PdfParseRequest {
   final Uint8List bytes;
   final int? shatrIndex;
   final Map<String, String>? advisorShatrByName;
-  const _PdfParseRequest(this.bytes, this.shatrIndex, this.advisorShatrByName);
+  final Set<String>? knownAdvisorNameKeys;
+  const _PdfParseRequest(this.bytes, this.shatrIndex, this.advisorShatrByName, this.knownAdvisorNameKeys);
 }
 
 /// نتيجة [AdvisingReportPdfParserService.parseInBackground]: السجلات
@@ -34,6 +35,7 @@ AdvisingReportPdfParseResult _parseAdvisingPdfInIsolate(_PdfParseRequest request
     advisorShatrByName: request.advisorShatrByName,
     unresolvedShatrRows: unresolved,
     exclusionCounts: exclusionCounts,
+    knownAdvisorNameKeys: request.knownAdvisorNameKeys,
   );
   return AdvisingReportPdfParseResult(records, unresolved, exclusionCounts);
 }
@@ -49,6 +51,7 @@ class AdvisingReportPdfParserService {
     Map<String, String>? advisorShatrByName,
     List<String>? unresolvedShatrRows,
     Map<String, int>? exclusionCounts,
+    Set<String>? knownAdvisorNameKeys,
   }) {
     return AdvisingReportParserService.parseRows(
       PdfTableRowsExtractor.extract(pdfBytes),
@@ -57,6 +60,7 @@ class AdvisingReportPdfParserService {
       advisorShatrByName: advisorShatrByName,
       unresolvedShatrRows: unresolvedShatrRows,
       exclusionCounts: exclusionCounts,
+      knownAdvisorNameKeys: knownAdvisorNameKeys,
     );
   }
 
@@ -69,10 +73,11 @@ class AdvisingReportPdfParserService {
     Uint8List pdfBytes, {
     Shatr? shatr,
     Map<String, String>? advisorShatrByName,
+    Set<String>? knownAdvisorNameKeys,
   }) {
     return compute(
       _parseAdvisingPdfInIsolate,
-      _PdfParseRequest(pdfBytes, shatr?.index, advisorShatrByName),
+      _PdfParseRequest(pdfBytes, shatr?.index, advisorShatrByName, knownAdvisorNameKeys),
     );
   }
 }

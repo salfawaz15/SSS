@@ -71,6 +71,24 @@ class AdvisingReportParserService {
 
   static String _cell(List<String> row, int index) => (index < 0 || index >= row.length) ? '' : row[index];
 
+  /// يحاول فصل نص خلية "الاسم+التخصص" المندمجة إلى (الاسم الفعلي، نص
+  /// التخصص) - انظر التعليق عند نقطة الاستدعاء لسبب حدوث هذا الاندماج. يجرّب
+  /// أطول لاحقة كلمات ممكنة أولًا (3 ثم 2 ثم 1) حتى لا يُقتطَع جزء من تخصص
+  /// متعدد الكلمات ("نظم المعلومات الادارية") كأنه جزء من الاسم. null لو لم
+  /// تُطابِق أي لاحقة تخصصًا معروفًا - الصف يبقى بلا إصلاح فيُستبعَد لاحقًا
+  /// بفحص القسم المعتاد بدل عرض بيانات فاسدة.
+  static (String, String)? _splitMergedNameAndDepartment(String mergedText) {
+    final words = mergedText.trim().split(RegExp(r'\s+'));
+    for (final wordCount in [3, 2, 1]) {
+      if (words.length <= wordCount) continue;
+      final suffix = words.sublist(words.length - wordCount).join(' ');
+      if (isKnownBachelorDepartment(normalizeDepartmentName(suffix))) {
+        return (words.sublist(0, words.length - wordCount).join(' '), suffix);
+      }
+    }
+    return null;
+  }
+
   static List<List<String>> _readTableRows(List<int> docxBytes) {
     final archive = ZipDecoder().decodeBytes(docxBytes);
     final docFile = archive.files.firstWhere((f) => f.name == 'word/document.xml');
@@ -110,14 +128,48 @@ class AdvisingReportParserService {
   static bool _isCollegeLabelRow(List<String> row) =>
       row.length <= 3 && row.any((c) => _normalize(c).contains(_normalize('كلية')));
 
-  /// يستخرج اسم الفرع من سطر "الكلية" إن وُجد - '' يعني المقر الرئيسي (لا
-  /// استبعاد)، غير فارغ يعني فرعًا يجب استبعاد كل طلابه.
-  static String _branchFromCollegeLabelRow(List<String> row) {
+  static const String _ourCollegeName = 'اداره الاعمال';
+
+  /// يستخرج سبب استبعاد كتلة المرشد الحالية من سطر "الكلية" إن وُجد - '' يعني
+  /// كليتنا (لا استبعاد)، غير فارغ يعني وجوب استبعاد كل طلاب هذه الكتلة.
+  ///
+  /// **محاولة سابقة (2026-08-14) استبعدت أي كلية لا تذكر "إدارة الأعمال"
+  /// بلا استثناء - سبَّبت رجوعًا حقيقيًا**: طارق حلمى عبدالنبي علي (عضو حقيقي
+  /// بملف منسوبي كليتنا، نصاب كامل) اختفت كتلته بالكامل لأن سطر الكلية أسفل
+  /// كتلته تاريخيًا لا يذكر "إدارة الأعمال" لسبب إداري معروف مسبقًا (انظر
+  /// [[project_tariq_helmy_secondment]]). **إصلاح لاحق (2026-08-15) بدليل
+  /// إضافي من سليمان**: مرشدون حقيقيون من كليات أخرى (محمد عبدالله حسين
+  /// زميع/قمراء راجح الحميدي السبيعي/إيمان عبدالعزيز أحمد جان طاشكندي -
+  /// تحقَّقتُ: كل واحد منهم له عشرات الطلاب موزَّعين على تخصصات كلية تطبيقية
+  /// واضحة كـ"الإعلان والاتصال التسويقي"/"السكرتارية التنفيذية"/"تقنية وأمن
+  /// الشبكات"، **وبعضها فقط** يحمل نصًا يتطابق حرفيًا مع أحد أقسامنا الخمسة
+  /// كـ"قسم المحاسبة" - تخصص بنفس الاسم موجود في الكلية التطبيقية أيضًا) كانوا
+  /// يتسرَّبون لتبويب "مرشد خارجي ← طلابنا" رغم استبعاد الاستبعاد الواسع، لأن
+  /// دالة [isKnownBachelorDepartment] بالمقارنة النصية وحدها لا تفرّق قسمنا
+  /// عن قسم بنفس الاسم بكلية أخرى.
+  ///
+  /// **الحل المعتمَد الآن**: يُستبعَد سطر الكلية إن لم يذكر "إدارة الأعمال"
+  /// (أو فرع محافظة) **إلا إذا كان اسم مرشد هذه الكتلة تحديدًا موجودًا فعليًا
+  /// بملف منسوبي الكلية** ([knownAdvisorNameKeys]، يُمرَّر اختياريًا من
+  /// الشاشة التي حمَّلت ملف منسوبي الكلية مسبقًا) - يحلّ حالتي طارق حلمى
+  /// (معروف بالملف رغم تسمية الكلية الإدارية المختلفة) والمرشدين الحقيقيين
+  /// من كليات أخرى (غير معروفين بالملف إطلاقًا) معًا بلا تعارض.
+  static String _branchFromCollegeLabelRow(
+    List<String> row, {
+    String? currentAdvisorName,
+    Set<String>? knownAdvisorNameKeys,
+  }) {
     final text = row.join(' ');
     for (final branch in _branchCampusNames) {
       if (text.contains(branch)) return branch;
     }
-    return '';
+    if (_normalize(text).contains(_normalize(_ourCollegeName))) return '';
+    if (currentAdvisorName != null &&
+        knownAdvisorNameKeys != null &&
+        knownAdvisorNameKeys.contains(normalizeAdvisorNameForMatch(currentAdvisorName))) {
+      return '';
+    }
+    return 'كلية أخرى ($text)';
   }
 
   /// إن كان الملف فارغًا (لا جدول فيه أصلاً - كملف "مرشدين ليس لهم طلاب" حين
@@ -154,6 +206,7 @@ class AdvisingReportParserService {
     bool isHealthReport = false,
     List<String>? unresolvedShatrRows,
     Map<String, int>? exclusionCounts,
+    Set<String>? knownAdvisorNameKeys,
   }) {
     return parseRows(
       _readTableRows(docxBytes),
@@ -163,6 +216,7 @@ class AdvisingReportParserService {
       isHealthReport: isHealthReport,
       unresolvedShatrRows: unresolvedShatrRows,
       exclusionCounts: exclusionCounts,
+      knownAdvisorNameKeys: knownAdvisorNameKeys,
     );
   }
 
@@ -191,6 +245,7 @@ class AdvisingReportParserService {
     bool isHealthReport = false,
     List<String>? unresolvedShatrRows,
     Map<String, int>? exclusionCounts,
+    Set<String>? knownAdvisorNameKeys,
   }) {
     if (rows.isEmpty) return const [];
 
@@ -225,7 +280,11 @@ class AdvisingReportParserService {
       }
 
       if (_isCollegeLabelRow(row)) {
-        currentBranch = _branchFromCollegeLabelRow(row);
+        currentBranch = _branchFromCollegeLabelRow(
+          row,
+          currentAdvisorName: currentAdvisorName,
+          knownAdvisorNameKeys: knownAdvisorNameKeys,
+        );
         continue;
       }
 
@@ -263,15 +322,45 @@ class AdvisingReportParserService {
       if (!sawHeader) continue;
 
       if (currentBranch.isNotEmpty) {
-        exclusionCounts?.update('طالب من فرع خارج المقر الرئيسي ($currentBranch)', (v) => v + 1, ifAbsent: () => 1);
+        exclusionCounts?.update('طالب من خارج كليتنا: $currentBranch', (v) => v + 1, ifAbsent: () => 1);
         continue;
       }
 
-      final name = _cell(row, nameCol).trim();
-      final id = _cell(row, idCol).trim();
+      var name = _cell(row, nameCol).trim();
+      var id = _cell(row, idCol).trim();
       if (name.isEmpty || id.isEmpty) {
         exclusionCounts?.update('بلا اسم/رقم جامعي', (v) => v + 1, ifAbsent: () => 1);
         continue;
+      }
+
+      // انزياح أعمدة PDF: استخراج جداول PDF هنا يُعاد بناؤه هندسيًا من مواضع
+      // الكلمات (لا بنية جدول حقيقية - انظر PdfTableRowsExtractor)، فتُقسَّم
+      // خلايا الصف حسب فجوة أفقية بين الكلمات. لو كانت الفجوة بين عمودي
+      // "الاسم" و"التخصص" لصف معيّن أقل من العتبة المعتمدة (يعتمد على طول
+      // الاسم/الخط لذلك الصف تحديدًا)، يندمج العمودان في خلية واحدة فتنزاح كل
+      // الخلايا اللاحقة يسارًا خانة واحدة. تحقَّقتُ من البيانات الفعلية
+      // المخزَّنة (2026-08-14، حالة "صباء ...") فتبيَّن أن الانزياح الحقيقي
+      // هو: خانة "الرقم الجامعي" تصير رقم تسلسل قصير (م، كـ"1")، وخانة
+      // "الاسم" تصير الرقم الجامعي الحقيقي (أرقام طويلة)، وخانة "التخصص"
+      // تصير [الاسم الكامل][التخصص] مدمَجين - **لا العكس** كما افتُرض بمحاولة
+      // إصلاح أولى فشلت (لم تكتشف الحالة إطلاقًا لأنها فحصت الحقل الخطأ).
+      // يُكتشَف بعلامتين موثوقتين معًا: رقم جامعي حقيقي دومًا طويل (6+ أرقام)
+      // لا قصير كرقم تسلسل، واسم حقيقي لا يكون أبدًا أرقامًا صرفة.
+      var deptCellText = deptCol != -1 ? _cell(row, deptCol).trim() : '';
+      final idLooksLikeSerial = RegExp(r'^\d{1,3}$').hasMatch(id);
+      final nameLooksLikeRealId = RegExp(r'^\d{6,10}$').hasMatch(name);
+      if (deptCol != -1 &&
+          idLooksLikeSerial &&
+          nameLooksLikeRealId &&
+          deptCellText.split(RegExp(r'\s+')).length >= 4) {
+        final repaired = _splitMergedNameAndDepartment(deptCellText);
+        if (repaired != null) {
+          id = name; // الرقم الجامعي الحقيقي كان بخانة "الاسم" خطأً.
+          name = repaired.$1;
+          deptCellText = repaired.$2;
+          exclusionCounts?.update(
+              'صف أُصلح تلقائيًا (انزياح أعمدة استخراج PDF) - لم يُستبعَد', (v) => v + 1, ifAbsent: () => 1);
+        }
       }
 
       // نص هامش/تذييل الصفحة (مثال: "Page 349 / 2147") قد يُقرَأ أحيانًا كصف
@@ -302,9 +391,9 @@ class AdvisingReportParserService {
       // "قسم الادارة" من ملف منسوبي الكلية). برامج الدراسات العليا الخاصة
       // (مثال: "إدارة الأعمال التنفيذي") ليست من الأقسام الخمسة المعروفة
       // فتُستبعَد هنا تلقائيًا حتى لو لم يُفصح عمود "الدرجة العلمية" عنها.
-      final normalizedDept = deptCol != -1 ? normalizeDepartmentName(_cell(row, deptCol)) : '';
+      final normalizedDept = deptCol != -1 ? normalizeDepartmentName(deptCellText) : '';
       if (requireDepartment && !isKnownBachelorDepartment(normalizedDept)) {
-        final rawDept = _cell(row, deptCol).trim();
+        final rawDept = deptCellText;
         exclusionCounts?.update(
           'قسم غير معروف (${rawDept.isEmpty ? "فارغ" : rawDept})',
           (v) => v + 1,
@@ -334,7 +423,7 @@ class AdvisingReportParserService {
       AdvisingCaseRecord buildRecord(String shatrLabel) => AdvisingCaseRecord(
             studentId: id,
             studentName: name,
-            department: normalizedDept.isNotEmpty ? normalizedDept : _cell(row, deptCol).trim(),
+            department: normalizedDept.isNotEmpty ? normalizedDept : deptCellText,
             shatr: shatrLabel,
             advisorNameRaw: rowAdvisorName ?? '',
             advisorId: advisorIdCol != -1 ? _cell(row, advisorIdCol).trim() : (currentAdvisorId ?? ''),
