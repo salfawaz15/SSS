@@ -168,6 +168,14 @@ service cloud.firestore {
         request.resource.data.university_id == resource.data.university_id &&
         request.resource.data.shatr == resource.data.shatr &&
         request.resource.data.department == resource.data.department;
+
+      // منسّق مسار الرعاية الطلابية: يرى ويدير حالات كل الأقسام (نُقلت هذه
+      // المسؤولية إليه من منسّقي الأقسام - 2026-08-15).
+      allow read, create: if isTrackCoordinatorFor('student_care');
+      allow update: if isTrackCoordinatorFor('student_care') &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'history']) &&
+        request.resource.data.student_name == resource.data.student_name &&
+        request.resource.data.university_id == resource.data.university_id;
     }
 
     // حالات الدعم النفسي والاجتماعي: نفس آلية حالات الظروف الخاصة بالضبط
@@ -185,6 +193,14 @@ service cloud.firestore {
         request.resource.data.university_id == resource.data.university_id &&
         request.resource.data.shatr == resource.data.shatr &&
         request.resource.data.department == resource.data.department;
+
+      // منسّق مسار الرعاية الطلابية: يرى ويدير حالات كل الأقسام (نُقلت هذه
+      // المسؤولية إليه من منسّقي الأقسام - 2026-08-15).
+      allow read, create: if isTrackCoordinatorFor('student_care');
+      allow update: if isTrackCoordinatorFor('student_care') &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'history']) &&
+        request.resource.data.student_name == resource.data.student_name &&
+        request.resource.data.university_id == resource.data.university_id;
     }
 
     // إعدادات إصدار تطبيق CBA Advising (رقم الإصدار الحالي + رابط تنزيل

@@ -206,7 +206,7 @@ class _PortalLoginScreenState extends State<PortalLoginScreen> {
                 return Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Expanded(flex: 5, child: _BrandPanel()),
+                    const Expanded(flex: 5, child: BrandPanel()),
                     Expanded(
                       flex: 6,
                       child: Center(
@@ -229,7 +229,7 @@ class _PortalLoginScreenState extends State<PortalLoginScreen> {
               return SingleChildScrollView(
                 child: Column(
                   children: [
-                    const SizedBox(height: 340, child: _BrandPanel()),
+                    const SizedBox(height: 340, child: BrandPanel()),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       child: _buildFormPanel(),
@@ -423,8 +423,8 @@ class _PortalLoginScreenState extends State<PortalLoginScreen> {
 }
 
 /// اللوح التعريفي بهوية الوحدة (أخضر متدرّج + دوائر زخرفية شفافة + الشعار).
-class _BrandPanel extends StatelessWidget {
-  const _BrandPanel();
+class BrandPanel extends StatelessWidget {
+  const BrandPanel({super.key});
 
   @override
   Widget build(BuildContext context) {

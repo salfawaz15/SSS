@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 import 'portal_footer.dart';
+import 'portal_login_screen.dart' show BrandPanel;
 
 /// شاشة الدخول الجديدة برقم المنسوب - المرحلة 3 من إعادة هيكلة الدخول
 /// والصلاحيات (2026-08-15). كل شخص له حساب فردي (بريد داخلي مبني على رقم
@@ -70,6 +71,77 @@ class _StaffNumberLoginScreenState extends State<StaffNumberLoginScreen> {
     }
   }
 
+  Widget _buildFormPanel() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(40, 44, 40, 40),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Icon(Icons.badge_outlined, size: 40, color: AppColors.green),
+          const SizedBox(height: 12),
+          const Text(
+            'تسجيل الدخول',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'أدخل رقم المنسوب وكلمة المرور',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey.shade600, fontSize: 13.5),
+          ),
+          const SizedBox(height: 28),
+          TextField(
+            controller: _staffNumberCtrl,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              labelText: 'رقم المنسوب',
+              prefixIcon: Icon(Icons.badge_outlined),
+            ),
+            onSubmitted: (_) => _signIn(),
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: _passwordCtrl,
+            obscureText: _obscurePassword,
+            decoration: InputDecoration(
+              labelText: 'كلمة المرور',
+              prefixIcon: const Icon(Icons.lock_outline),
+              suffixIcon: IconButton(
+                icon: Icon(_obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+                onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+              ),
+            ),
+            onSubmitted: (_) => _signIn(),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 13)),
+          ],
+          const SizedBox(height: 20),
+          SizedBox(
+            height: 54,
+            child: ElevatedButton(
+              onPressed: _loading ? null : _signIn,
+              style: ElevatedButton.styleFrom(
+                elevation: 2,
+                shadowColor: AppColors.green.withValues(alpha: 0.4),
+              ),
+              child: _loading
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Text('تسجيل الدخول', style: TextStyle(fontSize: 16)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -78,76 +150,48 @@ class _StaffNumberLoginScreenState extends State<StaffNumberLoginScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         foregroundColor: AppColors.green,
-        title: const Text('الدخول برقم المنسوب'),
+        leading: Navigator.of(context).canPop()
+            ? BackButton(onPressed: () => Navigator.of(context).maybePop())
+            : null,
       ),
       bottomNavigationBar: const PortalFooterBar(),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 400),
-            child: Column(
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final isWide = constraints.maxWidth >= 760;
+
+          if (isWide) {
+            return Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Icon(Icons.badge_outlined, size: 48, color: AppColors.green),
-                const SizedBox(height: 16),
-                const Text(
-                  'تسجيل الدخول',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'أدخل رقم المنسوب وكلمة المرور',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 13.5),
-                ),
-                const SizedBox(height: 24),
-                TextField(
-                  controller: _staffNumberCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'رقم المنسوب',
-                    prefixIcon: Icon(Icons.badge_outlined),
-                  ),
-                  onSubmitted: (_) => _signIn(),
-                ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: _passwordCtrl,
-                  obscureText: _obscurePassword,
-                  decoration: InputDecoration(
-                    labelText: 'كلمة المرور',
-                    prefixIcon: const Icon(Icons.lock_outline),
-                    suffixIcon: IconButton(
-                      icon: Icon(_obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined),
-                      onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                const Expanded(flex: 5, child: BrandPanel()),
+                Expanded(
+                  flex: 6,
+                  child: Center(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 32),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 440),
+                        child: _buildFormPanel(),
+                      ),
                     ),
-                  ),
-                  onSubmitted: (_) => _signIn(),
-                ),
-                if (_error != null) ...[
-                  const SizedBox(height: 12),
-                  Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 13)),
-                ],
-                const SizedBox(height: 20),
-                SizedBox(
-                  height: 54,
-                  child: ElevatedButton(
-                    onPressed: _loading ? null : _signIn,
-                    child: _loading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                          )
-                        : const Text('تسجيل الدخول', style: TextStyle(fontSize: 16)),
                   ),
                 ),
               ],
+            );
+          }
+
+          return SingleChildScrollView(
+            child: Column(
+              children: [
+                const SizedBox(height: 280, child: BrandPanel()),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: _buildFormPanel(),
+                ),
+              ],
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
