@@ -22,7 +22,6 @@ import '../services/course_schedule_repository.dart' show Shatr, ShatrLabel;
 import '../theme/app_theme.dart';
 import '../utils/name_display.dart';
 import 'admin_nav.dart';
-import 'portal_cards.dart';
 import 'portal_header.dart';
 
 const String _kAllShatr = 'كل الشطرين';
@@ -856,21 +855,52 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       Colors.brown,
     ];
 
+    final cards = [
+      for (var i = 0; i < 10; i++)
+        _CompactStatTile(
+          icon: icons[i],
+          value: '${counts[i]}',
+          label: tabs[i].$1,
+          color: colors[i],
+          onTap: () => setState(() => _sectionIndex = i),
+        ),
+    ];
+
     final isNarrow = MediaQuery.of(context).size.width < 900;
-    return GridView.count(
-      crossAxisCount: isNarrow ? 2 : 5,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 10,
-      crossAxisSpacing: 10,
-      childAspectRatio: isNarrow ? 2.4 : 1.5,
+    if (isNarrow) {
+      // بطاقات بعرض ثابت تلتف تلقائيًا (Wrap) بدل صفّين صارمين على الجوّال -
+      // يمنع تكدّس النصوص الطويلة بعرض ضيق جدًا.
+      return Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [for (final c in cards) SizedBox(width: 160, child: c)],
+      );
+    }
+    return Column(
       children: [
-        for (var i = 0; i < 10; i++)
-          InkWell(
-            borderRadius: BorderRadius.circular(14),
-            onTap: () => setState(() => _sectionIndex = i),
-            child: PortalStatCard(icon: icons[i], value: '${counts[i]}', label: tabs[i].$1, accentColor: colors[i]),
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var i = 0; i < 5; i++) ...[
+                Expanded(child: cards[i]),
+                if (i < 4) const SizedBox(width: 8),
+              ],
+            ],
           ),
+        ),
+        const SizedBox(height: 8),
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var i = 5; i < 10; i++) ...[
+                Expanded(child: cards[i]),
+                if (i < 9) const SizedBox(width: 8),
+              ],
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -1628,4 +1658,68 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
 
 extension on String {
   String ifEmptyDash() => trim().isEmpty ? '—' : this;
+}
+
+/// بطاقة إحصائية مصغَّرة لشبكة "متابعة حالات الإرشاد" (10 بطاقات) - نفس
+/// لغة تصميم [PortalStatCard] (أيقونة ملوَّنة + رقم + تسمية) لكن بحجم أصغر
+/// بكثير (بلا ارتفاع مفروض) حتى تسع التسميات الطويلة بلا قصّ - سليمان لاحظ
+/// صراحةً (2026-08-16) أن حجم البطاقات الأصلية (مصمَّمة أصلًا لأربع بطاقات
+/// بصف واحد بلوحة الإرشاد) كان "ضخمًا جدًا" هنا مع عشر بطاقات فيصعب قراءة
+/// التسميات أسفلها.
+class _CompactStatTile extends StatelessWidget {
+  final IconData icon;
+  final String value;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _CompactStatTile({
+    required this.icon,
+    required this.value,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onTap,
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.grey.shade200),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(8)),
+                alignment: Alignment.center,
+                child: Icon(icon, color: Colors.white, size: 16),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(value, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.greenDark)),
+                    const SizedBox(height: 2),
+                    Text(label, style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
