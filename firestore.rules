@@ -135,7 +135,13 @@ service cloud.firestore {
     // (للتحقّق من دوره وعلم "يجب تغيير كلمة المرور" بعد الدخول).
     match /portal_users/{uid} {
       allow read: if request.auth != null && request.auth.uid == uid;
-      allow write: if false;
+      // الاستثناء الوحيد: الشخص نفسه يُطفئ علم "يجب تغيير كلمة المرور" بعد
+      // نجاح التغيير الفعلي (FirebaseAuth.updatePassword) - لا يملك تعديل أي
+      // حقل آخر بوثيقته (الدور وغيره تبقى حصرًا لأداة سطر الأوامر).
+      allow update: if request.auth != null && request.auth.uid == uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['mustChangePassword']) &&
+        request.resource.data.mustChangePassword == false;
+      allow create, delete: if false;
     }
 
     // بيانات منسّقي الأقسام (اسم + بريد رسمي) - تُعرض علنًا في الصفحة

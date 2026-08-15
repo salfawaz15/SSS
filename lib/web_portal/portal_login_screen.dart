@@ -8,6 +8,7 @@ import '../theme/app_theme.dart';
 import 'hidden_admin_login_screen.dart';
 import 'portal_accounts.dart';
 import 'portal_footer.dart';
+import 'staff_number_login_screen.dart';
 
 /// مفاتيح تخزين "تذكرني على هذا الجهاز" محليًا في متصفح المستخدم (لا تُرسَل
 /// لأي خادم) - تُملأ تلقائيًا في المرة القادمة لتوفير وقت الدخول اليومي.
@@ -402,6 +403,18 @@ class _PortalLoginScreenState extends State<PortalLoginScreen> {
                     )
                   : const Text('تسجيل الدخول', style: TextStyle(fontSize: 16)),
             ),
+          ),
+          const SizedBox(height: 10),
+          // نظام الدخول الجديد (المرحلة 3 من إعادة هيكلة الدخول والصلاحيات،
+          // 2026-08-15) - حساب فردي برقم المنسوب بدل اختيار الدور من القوائم
+          // أعلاه. رابط إضافي بجانب النموذج القديم أثناء فترة الانتقال، بدل
+          // استبدال هذا النموذج المعقَّد فورًا (خطر تعطيل دخول من لم يُنقَل
+          // حسابه بعد للنظام الجديد).
+          TextButton(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const StaffNumberLoginScreen()),
+            ),
+            child: const Text('الدخول برقم المنسوب (تجريبي)'),
           ),
         ],
       ),
