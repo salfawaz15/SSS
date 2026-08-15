@@ -552,7 +552,10 @@ class MembersPage extends StatelessWidget {
         eyebrow: 'هيكلتنا',
         title: 'الهيكل التنظيمي',
         icon: Icons.account_tree_outlined,
-        maxWidth: 1180,
+        // وُسِّعت من 1180 إلى 1600 - سليمان لاحظ أن أغلب الأسماء (خصوصًا
+        // بجدول منسّقي الأقسام العلمية) تظهر مقصوصة بعلامات حذف (...) لضيق
+        // الأعمدة، رغم توفّر مساحة أفقية كبيرة على شاشات الحاسوب (2026-08-16).
+        maxWidth: 1600,
         child: const _OrgChartSection(),
       ),
     );
@@ -1915,9 +1918,9 @@ class _MemberChip extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(role, textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 10.5, color: AppColors.green)),
+          Text(role, textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11.5, color: AppColors.green)),
           const SizedBox(height: 3),
-          Text(name, textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700)),
+          Text(name, textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, color: Colors.grey.shade700)),
         ],
       ),
     );
@@ -1978,7 +1981,7 @@ class _DeptCell extends StatelessWidget {
         textAlign: TextAlign.center,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: TextStyle(fontSize: small ? 9.5 : 10, fontWeight: bold ? FontWeight.w700 : FontWeight.w500),
+        style: TextStyle(fontSize: small ? 10.5 : 11.5, fontWeight: bold ? FontWeight.w700 : FontWeight.w500),
       ),
     );
   }
