@@ -6,20 +6,17 @@ import 'academic_services_hub_screen.dart';
 import 'admin_workspace_screen.dart';
 import 'advising_hub_screen.dart';
 import 'change_password_dialog.dart';
-import 'college_coordinator_workspace_screen.dart';
 import 'college_roster_admin_screen.dart';
-import 'coordinator_workspace_screen.dart';
 import 'mobile_service_card.dart';
-import 'viewer_reports_screen.dart';
 
 /// الشاشة الرئيسية الجوّالة الأصلية لتطبيق "CBA Advising" بعد الدخول - بطاقة
 /// ترحيب + شبكة خدمات (بنفس روح الشاشة الرئيسية لتطبيق "سليمان" بطلب سليمان
 /// صراحةً 2026-08-07)، بدل عرض `AdminWorkspaceScreen` (تصميم الموقع العريض)
 /// مباشرة كما كان سابقًا.
 ///
-/// الشبكة تظهر فقط لحساب الإدارة الكامل (أدوار متعدّدة تستحق شبكة اختيار) -
-/// بقية الأدوار (منسّق قسم/منسّق كلية/عرض فقط) لها وجهة واحدة فيُنقَل إليها
-/// مباشرة بلا شبكة وسيطة لا فائدة منها.
+/// تُعرض فقط لحساب الإدارة الكامل (أدوار متعدّدة تستحق شبكة اختيار) - بقية
+/// الأدوار تُوجَّه لوجهتها مباشرة من [MobileAdvisingRoot] نفسه (لا تصل لهذه
+/// الشاشة أصلًا)، فلا حاجة لفحص أدوار أخرى هنا.
 class MobileAdvisingHomeScreen extends StatelessWidget {
   const MobileAdvisingHomeScreen({
     super.key,
@@ -40,10 +37,6 @@ class MobileAdvisingHomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (isViewer) return const ViewerReportsScreen();
-    if (isCollegeCoordinator) return CollegeCoordinatorWorkspaceScreen(uid: uid);
-    if (!isFullAdmin) return CoordinatorWorkspaceScreen(uid: uid);
-
     final services = <MobileServiceItem>[
       MobileServiceItem(
         icon: Icons.dashboard_outlined,
