@@ -81,6 +81,24 @@ async function listAccounts() {
   });
 }
 
+// منسّقو الأقسام/الكلية الحاليون يُتحقَّق منهم عبر مستند حساب مستقل
+// (coordinator_accounts / college_coordinator_accounts، انظر firestore.rules)
+// لا عبر Custom Claim - نكتب نفس المستند هنا فنعيد استخدام نفس منطق الأمان
+// المُختبَر أصلًا بدل تكراره بقواعد جديدة.
+async function writeLegacyMirrorDoc(uid, role, claims) {
+  if (role === 'dept_coordinator') {
+    await admin.firestore().collection('coordinator_accounts').doc(uid).set({
+      shatr: claims.shatr,
+      department: claims.department,
+    });
+  }
+  if (role === 'college_coordinator') {
+    await admin.firestore().collection('college_coordinator_accounts').doc(uid).set({
+      shatr: claims.shatr,
+    });
+  }
+}
+
 async function createAccount(staffNumber, role, flags) {
   const claims = claimsFromFlags(role, flags);
   const email = emailFor(staffNumber);
@@ -100,6 +118,7 @@ async function createAccount(staffNumber, role, flags) {
     mustChangePassword: true,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   });
+  await writeLegacyMirrorDoc(user.uid, role, claims);
 
   console.log(`Created. Staff number: ${staffNumber} | Temp password: ${staffNumber} | Role: ${role}`);
   console.log('Share the staff number + temp password with the person - they must change it on first login.');
@@ -112,6 +131,7 @@ async function updateRole(staffNumber, role, flags) {
   if (!user) throw new Error('No account found for that staff number.');
   await admin.auth().setCustomUserClaims(user.uid, claims);
   await admin.firestore().collection('portal_users').doc(user.uid).set(claims, { merge: true });
+  await writeLegacyMirrorDoc(user.uid, role, claims);
   console.log(`Role updated for staff number ${staffNumber} -> ${role}`);
 }
 
@@ -132,6 +152,8 @@ async function deleteAccount(staffNumber, flags) {
   if (!user) throw new Error('No account found for that staff number.');
   await admin.auth().deleteUser(user.uid);
   await admin.firestore().collection('portal_users').doc(user.uid).delete();
+  await admin.firestore().collection('coordinator_accounts').doc(user.uid).delete();
+  await admin.firestore().collection('college_coordinator_accounts').doc(user.uid).delete();
   console.log(`Deleted staff number ${staffNumber}.`);
 }
 

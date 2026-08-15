@@ -3,17 +3,24 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // ملاحظة (المرحلة 2 من إعادة هيكلة الدخول، 2026-08-15): كل دالة أدناه
+    // تقبل الآن **إما** البريد الحرفي الثابت القديم (حسابات الأدوار المشتركة
+    // الحالية، ستُلغى لاحقًا) **أو** Custom Claim الجديد (role) على حساب
+    // الشخص الفردي (رقم منسوب) - إضافية بحتة، لا تُبطل أي حساب حالي.
     function isAdmin() {
       return request.auth != null &&
         (request.auth.token.email == 'admin@sss-advising-tu.internal' ||
-         request.auth.token.email == 'salfawaz@sss-advising-tu.internal');
+         request.auth.token.email == 'salfawaz@sss-advising-tu.internal' ||
+         request.auth.token.role == 'admin' ||
+         request.auth.token.role == 'super_admin');
     }
 
     // حساب المدير العام (salfawaz) فقط - صلاحيات إضافية حصرية عليه لا يملكها
     // حساب الإدارة العادي (admin@)، مثل تعديل بيانات منسّقي الأقسام.
     function isSuperAdmin() {
       return request.auth != null &&
-        request.auth.token.email == 'salfawaz@sss-advising-tu.internal';
+        (request.auth.token.email == 'salfawaz@sss-advising-tu.internal' ||
+         request.auth.token.role == 'super_admin');
     }
 
     // حسابا عرض للتقارير فقط (أمين الوحدة وسكرتيرة الوحدة) - قراءة فقط،
@@ -21,15 +28,27 @@ service cloud.firestore {
     function isViewer() {
       return request.auth != null &&
         (request.auth.token.email == 'ameen@sss-advising-tu.internal' ||
-         request.auth.token.email == 'secretary@sss-advising-tu.internal');
+         request.auth.token.email == 'secretary@sss-advising-tu.internal' ||
+         request.auth.token.role == 'ameen' ||
+         request.auth.token.role == 'secretary');
     }
 
-    // منسّق الوحدة: دور تقني جاهز بانتظار القرار الرسمي (لا يزال غير مربوط
-    // بأي شخص فعلي) - بريد ثابت واحد بلا مستند حساب منفصل (لا تفريع شطر/قسم
-    // كمنسّقي الأقسام)، صلاحيته الوحيدة رفع الملفات فقط عبر شاشة مخصَّصة.
+    // منسّق الوحدة للشؤون الإدارية - بريد ثابت واحد بلا مستند حساب منفصل (لا
+    // تفريع شطر/قسم كمنسّقي الأقسام)، صلاحيته الوحيدة رفع الملفات فقط عبر
+    // شاشة مخصَّصة.
     function isUnitCoordinator() {
       return request.auth != null &&
-        request.auth.token.email == 'unit-coordinator@sss-advising-tu.internal';
+        (request.auth.token.email == 'unit-coordinator@sss-advising-tu.internal' ||
+         request.auth.token.role == 'unit_coordinator');
+    }
+
+    // منسّق مسار نوعي (الإرشاد الأكاديمي، الرعاية الطلابية، البيانات
+    // والجودة والتطوير، الخريجين، الموهوبين...) - دور جديد كليًا، بلا أي
+    // حساب قديم مواز، فيُقرأ من الـ Claim مباشرة بلا حاجة لمستند حساب.
+    function isTrackCoordinatorFor(track) {
+      return request.auth != null &&
+        request.auth.token.role == 'track_coordinator' &&
+        request.auth.token.track == track;
     }
 
     function coordinatorAccount() {
