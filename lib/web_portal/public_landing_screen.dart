@@ -1685,9 +1685,9 @@ class _OrgChartSection extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                if (deputy != null) Expanded(child: _LeaderCard(member: deputy)),
-                if (head != null && deputy != null) const SizedBox(width: 12),
                 if (head != null) Expanded(child: _LeaderCard(member: head)),
+                if (head != null && deputy != null) const SizedBox(width: 12),
+                if (deputy != null) Expanded(child: _LeaderCard(member: deputy)),
               ],
             ),
             const SizedBox(height: 4),
