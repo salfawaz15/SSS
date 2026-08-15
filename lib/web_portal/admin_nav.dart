@@ -83,17 +83,16 @@ List<PortalNavItem> buildAdminNavItems(BuildContext context, {required String cu
           MaterialPageRoute(builder: (_) => const CollegeRosterAdminScreen()),
         ),
       ),
-    // من يصل لهذا الشريط أصلًا (لوحة الإدارة) يملك صلاحية كاملة أصلًا -
-    // لا حاجة لتقييد هذا الزر بفحص isSuperAdmin (يفحص فقط بريد salfawaz
-    // القديم، لا يعرف عن حسابات النظام الجديد بالمنسوب - انظر تعليق
-    // "المرحلة القادمة" بملاحظات test_switcher_screen.dart).
-    PortalNavItem(
-      label: 'تجربة الصفحات',
-      icon: Icons.science_outlined,
-      selected: current == 'test-switcher',
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const TestSwitcherScreen()),
+    // حصريًا حساب المدير العام (salfawaz/super_admin) - ليس حساب "الإدارة"
+    // العادي (admin@)، بطلب سليمان صراحةً (2026-08-15).
+    if (isSuperAdmin)
+      PortalNavItem(
+        label: 'تجربة الصفحات',
+        icon: Icons.science_outlined,
+        selected: current == 'test-switcher',
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const TestSwitcherScreen()),
+        ),
       ),
-    ),
   ];
 }
