@@ -7,16 +7,25 @@ import 'admin_workspace_screen.dart';
 import 'advising_hub_screen.dart';
 import 'change_password_dialog.dart';
 import 'college_roster_admin_screen.dart';
-import 'mobile_service_card.dart';
+import 'mobile_bottom_nav_bar.dart';
+import 'reports_hub_screen.dart';
 
-/// الشاشة الرئيسية الجوّالة الأصلية لتطبيق "CBA Advising" بعد الدخول - بطاقة
-/// ترحيب + شبكة خدمات (بنفس روح الشاشة الرئيسية لتطبيق "سليمان" بطلب سليمان
-/// صراحةً 2026-08-07)، بدل عرض `AdminWorkspaceScreen` (تصميم الموقع العريض)
-/// مباشرة كما كان سابقًا.
+/// الشاشة الرئيسية الجوّالة لحساب الإدارة الكامل بعد الدخول - بطاقة ترحيب +
+/// شريط تنقّل سفلي (بأسلوب النسخة القديمة التي فضّلها سليمان صراحةً، صور
+/// أرسلها 2026-08-16: "المزيد/التقارير/إدارة الطلبات/الرئيسية") بدل شبكة
+/// خدمات ثابتة فقط كما كانت سابقًا - المرحلة 2 من خطة إعادة بناء تطبيق
+/// الجوال (نموذج مرجعي لدور الإدارة أولًا قبل تعميمه على بقية الأدوار).
 ///
-/// تُعرض فقط لحساب الإدارة الكامل (أدوار متعدّدة تستحق شبكة اختيار) - بقية
-/// الأدوار تُوجَّه لوجهتها مباشرة من [MobileAdvisingRoot] نفسه (لا تصل لهذه
-/// الشاشة أصلًا)، فلا حاجة لفحص أدوار أخرى هنا.
+/// تبويبا "التقارير" و"إدارة الطلبات" ينقلان لشاشتي الموقع الحاليتين
+/// (`ReportsHubScreen`/`AdvisingHubScreen`) مباشرة - بلا إعادة بناء منطقهما،
+/// فقط بوابة تنقّل جوّالة جديدة حولهما. "المزيد" يفتح قائمة سفلية لبقية
+/// الأقسام (لوحة الإدارة الكاملة بتصميمها العريض، خدمات أكاديمية،
+/// المنسوبين - آخر اثنين حصريًا للمدير العام) + تغيير كلمة المرور وتسجيل
+/// الخروج.
+///
+/// تُعرض فقط لحساب الإدارة الكامل - بقية الأدوار تُوجَّه لوجهتها مباشرة من
+/// [MobileAdvisingRoot] نفسه (لا تصل لهذه الشاشة أصلًا)، فلا حاجة لفحص أدوار
+/// أخرى هنا.
 class MobileAdvisingHomeScreen extends StatelessWidget {
   const MobileAdvisingHomeScreen({
     super.key,
@@ -35,48 +44,73 @@ class MobileAdvisingHomeScreen extends StatelessWidget {
   final bool isCollegeCoordinator;
   final bool isViewer;
 
+  void _openMoreSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 10),
+            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(4))),
+            const SizedBox(height: 10),
+            ListTile(
+              leading: const Icon(Icons.dashboard_outlined, color: AppColors.greenDark),
+              title: const Text('لوحة الإدارة الكاملة'),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminWorkspaceScreen()));
+              },
+            ),
+            if (isSuperAdmin)
+              ListTile(
+                leading: const Icon(Icons.school_outlined, color: AppColors.green),
+                title: const Text('خدمات أكاديمية'),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AcademicServicesHubScreen()));
+                },
+              ),
+            if (isSuperAdmin)
+              ListTile(
+                leading: const Icon(Icons.badge_outlined, color: AppColors.goldLight),
+                title: const Text('المنسوبين'),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CollegeRosterAdminScreen()));
+                },
+              ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.lock_outline, color: AppColors.greenDark),
+              title: const Text('تغيير كلمة المرور'),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                showChangePasswordDialog(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.logout, color: Colors.red),
+              title: const Text('تسجيل خروج'),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                FirebaseAuth.instance.signOut();
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final services = <MobileServiceItem>[
-      MobileServiceItem(
-        icon: Icons.dashboard_outlined,
-        color: AppColors.greenDark,
-        label: 'لوحة الإدارة',
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const AdminWorkspaceScreen()),
-        ),
-      ),
-      MobileServiceItem(
-        icon: Icons.fact_check_outlined,
-        color: AppColors.gold,
-        label: 'لوحة الإرشاد',
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const AdvisingHubScreen()),
-        ),
-      ),
-      if (isSuperAdmin)
-        MobileServiceItem(
-          icon: Icons.school_outlined,
-          color: AppColors.green,
-          label: 'خدمات أكاديمية',
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const AcademicServicesHubScreen()),
-          ),
-        ),
-      if (isSuperAdmin)
-        MobileServiceItem(
-          icon: Icons.badge_outlined,
-          color: AppColors.goldLight,
-          label: 'المنسوبين',
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const CollegeRosterAdminScreen()),
-          ),
-        ),
-    ];
-
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7F6),
       body: SafeArea(
+        bottom: false,
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
           children: [
@@ -88,16 +122,6 @@ class MobileAdvisingHomeScreen extends StatelessWidget {
                   child: Icon(Icons.person_outline, color: AppColors.greenDark),
                 ),
                 const Spacer(),
-                IconButton(
-                  tooltip: 'تغيير كلمة المرور',
-                  icon: const Icon(Icons.lock_outline, color: AppColors.greenDark),
-                  onPressed: () => showChangePasswordDialog(context),
-                ),
-                IconButton(
-                  tooltip: 'تسجيل خروج',
-                  icon: const Icon(Icons.logout, color: AppColors.greenDark),
-                  onPressed: () => FirebaseAuth.instance.signOut(),
-                ),
               ],
             ),
             const SizedBox(height: 4),
@@ -141,25 +165,26 @@ class MobileAdvisingHomeScreen extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(height: 26),
-            const Align(
-              alignment: Alignment.centerRight,
-              child: Text('الخدمات', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            ),
-            const SizedBox(height: 14),
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              mainAxisSpacing: 14,
-              crossAxisSpacing: 14,
-              childAspectRatio: 1.35,
-              children: services.map((s) => MobileServiceCard(service: s)).toList(),
-            ),
           ],
         ),
+      ),
+      bottomNavigationBar: MobileBottomNavBar(
+        currentIndex: 0,
+        onMore: () => _openMoreSheet(context),
+        tabs: [
+          MobileNavTab(icon: Icons.home_outlined, label: 'الرئيسية', onTap: () {}),
+          MobileNavTab(
+            icon: Icons.fact_check_outlined,
+            label: 'إدارة الطلبات',
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdvisingHubScreen())),
+          ),
+          MobileNavTab(
+            icon: Icons.assessment_outlined,
+            label: 'التقارير',
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ReportsHubScreen())),
+          ),
+        ],
       ),
     );
   }
 }
-
