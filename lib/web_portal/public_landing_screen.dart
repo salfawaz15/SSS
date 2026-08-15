@@ -1918,9 +1918,13 @@ class _MemberChip extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(role, textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11.5, color: AppColors.green)),
+          // بلا maxLines/ellipsis - الاسم يلتف لسطر ثانٍ بدل قصّه بعلامات
+          // حذف "..." (سليمان لاحظ صراحةً 2026-08-16 أن أسماء كثيرة تظهر
+          // غير كاملة) - الصندوق (Column بحجمه الأدنى) يكبر تلقائيًا ليتّسع
+          // للسطر الإضافي بدل قصّ المعلومة.
+          Text(role, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11.5, color: AppColors.green)),
           const SizedBox(height: 3),
-          Text(name, textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, color: Colors.grey.shade700)),
+          Text(name, textAlign: TextAlign.center, style: TextStyle(fontSize: 11.5, color: Colors.grey.shade700)),
         ],
       ),
     );
@@ -1979,8 +1983,8 @@ class _DeptCell extends StatelessWidget {
       child: Text(
         text,
         textAlign: TextAlign.center,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
+        // بلا maxLines/ellipsis - نفس سبب _MemberChip أعلاه: الاسم يلتف
+        // بدل أن يُقصّ.
         style: TextStyle(fontSize: small ? 10.5 : 11.5, fontWeight: bold ? FontWeight.w700 : FontWeight.w500),
       ),
     );
