@@ -3,6 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
+import '../services/web_reload.dart';
+import '../services/web_version_check_service.dart';
 import '../theme/app_theme.dart';
 import 'change_password_dialog.dart';
 import 'portal_accounts.dart';
@@ -360,6 +362,60 @@ class _QuickSearchDialogState extends State<_QuickSearchDialog> {
   }
 }
 
+/// زر "يتوفر تحديث" بالشريط العلوي (الويب فقط) - يظهر أصفر فقط عند اكتشاف
+/// أن `web/version.json` المنشور بجذر الموقع يحمل رقم بناء أحدث من النسخة
+/// المحمَّلة حاليًا بالمتصفح ([kAppBuildNumber])، والضغط عليه يعيد تحميل
+/// الصفحة من الخادم مباشرة (لا نسخة مخبَّأة). لا يظهر إطلاقًا إن كانت
+/// النسخة الحالية هي الأحدث. سليمان طلب (2026-08-15) إشارة توضح صراحةً
+/// وجود إصدار أحدث بدل الاعتماد على تحديث المتصفح يدويًا.
+class _PortalUpdateButton extends StatefulWidget {
+  const _PortalUpdateButton();
+
+  @override
+  State<_PortalUpdateButton> createState() => _PortalUpdateButtonState();
+}
+
+class _PortalUpdateButtonState extends State<_PortalUpdateButton> {
+  bool _hasUpdate = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (kIsWeb) {
+      WebVersionCheckService.isNewerVersionAvailable().then((has) {
+        if (mounted && has) setState(() => _hasUpdate = true);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!kIsWeb || !_hasUpdate) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Material(
+        color: Colors.amber.shade600,
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: reloadWebApp,
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.system_update_outlined, size: 16, color: Colors.black87),
+                SizedBox(width: 6),
+                Text('يتوفر تحديث', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.w700, fontSize: 12.5)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// الشريط العلوي الموحّد لكل صفحات البوابة الداخلية: خط تمييز رفيع بلون
 /// الهوية، ثم شريط أبيض يحمل شارة الهوية أولًا (تظهر دائمًا مهما كانت
 /// الصفحة)، وتبويبات تنقّل اختيارية لأقسام البوابة الرئيسية (تتكيّف حسب
@@ -433,6 +489,7 @@ class PortalHeader extends StatelessWidget implements PreferredSizeWidget {
                     else
                       const Spacer(),
                     ...?trailing,
+                    const _PortalUpdateButton(),
                     const _PortalQuickSearchButton(),
                     const _PortalAccountMenu(),
                   ],
@@ -447,6 +504,7 @@ class PortalHeader extends StatelessWidget implements PreferredSizeWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       ...?trailing,
+                      const _PortalUpdateButton(),
                       const _PortalQuickSearchButton(),
                       const _PortalAccountMenu(),
                       if (navItems.isNotEmpty)
