@@ -5,7 +5,7 @@ import 'package:intl/date_symbol_data_local.dart';
 
 import 'firebase_options.dart';
 import 'theme/app_theme.dart';
-import 'web_portal/mobile_advising_root.dart';
+import 'web_portal/mobile_splash_screen.dart';
 
 /// نقطة دخول منفصلة لتطبيق أندرويد "CBA Advising" - نفس قاعدة بيانات Firebase
 /// وشاشات لوحة الإدارة/الإرشاد بـlib/web_portal، لكن بواجهة دخول ورئيسية
@@ -46,7 +46,7 @@ class CbaAdvisingApp extends StatelessWidget {
       // (سليمان 2026-08-08، لقطات فعلية من التطبيق). `bottom: false` لأن كل
       // شاشة تُدير حشوتها السفلية بنفسها (مثال: `PortalFooterBar`).
       builder: (context, child) => SafeArea(bottom: false, child: child!),
-      home: const MobileAdvisingRoot(),
+      home: const MobileSplashScreen(),
     );
   }
 }

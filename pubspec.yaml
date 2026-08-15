@@ -2,7 +2,7 @@ name: sulaiman
 description: "تطبيق وحدة الإرشاد الأكاديمي والخريجين - استيراد وتوزيع طلبات الطلاب"
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 
-version: 1.0.19+22
+version: 1.0.20+23
 
 environment:
   sdk: ^3.14.0-10.0.dev
