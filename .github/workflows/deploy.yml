@@ -33,6 +33,19 @@ jobs:
           }
           DARTEOF
 
+      - name: Generate version files from pubspec.yaml
+        run: |
+          FULL_VERSION=$(grep -m1 '^version:' pubspec.yaml | sed 's/version:[[:space:]]*//')
+          VERSION_NAME=${FULL_VERSION%+*}
+          BUILD_NUMBER=${FULL_VERSION#*+}
+          cat > lib/app_version.dart <<DARTEOF
+          const int kAppBuildNumber = $BUILD_NUMBER;
+          const String kAppVersionName = '$VERSION_NAME';
+          DARTEOF
+          cat > web/version.json <<JSONEOF
+          {"build": $BUILD_NUMBER, "version": "$VERSION_NAME"}
+          JSONEOF
+
       - run: flutter pub get
       - run: flutter build web --release --pwa-strategy=none
 
