@@ -6,6 +6,17 @@ class PortalAccounts {
   static const String domain = 'sss-advising-tu.internal';
   static const String adminEmail = 'admin@$domain';
 
+  /// دور حساب النظام الجديد بالمنسوب (Custom Claim) للجلسة الحالية - يُضبَط
+  /// مرة واحدة عند كل دخول من [PortalRoot] (المكان الوحيد الذي يملك التوكن
+  /// فعليًا)، ويُقرأ لاحقًا بشكل متزامن من أي مكان آخر بالتطبيق (مثل شريط
+  /// تنقّل الإدارة) بلا حاجة لإعادة جلب التوكن بشكل غير متزامن في كل مكان.
+  /// null لحسابات النظام القديم (بريد حرفي).
+  static String? currentClaimRole;
+
+  /// يطابق فحص [superAdminEmail] القديم بالضبط (لا "admin" العادي) - لبوابات
+  /// محصورة بحساب المدير العام حصرًا (خدمات أكاديمية، المنسوبين...).
+  static bool get isCurrentSessionSuperAdmin => currentClaimRole == 'super_admin';
+
   /// حساب المدير العام (صلاحيات كاملة مطابقة لحساب الإدارة تمامًا) - حساب
   /// إضافي شخصي بصلاحيات كاملة على البوابة.
   static const String superAdminEmail = 'salfawaz@$domain';

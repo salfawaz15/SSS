@@ -148,7 +148,7 @@ Future<_QuickSearchRoleInfo> _resolveQuickSearchRole() async {
   if (PortalAccounts.isFullAdmin(email)) {
     return _QuickSearchRoleInfo(
       role: QuickSearchRole.fullAdmin,
-      isSuperAdmin: email == PortalAccounts.superAdminEmail,
+      isSuperAdmin: email == PortalAccounts.superAdminEmail || PortalAccounts.isCurrentSessionSuperAdmin,
     );
   }
   if (PortalAccounts.viewerEmails.values.contains(email)) {

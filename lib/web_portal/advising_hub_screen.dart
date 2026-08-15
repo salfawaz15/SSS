@@ -77,7 +77,8 @@ class _AdvisingHubScreenState extends State<AdvisingHubScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isSuperAdmin = FirebaseAuth.instance.currentUser?.email == PortalAccounts.superAdminEmail;
+    final isSuperAdmin = FirebaseAuth.instance.currentUser?.email == PortalAccounts.superAdminEmail ||
+        PortalAccounts.isCurrentSessionSuperAdmin;
 
     return PortalScaffold(
       title: 'لوحة الإرشاد',

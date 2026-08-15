@@ -537,8 +537,8 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
   Widget build(BuildContext context) {
     // بيانات منسّقي الأقسام حصرية على حساب المدير العام (salfawaz) فقط - لا
     // يملكها حساب الإدارة العادي (admin@) رغم أن كليهما "isFullAdmin".
-    final isSuperAdmin =
-        FirebaseAuth.instance.currentUser?.email == PortalAccounts.superAdminEmail;
+    final isSuperAdmin = FirebaseAuth.instance.currentUser?.email == PortalAccounts.superAdminEmail ||
+        PortalAccounts.isCurrentSessionSuperAdmin;
 
     return PortalScaffold(
       title: 'لوحة الإدارة',

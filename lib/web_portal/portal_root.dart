@@ -51,6 +51,7 @@ class PortalRoot extends StatelessWidget {
                 return const Scaffold(body: Center(child: CircularProgressIndicator()));
               }
               final role = tokenSnapshot.data!.claims?['role'] as String?;
+              PortalAccounts.currentClaimRole = role;
 
               // نظام الأدوار الجديد (Custom Claim على حساب فردي برقم منسوب) -
               // المرحلة 3 من إعادة هيكلة الدخول والصلاحيات (2026-08-15).

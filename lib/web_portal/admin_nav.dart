@@ -9,6 +9,7 @@ import 'portal_header.dart';
 import 'portal_root.dart';
 import 'public_landing_screen.dart';
 import 'reports_hub_screen.dart';
+import 'test_switcher_screen.dart';
 
 /// شريط تنقّل الإدارة الموحّد - يُبنى مرة واحدة هنا ويُستخدم في كل صفحات
 /// الإدارة (الرئيسية والفرعية) حتى لا يفقد المستخدم القدرة على التنقّل
@@ -31,7 +32,8 @@ import 'reports_hub_screen.dart';
 /// public_landing_screen.dart وhidden_admin_login_screen.dart) بدل الافتراض
 /// الموضعي الخاطئ - يعمل صحيحًا من أي نقطة دخول.
 List<PortalNavItem> buildAdminNavItems(BuildContext context, {required String current}) {
-  final isSuperAdmin = FirebaseAuth.instance.currentUser?.email == PortalAccounts.superAdminEmail;
+  final isSuperAdmin = FirebaseAuth.instance.currentUser?.email == PortalAccounts.superAdminEmail ||
+      PortalAccounts.isCurrentSessionSuperAdmin;
 
   return [
     PortalNavItem(
@@ -81,5 +83,17 @@ List<PortalNavItem> buildAdminNavItems(BuildContext context, {required String cu
           MaterialPageRoute(builder: (_) => const CollegeRosterAdminScreen()),
         ),
       ),
+    // من يصل لهذا الشريط أصلًا (لوحة الإدارة) يملك صلاحية كاملة أصلًا -
+    // لا حاجة لتقييد هذا الزر بفحص isSuperAdmin (يفحص فقط بريد salfawaz
+    // القديم، لا يعرف عن حسابات النظام الجديد بالمنسوب - انظر تعليق
+    // "المرحلة القادمة" بملاحظات test_switcher_screen.dart).
+    PortalNavItem(
+      label: 'تجربة الصفحات',
+      icon: Icons.science_outlined,
+      selected: current == 'test-switcher',
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const TestSwitcherScreen()),
+      ),
+    ),
   ];
 }

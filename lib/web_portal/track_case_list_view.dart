@@ -59,7 +59,11 @@ class _TrackCaseListViewState extends State<TrackCaseListView> {
     final idCtrl = TextEditingController();
     final descCtrl = TextEditingController();
     String department = _trackDepartments.first;
-    String shatr = 'male';
+    // القيم يجب أن تطابق ExcelParserService.shatrMale/shatrFemale حرفيًا -
+    // نفس النص الذي تقارَن به كل قواعد isCoordinatorFor بالنظام، لا "male"/
+    // "female" (خلل فعلي صُحِّح قبل النشر: كانت الحالات المسجَّلة هنا ستُخزَّن
+    // بشطر لا يطابق أي شيء آخر بالنظام).
+    String shatr = 'شطر الطلاب';
     var isSaving = false;
 
     await showDialog<void>(
@@ -83,8 +87,8 @@ class _TrackCaseListViewState extends State<TrackCaseListView> {
                   initialValue: shatr,
                   decoration: const InputDecoration(labelText: 'الشطر'),
                   items: const [
-                    DropdownMenuItem(value: 'male', child: Text('طلاب')),
-                    DropdownMenuItem(value: 'female', child: Text('طالبات')),
+                    DropdownMenuItem(value: 'شطر الطلاب', child: Text('طلاب')),
+                    DropdownMenuItem(value: 'شطر الطالبات', child: Text('طالبات')),
                   ],
                   onChanged: (v) => setDialogState(() => shatr = v ?? shatr),
                 ),
