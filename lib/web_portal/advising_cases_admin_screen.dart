@@ -1016,7 +1016,11 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
         .toList();
     return _buildPanel(
       title: 'طلاب على غير مرشدهم',
-      headers: const ['الطالب', 'الرقم الجامعي', 'القسم', 'الشطر', 'المرشد الحالي', 'قسم المرشد المسجَّل'],
+      // رقم منسوب المرشد أُضيف بطلب سليمان صراحةً (2026-08-15): هذا الملف
+      // يُرسَل لمسؤول الإرشاد بالقبول والتسجيل لتسكين الطلبة على مرشدهم
+      // الصحيح - بلا رقم المنسوب لا يمكنه تحديد المرشد فعليًا (قد يتكرر
+      // الاسم)، فيتعطّل العمل.
+      headers: const ['الطالب', 'الرقم الجامعي', 'القسم', 'الشطر', 'المرشد الحالي', 'رقم منسوب المرشد', 'قسم المرشد المسجَّل'],
       rows: [
         for (final c in list)
           [
@@ -1025,6 +1029,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
             c.student.department,
             c.student.shatr,
             displayName(c.student.advisorNameRaw).ifEmptyDash(),
+            c.advisor?.staffNumber.ifEmptyDash() ?? '-',
             c.advisor?.department ?? 'غير موجود بملف منسوبي الكلية',
           ],
       ],
@@ -1163,7 +1168,19 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
         .toList();
     return _buildPanel(
       title: 'طلبة ذوي الإعاقة على غير مرشدهم (${list.length})',
-      headers: const ['الاسم', 'الرقم الجامعي', 'التخصص', 'نوع الإعاقة', 'المرشد الحالي', 'المرشد المفترض'],
+      // رقما منسوب المرشدَين (الحالي والمفترض) أُضيفا بطلب سليمان صراحةً
+      // (2026-08-15) - نفس سبب تبويب "طلاب على غير مرشدهم": الملف يُرسَل
+      // لمسؤول الإرشاد بالقبول والتسجيل لتسكين الطلبة على مرشدهم الصحيح.
+      headers: const [
+        'الاسم',
+        'الرقم الجامعي',
+        'التخصص',
+        'نوع الإعاقة',
+        'المرشد الحالي',
+        'رقم منسوب المرشد الحالي',
+        'المرشد المفترض',
+        'رقم منسوب المرشد المفترض',
+      ],
       rows: [
         for (final h in list)
           [
@@ -1174,7 +1191,9 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
             h.currentAdvisor != null
                 ? displayName(h.currentAdvisor!.name)
                 : (h.student.hasAdvisor ? displayName(h.student.advisorNameRaw) : 'بلا مرشد'),
+            h.currentAdvisor?.staffNumber.ifEmptyDash() ?? '-',
             h.departmentAmin != null ? displayName(h.departmentAmin!.name) : 'غير معروف',
+            h.departmentAmin?.staffNumber.ifEmptyDash() ?? '-',
           ],
       ],
     );
@@ -1193,9 +1212,17 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
         .toList();
     return _buildPanel(
       title: 'طلبة ذوي الإعاقة على مرشدهم (${list.length})',
-      headers: const ['الاسم', 'الرقم الجامعي', 'التخصص', 'نوع الإعاقة', 'المرشد الحالي'],
+      headers: const ['الاسم', 'الرقم الجامعي', 'التخصص', 'نوع الإعاقة', 'المرشد الحالي', 'رقم منسوب المرشد'],
       rows: [
-        for (final s in list) [s.studentName, s.studentId, s.department, s.healthCondition, displayName(s.advisorNameRaw).ifEmptyDash()],
+        for (final s in list)
+          [
+            s.studentName,
+            s.studentId,
+            s.department,
+            s.healthCondition,
+            displayName(s.advisorNameRaw).ifEmptyDash(),
+            _staffNumberFor(s.advisorNameRaw).ifEmptyDash(),
+          ],
       ],
     );
   }
