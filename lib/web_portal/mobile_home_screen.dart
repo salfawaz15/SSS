@@ -10,6 +10,7 @@ import '../utils/name_display.dart';
 import 'mobile_account_screen.dart';
 import 'mobile_bottom_nav_bar.dart';
 import 'portal_cards.dart';
+import 'portal_role_gate.dart';
 
 /// أسماء الأقسام الخمسة بترتيبها المعتمَد - لفرز جدول منسّقي الأقسام
 /// بالهيكل التنظيمي (نفس الترتيب المستخدَم بالصفحة العامة بالموقع).
@@ -85,6 +86,38 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> with SingleTickerPr
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('$label - قيد التطوير، قريبًا بإذن الله')),
     );
+  }
+
+  /// عناصر الشريط السفلي حسب دور الحساب الحالي - "الرئيسية" أولًا دائمًا
+  /// (نفس هذه الصفحة، بلا تنقّل)، ثم أهم أقسام بوابة هذا الدور تحديدًا على
+  /// الويب (ترتيب/تسمية مطابقان لـ`admin_nav.dart`/`coordinator_nav.dart`) -
+  /// بطلب سليمان الصريح (2026-08-16): "إظهار كل صفحة حسب دورها وأهميتها
+  /// بالتبويب السفلي" بدل التبويبات العامة الثابتة السابقة. محتوى كل قسم
+  /// (غير "الرئيسية") لا يزال "قيد التطوير" - سيُبنى جوّالًا أصيلاً واحدًا
+  /// تلو الآخر بجلسات قادمة (لا دفع شاشات الويب العريضة كما ثبت فشله سابقًا).
+  List<MobileNavTab> _navTabsForRole(BuildContext context, PortalRole? role) {
+    MobileNavTab soon(IconData icon, String label) =>
+        MobileNavTab(icon: icon, label: label, onTap: () => _showComingSoon(context, label));
+
+    final home = MobileNavTab(icon: Icons.home_outlined, label: 'الرئيسية', onTap: () {});
+
+    return switch (role) {
+      PortalRole.superAdmin || PortalRole.admin => [
+          home,
+          soon(Icons.dashboard_outlined, 'لوحة الإدارة'),
+          soon(Icons.fact_check_outlined, 'لوحة الإرشاد'),
+          soon(Icons.assessment_outlined, 'تقارير'),
+        ],
+      PortalRole.ameen => [home, soon(Icons.assessment_outlined, 'تقارير')],
+      PortalRole.unitCoordinator => [home, soon(Icons.upload_file_outlined, 'رفع الملفات')],
+      PortalRole.collegeCoordinator || PortalRole.deptCoordinator => [
+          home,
+          soon(Icons.fact_check_outlined, 'متابعة الطلبات'),
+          soon(Icons.insights_outlined, 'متابعة الإنجاز'),
+        ],
+      PortalRole.trackCoordinator => [home, soon(Icons.route_outlined, 'حالات المسار')],
+      PortalRole.unknown || null => [home],
+    };
   }
 
   @override
@@ -206,21 +239,20 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> with SingleTickerPr
           ],
         ),
       ),
-      bottomNavigationBar: MobileBottomNavBar(
-        currentIndex: 0,
-        tabs: [
-          MobileNavTab(icon: Icons.home_outlined, label: 'الرئيسية', onTap: () {}),
-          MobileNavTab(
-            icon: Icons.fact_check_outlined,
-            label: 'إدارة الطلبات',
-            onTap: () => _showComingSoon(context, 'إدارة الطلبات'),
-          ),
-          MobileNavTab(
-            icon: Icons.assessment_outlined,
-            label: 'التقارير',
-            onTap: () => _showComingSoon(context, 'التقارير'),
-          ),
-        ],
+      bottomNavigationBar: StreamBuilder<User?>(
+        stream: FirebaseAuth.instance.authStateChanges(),
+        builder: (context, authSnapshot) {
+          return FutureBuilder<PortalResolvedRole?>(
+            // key بمعرِّف المستخدم يجبر إعادة الحساب عند تبدّل الدخول/الخروج
+            // بدل الاحتفاظ بنتيجة Future الحساب السابق.
+            key: ValueKey(authSnapshot.data?.uid),
+            future: PortalRoleGate.resolveSimple(authSnapshot.data),
+            builder: (context, roleSnapshot) {
+              final tabs = _navTabsForRole(context, roleSnapshot.data?.role);
+              return MobileBottomNavBar(currentIndex: 0, tabs: tabs);
+            },
+          );
+        },
       ),
     );
   }

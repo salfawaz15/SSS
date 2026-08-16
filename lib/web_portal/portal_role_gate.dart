@@ -83,6 +83,33 @@ class PortalRoleGate extends StatelessWidget {
     );
   }
 
+  /// يحسم الدور بلا أي بوابة UI (لا شاشة تحميل، لا فحص إجبار تغيير كلمة
+  /// المرور) - يُستخدَم من صفحات لا تريد حجب نفسها بانتظار حسم الدور (مثال:
+  /// `mobile_home_screen.dart` العامة، لتحديد عناصر الشريط السفلي المناسبة
+  /// لدور المستخدم الحالي دون تعطيل عرض الصفحة نفسها). يرجع `null` لو
+  /// المستخدم غير مسجَّل دخوله.
+  static Future<PortalResolvedRole?> resolveSimple(User? user) async {
+    if (user == null) return null;
+    final token = await user.getIdTokenResult();
+    final claimRole = token.claims?['role'] as String?;
+    PortalAccounts.currentClaimRole = claimRole;
+
+    if (claimRole == null) return _resolveLegacyRole(user);
+
+    final track = token.claims?['track'] as String?;
+    final role = switch (claimRole) {
+      'super_admin' => PortalRole.superAdmin,
+      'admin' => PortalRole.admin,
+      'ameen' || 'secretary' => PortalRole.ameen,
+      'unit_coordinator' => PortalRole.unitCoordinator,
+      'college_coordinator' => PortalRole.collegeCoordinator,
+      'dept_coordinator' => PortalRole.deptCoordinator,
+      'track_coordinator' => PortalRole.trackCoordinator,
+      _ => PortalRole.unknown,
+    };
+    return PortalResolvedRole(role: role, uid: user.uid, email: user.email, track: track);
+  }
+
   static PortalResolvedRole _resolveLegacyRole(User user) {
     final email = user.email;
     if (PortalAccounts.isFullAdmin(email)) {
