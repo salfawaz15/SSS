@@ -12,9 +12,8 @@ import '../services/docx_schedule_parser_service.dart';
 import '../services/outside_course_repository.dart';
 import '../theme/app_theme.dart';
 import 'admin_nav.dart';
-import 'advising_cases_admin_screen.dart';
-import 'advising_schedule_admin_screen.dart';
 import 'portal_header.dart';
+import 'upload_flows.dart';
 
 /// صفحة مركزية واحدة لكل الملفات التي مصدرها المنظومة الداخلية للجامعة
 /// حصرًا (وليس Microsoft Forms أو الموقع نفسه) - بطلب سليمان صراحةً
@@ -23,13 +22,13 @@ import 'portal_header.dart';
 /// المستخدم بالازدحام. كل صفحة أصلية تبقي فقط ملاحظة "آخر رفع: تاريخ" بلا
 /// زر - الرفع الفعلي انتقل هنا بالكامل.
 ///
-/// "رفع المقررات الدراسية" وحده مبنيّ هنا بمنطقه الكامل (كان معزولاً وبسيطًا
-/// أصلاً). الثلاثة الباقية (كل الكليات/ذوي الإعاقة/مواعيد الإرشاد) منطقها
-/// متشابك بشدة مع صفحاتها الأصلية (مطابقة أسماء، كشف تعارضات، تتبّع حركات
-/// مرشدين) - نقلها بالكامل كان يعني خطر خطأ ميكانيكي على بيانات أكاديمية
-/// حقيقية أثناء النقل، فسليمان فضّل تصغير المخاطرة: تبقى هذه الثلاثة تُرفَع
-/// فعليًا من صفحاتها الأصلية، وهذه الصفحة توفّر فقط اختصارًا مباشرًا إليها
-/// مع عرض تاريخ آخر رفع لكل منها.
+/// الأربعة تعمل هنا برفع فعلي كامل - لا مجرد اختصار/تنقّل لصفحة أخرى. منطق
+/// الثلاثة الأكثر تعقيدًا (كل الكليات/ذوي الإعاقة/مواعيد الإرشاد - مطابقة
+/// أسماء، كشف تعارضات، تتبّع حركات مرشدين) مُستخرَج بالكامل في
+/// `upload_flows.dart` كدوال مشتركة، تُستدعى من هنا **وأيضًا** من صفحاتها
+/// الأصلية (بقيت أزرارها هناك كما هي بلا حذف) - مصدر منطق واحد فقط، فلا خطر
+/// تباعد بين نسختين لنفس المنطق (طلب سليمان صراحةً 2026-08-17: "نقل كامل
+/// بدون مخاطرة، يبقى كما هو بنفس الصفحة الأساسية وينقل إلى صفحة رفع الملفات").
 ///
 /// **صلاحية الوصول حاليًا**: حساب المدير العام (super_admin) فقط، بنفس
 /// تقييد "خدمات أكاديمية"/"المنسوبين" المجاورين لها بالشريط. خطة مستقبلية
@@ -53,6 +52,10 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   DateTime? _healthFemaleDate;
   DateTime? _scheduleLatestDate;
   bool _loadingDates = true;
+
+  bool _uploadingAllColleges = false;
+  bool _uploadingHealth = false;
+  bool _uploadingSchedule = false;
 
   @override
   void initState() {
@@ -245,7 +248,20 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                             _dateLine('شطر الطلاب', _allCollegesMaleDate, fmt),
                             _dateLine('شطر الطالبات', _allCollegesFemaleDate, fmt),
                             const SizedBox(height: 8),
-                            _goToPageButton('الانتقال لصفحة الرفع'),
+                            FilledButton.icon(
+                              onPressed: _uploadingAllColleges
+                                  ? null
+                                  : () => runUploadAllColleges(
+                                        context: context,
+                                        setUploading: (v) => setState(() => _uploadingAllColleges = v),
+                                        onSuccess: _loadDates,
+                                      ),
+                              icon: _uploadingAllColleges
+                                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                  : const Icon(Icons.upload_file, size: 18),
+                              label: const Text('رفع ملف "كل الكليات"'),
+                              style: FilledButton.styleFrom(backgroundColor: AppColors.green),
+                            ),
                           ],
                         ),
                       ),
@@ -260,7 +276,20 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                             _dateLine('شطر الطلاب', _healthMaleDate, fmt),
                             _dateLine('شطر الطالبات', _healthFemaleDate, fmt),
                             const SizedBox(height: 8),
-                            _goToPageButton('الانتقال لصفحة الرفع'),
+                            FilledButton.icon(
+                              onPressed: _uploadingHealth
+                                  ? null
+                                  : () => runUploadHealth(
+                                        context: context,
+                                        setUploading: (v) => setState(() => _uploadingHealth = v),
+                                        onSuccess: _loadDates,
+                                      ),
+                              icon: _uploadingHealth
+                                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                  : const Icon(Icons.upload_file, size: 18),
+                              label: const Text('رفع ملف طلبة ذوي الإعاقة'),
+                              style: FilledButton.styleFrom(backgroundColor: AppColors.green),
+                            ),
                           ],
                         ),
                       ),
@@ -274,13 +303,19 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                           children: [
                             _dateLine('آخر رفع (أي قسم/شطر)', _scheduleLatestDate, fmt),
                             const SizedBox(height: 8),
-                            OutlinedButton.icon(
-                              onPressed: () => Navigator.of(context).push(
-                                MaterialPageRoute(builder: (_) => const AdvisingScheduleAdminScreen()),
-                              ),
-                              icon: const Icon(Icons.open_in_new, size: 16),
-                              label: const Text('الانتقال لصفحة الرفع'),
-                              style: OutlinedButton.styleFrom(foregroundColor: AppColors.green, side: BorderSide(color: AppColors.green)),
+                            FilledButton.icon(
+                              onPressed: _uploadingSchedule
+                                  ? null
+                                  : () => runUploadAdvisingSchedule(
+                                        context: context,
+                                        setUploading: (v) => setState(() => _uploadingSchedule = v),
+                                        onSuccess: _loadDates,
+                                      ),
+                              icon: _uploadingSchedule
+                                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                  : const Icon(Icons.upload_file, size: 18),
+                              label: const Text('رفع جدول مواعيد الإرشاد'),
+                              style: FilledButton.styleFrom(backgroundColor: AppColors.green),
                             ),
                           ],
                         ),
@@ -290,17 +325,6 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                 ),
               ),
             ),
-    );
-  }
-
-  Widget _goToPageButton(String label) {
-    return OutlinedButton.icon(
-      onPressed: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const AdvisingCasesAdminScreen()),
-      ),
-      icon: const Icon(Icons.open_in_new, size: 16),
-      label: Text(label),
-      style: OutlinedButton.styleFrom(foregroundColor: AppColors.green, side: BorderSide(color: AppColors.green)),
     );
   }
 

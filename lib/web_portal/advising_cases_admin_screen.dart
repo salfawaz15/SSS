@@ -1,8 +1,4 @@
-﻿import 'dart:typed_data';
-
-import 'package:file_picker/file_picker.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show Clipboard, ClipboardData;
+﻿import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
 
@@ -11,18 +7,16 @@ import '../models/college_roster_member.dart';
 import '../services/advising_case_analyzer.dart';
 import '../services/advising_case_excel_service.dart';
 import '../services/advising_case_pdf_service.dart';
-import '../services/advising_report_parser_service.dart';
-import '../services/advising_report_pdf_parser_service.dart';
 import '../services/advising_report_repository.dart';
 import '../services/advisor_movement_repository.dart';
-import '../services/advisor_name_matching.dart';
-import '../services/college_roster_repository.dart';
 import '../services/web_download.dart';
 import '../services/course_schedule_repository.dart' show Shatr, ShatrLabel;
 import '../theme/app_theme.dart';
 import '../utils/name_display.dart';
 import 'admin_nav.dart';
 import 'portal_header.dart';
+import 'upload_dialogs.dart';
+import 'upload_flows.dart';
 
 const String _kAllShatr = 'كل الشطرين';
 const String _kAllDepartments = 'كل الأقسام';
@@ -34,15 +28,6 @@ const String _kAllAdvisors = 'كل المرشدين';
 /// مع "طلاب على مرشدهم" لملف "كل الكليات" (الجامعة كاملة). التصدير (Excel/
 /// PDF) يبقى **بلا أي حد** - يشمل كل السجلات دومًا، هذا الحد للعرض المرئي فقط.
 const int _kMaxTableRows = 300;
-
-/// عمود "الشطر" في ملف منسوبي الكلية نص حر تكتبه العمادة (لا قيمة ثابتة
-/// مضمونة) - نتحقق من الكلمة المفتاحية بدل المطابقة التامة، والفحص عن
-/// "طالبات" أولًا لأنها تحتوي حروف "طلاب" لكن بترتيب مختلف فلا تلتبس بها.
-String? _shatrLabelFromFreeText(String raw) {
-  if (raw.contains('طالبات')) return Shatr.female.label;
-  if (raw.contains('طلاب')) return Shatr.male.label;
-  return null;
-}
 
 /// صفحة "متابعة حالات الإرشاد" - قلب مشروع وحدة الإرشاد الأكاديمي.
 ///
@@ -151,322 +136,6 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       );
     } finally {
       if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  /// حوار تحميل غير قابل للإغلاق يدويًا - يظهر أثناء معالجة الملف تحديدًا
-  /// (لا طوال الرفع بالكامل) حتى لا يبدو للمستخدم أن الصفحة تجمَّدت بصمت.
-  /// ملف "كل الكليات" PDF يغطي الجامعة كاملة (مئات الصفحات) فقد تستغرق
-  /// معالجته دقائق - سليمان لاحظ ظهور تحذير "الصفحة لا تستجيب" من المتصفح
-  /// أثناء الانتظار بلا أي مؤشر بالموقع نفسه يوضّح أن المعالجة مستمرة فعليًا
-  /// (2026-08-14)، فأُضيف هذا الحوار الصريح بدل الاعتماد فقط على أيقونة
-  /// صغيرة داخل الزر.
-  void _showProcessingDialog(String message) {
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => PopScope(
-        canPop: false,
-        child: AlertDialog(
-          content: Row(
-            children: [
-              const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 3)),
-              const SizedBox(width: 16),
-              Expanded(child: Text(message)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _hideProcessingDialog() {
-    if (!mounted) return;
-    Navigator.of(context, rootNavigator: true).pop();
-  }
-
-  /// حوار خطأ **لا يختفي تلقائيًا** (بخلاف SnackBar الذي كان يختفي بسرعة قبل
-  /// أن يتمكن سليمان من قراءته/تصويره - 2026-08-14) والنص قابل للنسخ لتسهيل
-  /// إرساله لتشخيص المشكلة.
-  void _showErrorDialog(String title, String details) {
-    showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title, style: TextStyle(color: Colors.red.shade700)),
-        content: SizedBox(
-          width: 480,
-          child: SingleChildScrollView(child: SelectableText(details)),
-        ),
-        actions: [
-          TextButton.icon(
-            onPressed: () async {
-              await Clipboard.setData(ClipboardData(text: '$title\n$details'));
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم نسخ نص الخطأ')));
-              }
-            },
-            icon: const Icon(Icons.copy_outlined, size: 18),
-            label: const Text('نسخ'),
-          ),
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق')),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _uploadAllColleges() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: const ['pdf'],
-      withData: true,
-    );
-    if (result == null || result.files.single.bytes == null) return;
-    final Uint8List bytes = result.files.single.bytes!;
-
-    setState(() => _allColleges.uploading = true);
-    try {
-      _showProcessingDialog(
-        'جاري معالجة ملف "كل الكليات" - يغطي الجامعة كاملة فقد يستغرق عدة دقائق. '
-        'الرجاء عدم إغلاق الصفحة أو تحديث المتصفح حتى الانتهاء.',
-      );
-      // يضمن رسم النافذة فعليًا على الشاشة قبل بدء المعالجة الثقيلة.
-      // `endOfFrame` وحدها لم تكفِ فعليًا (لاحظ سليمان 2026-08-14 أنها لم
-      // تظهر رغم إضافتها) - على الأرجح لأنها تنتظر جدولة الإطار داخليًا فقط
-      // بلا ضمان رسم فعلي على شاشة المتصفح قبل حجب الخيط. `Future.delayed`
-      // بمدة حقيقية تُنفَّذ عبر مؤقّت متصفح فعلي (لا مهمة دقيقة/microtask)،
-      // فتضمن عودة السيطرة فعليًا لحلقة أحداث المتصفح (ورسم الإطار المعلَّق)
-      // قبل استئناف الكود.
-      await Future.delayed(const Duration(milliseconds: 300));
-
-      // خريطة اسم المرشد المطبَّع ← شطره من ملف منسوبي الكلية - ملف "كل
-      // الكليات" الرسمي **لا يحوي عمود "الجنس"** (نفس قيد تقرير "طلاب تابعين
-      // لمرشد" الأصلي)، فيُستنتَج شطر كل صف من شطر مرشده. **قيد معروف**: يعمل
-      // فقط لمرشدينا نحن (الموجودين بملف منسوبي الكلية) - مرشدون من كليات
-      // أخرى لا يمكن تحديد شطرهم بهذه الطريقة، فتظهر صفوفهم استثناءً في كلا
-      // الشطرين (نفس الحالة القديمة الموثَّقة بـ`advising_report_parser_service.dart`)
-      // حتى يُتاح مصدر أفضل لتحديد شطرهم.
-      final roster = await CollegeRosterRepository.load();
-      final advisorShatrByName = {
-        for (final m in roster)
-          if (_shatrLabelFromFreeText(m.shatr) != null)
-            normalizeAdvisorNameForMatch(m.name): _shatrLabelFromFreeText(m.shatr)!,
-      };
-      // أسماء مرشدي كليتنا الحقيقيين (بلا فلترة نوع/قسم) - تُستخدم فقط
-      // لاستثناء عضو حقيقي بملفنا (كطارق حلمى) من استبعاد "كلية أخرى" حين لا
-      // يذكر سطر الكلية "إدارة الأعمال" لسبب إداري تاريخي - انظر التعليق
-      // المفصَّل بـ`_branchFromCollegeLabelRow` (2026-08-15).
-      final knownAdvisorNameKeys = {for (final m in roster) normalizeAdvisorNameForMatch(m.name)};
-
-      final AdvisingReportPdfParseResult r;
-      try {
-        r = await AdvisingReportPdfParserService.parseInBackground(
-          bytes,
-          advisorShatrByName: advisorShatrByName,
-          knownAdvisorNameKeys: knownAdvisorNameKeys,
-        );
-      } finally {
-        _hideProcessingDialog();
-      }
-      final records = r.records;
-      final male = records.where((r) => r.shatr == Shatr.male.label).toList();
-      final female = records.where((r) => r.shatr == Shatr.female.label).toList();
-
-      if (r.unresolvedShatrRows.isNotEmpty) {
-        if (!mounted) return;
-        await showDialog<void>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: Text('${r.unresolvedShatrRows.length} حالة بمرشد من خارج كليتنا (تعذّر تحديد شطره)'),
-            content: SizedBox(
-              width: 480,
-              child: SingleChildScrollView(
-                child: Text(
-                  'الحالات التالية مرشدها من خارج ملف منسوبي كليتنا (أو بلا اسم مرشد أصلًا) فتعذّر '
-                  'تحديد شطرها - ستظهر مؤقتًا تحت كلا الشطرين معًا حتى يُتاح مصدر أفضل لتحديد شطر '
-                  'مرشدي الكليات الأخرى:\n\n'
-                  '${r.unresolvedShatrRows.join('\n')}',
-                ),
-              ),
-            ),
-            actions: [
-              FilledButton(onPressed: () => Navigator.pop(context), child: const Text('حسنًا')),
-            ],
-          ),
-        );
-      }
-
-      if (!mounted) return;
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('تأكيد اعتماد ملف "كل الكليات"'),
-          content: SizedBox(
-            width: 480,
-            child: SingleChildScrollView(
-              child: Text(
-                records.isEmpty
-                    ? 'الملف لا يحتوي أي بيانات. سيُعتمد كقائمة فارغة لكلا الشطرين. هل تريد الاعتماد؟'
-                    : 'تم استخراج ${male.length} سجل لشطر الطلاب و${female.length} سجل لشطر الطالبات '
-                        '(${records.length} إجمالًا، كل كليات الجامعة).\n\n'
-                        'سيستبدل هذا آخر رفعة معتمدة، وتُحفَظ النسخة الحالية تلقائيًا كنسخة سابقة '
-                        'لبناء "تقرير حركات الإرشاد". هل تريد الاعتماد؟',
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('اعتماد')),
-          ],
-        ),
-      );
-      if (confirmed != true) return;
-
-      // يقارن هذه الرفعة بما هو مخزَّن حاليًا (آخر رفعة سابقة) **قبل** استبداله،
-      // ويضيف أي حركة مكتشَفة لسجل دائم/تراكمي (لا يُستبدَل أبدًا) - بطلب
-      // سليمان صراحةً (2026-08-14): "لو عشر مرات تظهر الحركات" لا مقارنة آخر
-      // رفعتين فقط. انظر [AdvisorMovementRepository].
-      Future<void> saveShatr(Shatr shatr, List<AdvisingCaseRecord> shatrRecords) async {
-        final previouslyStored = await AdvisingReportRepository.load(shatr, kind: AdvisingReportKind.allColleges);
-        final movements = AdvisingCaseAnalyzer.detectAdvisorMovements(previous: previouslyStored, current: shatrRecords);
-
-        await AdvisingReportRepository.promoteAllCollegesToPrevious(shatr);
-        await AdvisingReportRepository.save(shatr, shatrRecords, kind: AdvisingReportKind.allColleges);
-
-        if (movements.isNotEmpty) {
-          await AdvisorMovementRepository.appendMovements([
-            for (final m in movements)
-              AdvisorMovementLogEntry(
-                studentId: m.student.studentId,
-                studentName: m.student.studentName,
-                department: m.student.department,
-                shatr: m.student.shatr,
-                fromAdvisorNameRaw: m.fromAdvisorNameRaw,
-                toAdvisorNameRaw: m.toAdvisorNameRaw,
-              ),
-          ]);
-        }
-      }
-
-      if (records.isEmpty) {
-        await saveShatr(Shatr.male, const []);
-        await saveShatr(Shatr.female, const []);
-      } else {
-        if (male.isNotEmpty) await saveShatr(Shatr.male, male);
-        if (female.isNotEmpty) await saveShatr(Shatr.female, female);
-      }
-
-      await _loadAll();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تم اعتماد ملف "كل الكليات" بنجاح (${records.length} سجل).')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      _showErrorDialog('تعذّر إتمام العملية', '$e');
-    } finally {
-      if (mounted) setState(() => _allColleges.uploading = false);
-    }
-  }
-
-  Future<void> _uploadHealth() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: const ['docx'],
-      withData: true,
-    );
-    if (result == null || result.files.single.bytes == null) return;
-    final Uint8List bytes = result.files.single.bytes!;
-
-    setState(() => _health.uploading = true);
-    try {
-      _showProcessingDialog('جاري معالجة الملف...');
-      await Future.delayed(const Duration(milliseconds: 300));
-      List<AdvisingCaseRecord> records;
-      var exclusionCounts = <String, int>{};
-      try {
-        try {
-          records = AdvisingReportParserService.parse(
-            bytes,
-            requireDepartment: false,
-            isHealthReport: true,
-            exclusionCounts: exclusionCounts,
-          );
-        } finally {
-          _hideProcessingDialog();
-        }
-      } on ShatrRequiredException {
-        if (!mounted) return;
-        final chosen = await showDialog<Shatr>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('تحديد الشطر'),
-            content: const Text('ملف "طلبة ذوي الإعاقة" هذا لا يحتوي عمود "الجنس" فلا يمكن فرزه تلقائيًا - '
-                'حدّد الشطر الذي يمثّله هذا الملف بالكامل.'),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(context, Shatr.male), child: const Text('شطر الطلاب')),
-              TextButton(onPressed: () => Navigator.pop(context, Shatr.female), child: const Text('شطر الطالبات')),
-            ],
-          ),
-        );
-        if (chosen == null) return;
-        exclusionCounts = <String, int>{};
-        records = AdvisingReportParserService.parse(
-          bytes,
-          shatr: chosen,
-          requireDepartment: false,
-          isHealthReport: true,
-          exclusionCounts: exclusionCounts,
-        );
-      }
-
-      final male = records.where((r) => r.shatr == Shatr.male.label).toList();
-      final female = records.where((r) => r.shatr == Shatr.female.label).toList();
-
-      if (!mounted) return;
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('تأكيد اعتماد ملف "طلبة ذوي الإعاقة"'),
-          content: SizedBox(
-            width: 480,
-            child: SingleChildScrollView(
-              child: Text(
-                records.isEmpty
-                    ? 'الملف لا يحتوي أي بيانات. سيُعتمد كقائمة فارغة لكلا الشطرين. هل تريد الاعتماد؟'
-                    : 'تم استخراج ${male.length} سجل لشطر الطلاب و${female.length} سجل لشطر الطالبات '
-                        '(${records.length} إجمالًا).\n\n'
-                        'سيستبدل هذا آخر نسخة معتمدة لكل شطر ظهر في الملف. هل تريد الاعتماد؟',
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('اعتماد')),
-          ],
-        ),
-      );
-      if (confirmed != true) return;
-
-      if (records.isEmpty) {
-        await AdvisingReportRepository.save(Shatr.male, const [], kind: AdvisingReportKind.health);
-        await AdvisingReportRepository.save(Shatr.female, const [], kind: AdvisingReportKind.health);
-      } else {
-        if (male.isNotEmpty) await AdvisingReportRepository.save(Shatr.male, male, kind: AdvisingReportKind.health);
-        if (female.isNotEmpty) {
-          await AdvisingReportRepository.save(Shatr.female, female, kind: AdvisingReportKind.health);
-        }
-      }
-
-      await _loadAll();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تم اعتماد ملف "طلبة ذوي الإعاقة" بنجاح (${records.length} سجل).')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      _showErrorDialog('تعذّر إتمام العملية', '$e');
-    } finally {
-      if (mounted) setState(() => _health.uploading = false);
     }
   }
 
@@ -674,7 +343,11 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
               maleDate: _allColleges.maleDate,
               femaleDate: _allColleges.femaleDate,
               fmt: fmt,
-              onPressed: _uploadAllColleges,
+              onPressed: () => runUploadAllColleges(
+                context: context,
+                setUploading: (v) => setState(() => _allColleges.uploading = v),
+                onSuccess: _loadAll,
+              ),
               onClear: () => _clearKindBoth(AdvisingReportKind.allColleges, 'رفع جميع الطلاب (كل الكليات)'),
             ),
             const SizedBox(width: 10),
@@ -685,7 +358,11 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
               femaleDate: _health.femaleDate,
               fmt: fmt,
               color: Colors.purple.shade700,
-              onPressed: _uploadHealth,
+              onPressed: () => runUploadHealth(
+                context: context,
+                setUploading: (v) => setState(() => _health.uploading = v),
+                onSuccess: _loadAll,
+              ),
               onClear: () => _clearKindBoth(AdvisingReportKind.health, 'رفع طلبة ذوي الإعاقة'),
             ),
           ],
@@ -768,7 +445,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      _showErrorDialog('تعذّر التفريغ', '$e');
+      showUploadErrorDialog(context, 'تعذّر التفريغ', '$e');
     }
   }
 
@@ -803,7 +480,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      _showErrorDialog('تعذّر التفريغ', '$e');
+      showUploadErrorDialog(context, 'تعذّر التفريغ', '$e');
     }
   }
 

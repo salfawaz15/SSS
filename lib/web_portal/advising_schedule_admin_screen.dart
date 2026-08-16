@@ -1,11 +1,9 @@
 import 'dart:typed_data';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
 
 import '../data/course_catalog.dart';
-import '../data/faculty_sort_order.dart';
 import '../models/advising_schedule.dart';
 import '../models/college_roster_member.dart';
 import '../services/advising_schedule_excel_service.dart';
@@ -17,6 +15,7 @@ import '../services/web_download.dart';
 import '../theme/app_theme.dart';
 import 'admin_nav.dart';
 import 'portal_header.dart';
+import 'upload_flows.dart';
 
 // دمج "عبد" مع الكلمة التالية بلا مسافة ("عبد الرحمن" -> "عبدالرحمن") قبل
 // تقسيم الكلمات - وإلا تفشل المطابقة صامتًا بين ملف مصدر يكتبها بمسافة
@@ -68,23 +67,6 @@ bool _isSubsetMatch(String shortName, String fullName) {
       fullName.split(' ').where((w) => w.isNotEmpty && !_nameFillerWords.contains(w)).toSet();
   if (shortWords.isEmpty) return false;
   return shortWords.every(fullWords.contains);
-}
-
-/// يبحث عن مرشدين ظهروا برقم مكتب مختلف بين يوم وآخر ضمن نفس الجدول -
-/// بخلاف تشارك عضوين لنفس المكتب (وهذا طبيعي ولا يُعتبر خطأ)، فاختلاف رقم
-/// مكتب **نفس** العضو بين الأيام أمر غير منطقي وغالبًا خطأ في الملف المصدر
-/// يحتاج تصحيحًا من إدارة القسم.
-List<({String name, List<String> offices})> _findOfficeConflicts(List<AdvisingScheduleSlot> slots) {
-  final officesByName = <String, Set<String>>{};
-  for (final slot in slots) {
-    for (final entry in slot.entries) {
-      officesByName.putIfAbsent(entry.advisorName, () => {}).add(entry.office);
-    }
-  }
-  return officesByName.entries
-      .where((e) => e.value.length > 1)
-      .map((e) => (name: e.key, offices: e.value.toList()))
-      .toList();
 }
 
 /// شاشة موحّدة لبناء جدول توزيع فترات الإرشاد الأكاديمي بهوية بصرية واحدة
@@ -220,169 +202,6 @@ class _AdvisingScheduleAdminScreenState extends State<AdvisingScheduleAdminScree
     }
   }
 
-  /// يرتّب مرشدي كل فترة حسب الرتبة العلمية ثم تاريخ التعيين (الأقدم أولاً)
-  /// - يطابق اسم كل مرشد بملف منسوبي الكلية (مطابقة مرنة تتحمّل اختلاف
-  /// صياغة الاسم، بنفس منطق `_isSubsetMatch` المستخدَم لمطابقة رقم المكتب).
-  /// من لا يُطابَق له عضو بالروستر يُدفَع لنهاية قائمة فترته (لا يُستبعَد).
-  List<AdvisingScheduleSlot> _sortSlotsByRank(List<AdvisingScheduleSlot> slots, List<CollegeRosterMember> roster) {
-    CollegeRosterMember? memberFor(String name) {
-      final normalized = _normalizeArabic(name);
-      for (final m in roster) {
-        if (_normalizeArabic(m.name) == normalized) return m;
-      }
-      for (final m in roster) {
-        if (_isSubsetMatch(normalized, _normalizeArabic(m.name))) return m;
-      }
-      return null;
-    }
-
-    return slots.map((slot) {
-      final sortedEntries = [...slot.entries]
-        ..sort((a, b) {
-          final ma = memberFor(a.advisorName);
-          final mb = memberFor(b.advisorName);
-          if (ma != null && mb != null) return FacultySortOrder.compareByRankThenAppointment(ma, mb);
-          if (ma != null) return -1;
-          if (mb != null) return 1;
-          return 0;
-        });
-      return AdvisingScheduleSlot(dayLabel: slot.dayLabel, periodLabel: slot.periodLabel, entries: sortedEntries);
-    }).toList();
-  }
-
-  /// رفع ملف واحد أو عدة ملفات دفعة واحدة - كل ملف يحدَّد قسمه/شطره من
-  /// محتواه نفسه (الصف الثاني أعلى النموذج)، فلا حاجة لاختيار قسم/شطر
-  /// مسبقًا بالشاشة قبل الرفع الجماعي (بطلب سليمان صراحةً 2026-08-10، بعد
-  /// أن احتاج رفع 10 ملفات جاهزة دفعة واحدة كحالة استثنائية أولى).
-  Future<void> _uploadTemplate() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['xlsx'],
-      withData: true,
-      allowMultiple: true,
-    );
-    if (result == null || result.files.isEmpty) return;
-
-    setState(() => _uploadingTemplate = true);
-    try {
-      final okItems = <({String fileName, String department, String shatr, List<AdvisingScheduleSlot> slots})>[];
-      final failedItems = <({String fileName, String error})>[];
-
-      for (final file in result.files) {
-        final bytes = file.bytes;
-        if (bytes == null) {
-          failedItems.add((fileName: file.name, error: 'تعذّرت قراءة محتوى الملف.'));
-          continue;
-        }
-        try {
-          final parsed = AdvisingScheduleExcelService.parseTemplate(bytes);
-          if (parsed.department.isEmpty || parsed.shatr.isEmpty) {
-            throw Exception('لم يتم اختيار القسم/الشطر أعلى النموذج.');
-          }
-          if (parsed.slots.isEmpty) {
-            throw Exception('لم يتم العثور على أي فترة إرشاد بالملف.');
-          }
-          okItems.add((fileName: file.name, department: parsed.department, shatr: parsed.shatr, slots: parsed.slots));
-        } catch (e) {
-          failedItems.add((fileName: file.name, error: '$e'));
-        }
-      }
-
-      // ترتيب كل قائمة مرشدين بكل فترة حسب الرتبة العلمية ثم تاريخ التعيين
-      // (الأقدم أولاً) - بطلب سليمان صراحةً 2026-08-10، بدل ترتيب ورودهم
-      // العشوائي بالملف المرفوع. يُطبَّق مرة واحدة هنا وقت الاعتماد فينحفظ
-      // بالترتيب الصحيح دائمًا (لا حاجة لإعادة الترتيب بكل شاشة عرض/PDF).
-      if (okItems.isNotEmpty) {
-        final roster = await CollegeRosterRepository.load();
-        for (var i = 0; i < okItems.length; i++) {
-          okItems[i] = (
-            fileName: okItems[i].fileName,
-            department: okItems[i].department,
-            shatr: okItems[i].shatr,
-            slots: _sortSlotsByRank(okItems[i].slots, roster),
-          );
-        }
-      }
-
-      if (!mounted) return;
-      if (okItems.isEmpty) {
-        throw Exception('تعذّرت قراءة كل الملفات المختارة:\n${failedItems.map((f) => '- ${f.fileName}: ${f.error}').join('\n')}');
-      }
-
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text(okItems.length > 1 ? 'تأكيد اعتماد ${okItems.length} ملفات' : 'تأكيد الاعتماد'),
-          content: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('سيستبدل هذا الجدول السابق لنفس القسم/الشطر بالكامل لكل ملف أدناه:'),
-                const SizedBox(height: 10),
-                for (final item in okItems) ...[
-                  Builder(builder: (context) {
-                    final total = item.slots.fold<int>(0, (s, slot) => s + slot.entries.length);
-                    final conflicts = _findOfficeConflicts(item.slots);
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('${item.department} (${item.shatr}): ${item.slots.length} فترة، $total مرشدًا — ${item.fileName}',
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5)),
-                          if (conflicts.isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 4, right: 12),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text('⚠ اختلاف رقم مكتب نفس المرشد بين يوم وآخر:',
-                                      style: TextStyle(color: Colors.orange, fontSize: 11.5)),
-                                  for (final c in conflicts)
-                                    Text('- ${c.name}: ${c.offices.join(' / ')}', style: const TextStyle(fontSize: 11.5)),
-                                ],
-                              ),
-                            ),
-                        ],
-                      ),
-                    );
-                  }),
-                ],
-                if (failedItems.isNotEmpty) ...[
-                  const Divider(),
-                  Text('تعذّرت قراءة ${failedItems.length} ملف(ات) (لن تُرفَع):',
-                      style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12.5)),
-                  for (final f in failedItems) Text('- ${f.fileName}: ${f.error}', style: const TextStyle(fontSize: 11.5)),
-                ],
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('اعتماد')),
-          ],
-        ),
-      );
-      if (confirmed != true) return;
-
-      for (final item in okItems) {
-        await AdvisingScheduleRepository.save(item.department, item.shatr, item.slots);
-      }
-      await _load();
-      if (!mounted) return;
-      AppNotice.success(
-        context,
-        okItems.length > 1 ? 'تم اعتماد ${okItems.length} جداول بنجاح.' : 'تم اعتماد جدول ${okItems.first.department} (${okItems.first.shatr}) بنجاح.',
-      );
-    } catch (e) {
-      if (!mounted) return;
-      AppNotice.error(context, 'تعذّر قراءة النموذج: $e');
-    } finally {
-      if (mounted) setState(() => _uploadingTemplate = false);
-    }
-  }
-
   /// يبني تقريرًا يغطّي أي تركيبة يختارها المستخدم: قسم واحد أو "الكل"، ×
   /// شطر واحد أو "الكل" - القسم و/أو الشطر قد يكونا "الكل" كلٌ على حدة
   /// (مثال: كل الأقسام لكن شطر الطلاب فقط)، بدل الاقتصار على "الكل" للقسم
@@ -476,7 +295,13 @@ class _AdvisingScheduleAdminScreenState extends State<AdvisingScheduleAdminScree
                 color: AppColors.green,
               ),
               _ToolbarButton(
-                onPressed: _uploadingTemplate ? null : _uploadTemplate,
+                onPressed: _uploadingTemplate
+                    ? null
+                    : () => runUploadAdvisingSchedule(
+                          context: context,
+                          setUploading: (v) => setState(() => _uploadingTemplate = v),
+                          onSuccess: _load,
+                        ),
                 loading: _uploadingTemplate,
                 icon: Icons.upload_file,
                 label: 'رفع نموذج معبّأ',
