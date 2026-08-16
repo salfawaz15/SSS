@@ -10,6 +10,7 @@ import 'portal_root.dart';
 import 'public_landing_screen.dart';
 import 'reports_hub_screen.dart';
 import 'test_switcher_screen.dart';
+import 'upload_hub_screen.dart';
 
 /// شريط تنقّل الإدارة الموحّد - يُبنى مرة واحدة هنا ويُستخدم في كل صفحات
 /// الإدارة (الرئيسية والفرعية) حتى لا يفقد المستخدم القدرة على التنقّل
@@ -81,6 +82,19 @@ List<PortalNavItem> buildAdminNavItems(BuildContext context, {required String cu
         selected: current == 'college-roster',
         onTap: () => Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => const CollegeRosterAdminScreen()),
+        ),
+      ),
+    // صفحة مركزية لكل الملفات التي مصدرها المنظومة الداخلية للجامعة حصرًا
+    // (بطلب سليمان 2026-08-17) - نفس تقييد الوصول لحساب المدير العام حاليًا،
+    // مع خطة مستقبلية (لم تُنفَّذ بعد) لمنح نفس الصلاحية لمنسّق الوحدة
+    // للشؤون الإدارية.
+    if (isSuperAdmin)
+      PortalNavItem(
+        label: 'رفع ملفات',
+        icon: Icons.cloud_upload_outlined,
+        selected: current == 'upload-hub',
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const UploadHubScreen()),
         ),
       ),
     // حصريًا حساب المدير العام (salfawaz/super_admin) - ليس حساب "الإدارة"

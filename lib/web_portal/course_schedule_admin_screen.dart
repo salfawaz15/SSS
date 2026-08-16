@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:intl/intl.dart';
@@ -15,7 +14,6 @@ import '../models/course_section_record.dart';
 import '../services/college_roster_repository.dart';
 import '../services/course_schedule_repository.dart';
 import '../services/course_table_pdf_service.dart';
-import '../services/docx_schedule_parser_service.dart';
 import '../services/instructor_schedule_pdf_service.dart';
 import '../services/instructor_schedule_table.dart';
 import '../services/outside_course_repository.dart';
@@ -142,13 +140,11 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
   DateTime? _maleExportDate;
   DateTime? _femaleExportDate;
   bool _loading = true;
-  bool _uploadingMale = false;
-  bool _uploadingFemale = false;
 
   List<String> _maleOutsideCourses = [];
   List<String> _femaleOutsideCourses = [];
-  bool _uploadingMaleOutside = false;
-  bool _uploadingFemaleOutside = false;
+  List<CourseSectionRecord> _maleOutsideRecords = [];
+  List<CourseSectionRecord> _femaleOutsideRecords = [];
 
   String _shatrFilter = _kAllShatr;
   String _deptFilter = _kAllDepartments;
@@ -210,8 +206,8 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
         CollegeRosterRepository.load(),
         OutsideCourseRepository.load(Shatr.male),
         OutsideCourseRepository.load(Shatr.female),
-        OutsideCourseRepository.currentUploadDate(Shatr.male),
-        OutsideCourseRepository.currentUploadDate(Shatr.female),
+        OutsideCourseRepository.loadSections(Shatr.male),
+        OutsideCourseRepository.loadSections(Shatr.female),
       ]);
       if (!mounted) return;
       setState(() {
@@ -224,6 +220,8 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
         };
         _maleOutsideCourses = results[5] as List<String>;
         _femaleOutsideCourses = results[6] as List<String>;
+        _maleOutsideRecords = results[7] as List<CourseSectionRecord>;
+        _femaleOutsideRecords = results[8] as List<CourseSectionRecord>;
       });
     } catch (e) {
       if (!mounted) return;
@@ -238,104 +236,8 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
   List<String> _outsideCoursesFor(Shatr shatr) =>
       shatr == Shatr.male ? _maleOutsideCourses : _femaleOutsideCourses;
 
-  /// رفع موحَّد لملف "الحويّة" الشامل لشطر واحد - يستخرج منه دفعة واحدة
-  /// كلا العنصرين معًا بدل رفعتين منفصلتين كسابقًا: (أ) جدول شعب كليتنا
-  /// الخاصة (شعب "المستفيد" منها كلية إدارة الأعمال وكودها ليس ضمن قائمة
-  /// "مواد خارج الكلية")، و(ب) قائمة "مواد خارج الكلية" المعتمَدة لهذا
-  /// الفصل (شرطها: كودها بقائمة الخطة + شعبة فعلية مستفيدها كليتنا - انظر
-  /// [[project_faculty_columns_meaning]] وتعليق CourseCatalog.outsideCollegeCourses).
-  Future<void> _uploadCombinedFor(Shatr shatr) async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['docx'],
-      withData: true,
-    );
-    if (result == null || result.files.single.bytes == null) return;
-    final Uint8List bytes = result.files.single.bytes!;
-
-    setState(() {
-      if (shatr == Shatr.male) {
-        _uploadingMale = true;
-        _uploadingMaleOutside = true;
-      } else {
-        _uploadingFemale = true;
-        _uploadingFemaleOutside = true;
-      }
-    });
-
-    try {
-      final sections = DocxScheduleParserService.parseSections(bytes);
-      if (sections.isEmpty) {
-        throw Exception('لم يتم العثور على أي شعبة في الملف - تأكد من أنه ملف "الحويّة" الشامل الصحيح بصيغة Word (.docx).');
-      }
-
-      final ourSections = sections.where((s) => s.beneficiary.contains('كلية إدارة الأعمال')).toList();
-      final outsideCodes = CourseCatalog.outsideCollegeCourses.map(CourseCatalog.outsideCourseCode).toSet();
-
-      final ownRecords = ourSections.where((s) => !outsideCodes.contains(s.record.courseCode)).map((s) => s.record).toList();
-      final offeredOutsideCodes = ourSections.where((s) => outsideCodes.contains(s.record.courseCode)).map((s) => s.record.courseCode).toSet();
-      final outsideOptions = CourseCatalog.filterOutsideCoursesByOfferedCodes(offeredOutsideCodes);
-
-      if (ownRecords.isEmpty) {
-        throw Exception(
-          'لم يُعثر على أي شعبة "المستفيد" منها كلية إدارة الأعمال ضمن ${sections.length} سطر بالملف. '
-          'تأكد أن الملف يحوي عمود "المستفيد" فعليًا وأن نص الكلية مطابق.',
-        );
-      }
-
-      final exportDate = DocxScheduleParserService.extractExportDate(bytes);
-      final currentExportDate = await CourseScheduleRepository.currentExportDate(shatr);
-      if (exportDate != null && currentExportDate != null && !exportDate.isAfter(currentExportDate)) {
-        final fmt = DateFormat('yyyy/MM/dd');
-        throw Exception(
-          'تاريخ سحب بيانات هذا الملف (${fmt.format(exportDate)}) ليس أحدث من تاريخ آخر نسخة معتمدة '
-          '(${fmt.format(currentExportDate)}). تأكد من رفع أحدث ملف من المنظومة الداخلية.',
-        );
-      }
-
-      if (!mounted) return;
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('تأكيد الاعتماد'),
-          content: Text(
-            'من إجمالي ${sections.length} سطر بالملف لـ ${shatr.label}'
-            '${exportDate != null ? ' (تاريخ السحب: ${DateFormat('yyyy/MM/dd').format(exportDate)})' : ''}:\n\n'
-            '• ${ownRecords.length} شعبة لجدول كليتنا الخاص.\n'
-            '• ${outsideOptions.length} مادة من قائمة "خارج الكلية" (من أصل ${CourseCatalog.outsideCollegeCourses.length}).\n\n'
-            'سيستبدل هذا آخر نسخة معتمدة لكليهما لهذا الشطر بالكامل. هل تريد الاعتماد؟',
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('اعتماد')),
-          ],
-        ),
-      );
-      if (confirmed != true) return;
-
-      await CourseScheduleRepository.saveSchedule(shatr, ownRecords, exportDate: exportDate);
-      await OutsideCourseRepository.save(shatr, outsideOptions);
-      await _loadAll();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تم اعتماد جدول ${shatr.label} (${ownRecords.length} شعبة) ومواد خارج الكلية (${outsideOptions.length} مادة) بنجاح.')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذّر قراءة الملف: $e'), backgroundColor: Colors.red.shade700),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _uploadingMale = false;
-          _uploadingFemale = false;
-          _uploadingMaleOutside = false;
-          _uploadingFemaleOutside = false;
-        });
-      }
-    }
-  }
+  List<CourseSectionRecord> _outsideRecordsFor(Shatr shatr) =>
+      shatr == Shatr.male ? _maleOutsideRecords : _femaleOutsideRecords;
 
   List<_DisplayRow> _buildDisplayRows({required bool forFaculty}) {
     final rows = <_DisplayRow>[];
@@ -427,6 +329,20 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
               controller: _tabController,
               children: [_buildTableTab(), _buildFacultyTab()],
             ),
+    );
+  }
+
+  Widget _lastUploadNote(String label, DateTime? date, DateFormat fmt) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.update, size: 14, color: Colors.grey.shade500),
+        const SizedBox(width: 4),
+        Text(
+          '$label - آخر رفع: ${date != null ? fmt.format(date) : 'لم يُرفع بعد'}',
+          style: TextStyle(color: Colors.grey.shade600, fontSize: 11.5),
+        ),
+      ],
     );
   }
 
@@ -535,36 +451,16 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // زرّا الرفع انتقلا لصفحة "رفع ملفات" المركزية (بطلب سليمان
+          // صراحةً 2026-08-17) - تبقى هنا فقط ملاحظة تاريخ آخر رفع بلا زر،
+          // حتى يعرف من يعمل بهذه الصفحة متى آخر تحديث للبيانات دون أن
+          // يحتاج التنقّل لصفحة أخرى.
           Wrap(
-            spacing: 12,
-            runSpacing: 10,
+            spacing: 16,
+            runSpacing: 6,
             children: [
-              _uploadTile(
-                label: 'رفع ملف الحويّة الشامل - طلاب',
-                uploading: _uploadingMale || _uploadingMaleOutside,
-                date: _maleExportDate,
-                fmt: fmt,
-                onPressed: () => _uploadCombinedFor(Shatr.male),
-                onClear: () async {
-                  if (!await _confirmClear('جدول الطلاب ومواد خارج الكلية - طلاب')) return;
-                  await CourseScheduleRepository.clear(Shatr.male);
-                  await OutsideCourseRepository.clear(Shatr.male);
-                  await _loadAll();
-                },
-              ),
-              _uploadTile(
-                label: 'رفع ملف الحويّة الشامل - طالبات',
-                uploading: _uploadingFemale || _uploadingFemaleOutside,
-                date: _femaleExportDate,
-                fmt: fmt,
-                onPressed: () => _uploadCombinedFor(Shatr.female),
-                onClear: () async {
-                  if (!await _confirmClear('جدول الطالبات ومواد خارج الكلية - طالبات')) return;
-                  await CourseScheduleRepository.clear(Shatr.female);
-                  await OutsideCourseRepository.clear(Shatr.female);
-                  await _loadAll();
-                },
-              ),
+              _lastUploadNote('جدول الطلاب', _maleExportDate, fmt),
+              _lastUploadNote('جدول الطالبات', _femaleExportDate, fmt),
             ],
           ),
           const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider(height: 1)),
@@ -652,73 +548,6 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
     );
   }
 
-  Widget _uploadTile({
-    required String label,
-    required bool uploading,
-    required DateTime? date,
-    required DateFormat fmt,
-    required VoidCallback onPressed,
-    Color? color,
-    VoidCallback? onClear,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.circular(AppRadius.sm),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              FilledButton.icon(
-                onPressed: uploading ? null : onPressed,
-                icon: uploading
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Icon(Icons.upload_file, size: 18),
-                label: Text(label),
-                style: FilledButton.styleFrom(backgroundColor: color ?? AppColors.green),
-              ),
-              if (onClear != null && date != null)
-                IconButton(
-                  tooltip: 'تفريغ البيانات (للاختبار)',
-                  onPressed: onClear,
-                  icon: Icon(Icons.delete_sweep_outlined, color: Colors.red.shade700, size: 20),
-                ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            date != null ? 'آخر رفع: ${fmt.format(date)}' : 'لم يُرفع بعد',
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<bool> _confirmClear(String label) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('تفريغ $label'),
-        content: const Text('سيُحذَف كل ما هو مخزَّن حاليًا لهذا العنصر (لتسهيل إعادة اختبار الرفع). هل تريد المتابعة؟'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
-            child: const Text('تفريغ'),
-          ),
-        ],
-      ),
-    );
-    return confirmed == true;
-  }
-
   /// لوحة قابلة للطي (مطوية افتراضيًا) لمواد خارج الكلية - مبنية من آخر رفعة
   /// معتمدة لكل شطر (تقاطع القائمة الثابتة مع ملف حويّة الجامعة الشامل)،
   /// فلا تُعرض كصفوف داخل جدول التسكين الرئيسي.
@@ -759,6 +588,7 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
 
   Widget _outsideCoursesShatrSection(Shatr shatr) {
     final options = _outsideCoursesFor(shatr);
+    final records = _outsideRecordsFor(shatr);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -777,19 +607,58 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
         if (options.isEmpty)
           Text('لم تُرفع بعد قائمة مواد خارج الكلية لهذا الشطر.', style: TextStyle(color: Colors.grey.shade600, fontSize: 12))
         else
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final option in options)
-                Chip(
-                  label: Text(option, style: const TextStyle(fontSize: 12)),
-                  backgroundColor: Colors.white,
-                  side: BorderSide(color: AppColors.gold.withValues(alpha: 0.4)),
-                ),
-            ],
-          ),
+          _recordsDataTable(records),
       ],
+    );
+  }
+
+  /// جدول شعب فعلي (نفس أعمدة وترتيب جدول التسكين الرئيسي) بلا عمود الشطر
+  /// - يُستخدم لعرض شعب "مواد خارج الكلية" بنفس شكل الجدول العادي بدل بطاقات
+  /// متراصة لا تُظهر اليوم/الوقت/المحاضر.
+  Widget _recordsDataTable(List<CourseSectionRecord> records) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.gold.withValues(alpha: 0.6)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          headingRowColor: WidgetStateProperty.all(AppColors.green),
+          headingTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          columns: [
+            DataColumn(label: _centerHeader('اسم المقرر')),
+            DataColumn(label: _centerHeader('الشعبة')),
+            DataColumn(label: _centerHeader('المقرر')),
+            DataColumn(label: _centerHeader('عدد الساعات')),
+            DataColumn(label: _centerHeader('النشاط')),
+            DataColumn(label: _centerHeader('اعلى حد')),
+            DataColumn(label: _centerHeader('المسجلين')),
+            DataColumn(label: _centerHeader('اليوم')),
+            DataColumn(label: _centerHeader('الوقت')),
+            DataColumn(label: _centerHeader('المحاضر')),
+          ],
+          rows: [
+            for (var i = 0; i < records.length; i++)
+              DataRow(
+                color: WidgetStateProperty.all(i.isEven ? Colors.white : const Color(0xFFF7F5EF)),
+                cells: [
+                  DataCell(Center(child: Text(records[i].courseName, textAlign: TextAlign.center))),
+                  DataCell(_sectionCell(records[i])),
+                  DataCell(Center(child: Text(records[i].courseCode, textAlign: TextAlign.center))),
+                  DataCell(_hoursCell(records[i])),
+                  DataCell(_activityCell(records[i])),
+                  DataCell(_maxCapacityCell(records[i])),
+                  DataCell(_registeredCell(records[i])),
+                  DataCell(_dayCell(records[i])),
+                  DataCell(_timeCell(records[i])),
+                  DataCell(_instructorCell(records[i])),
+                ],
+              ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -966,6 +835,26 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
   /// عند وجود شعبة عملية مرتبطة، تُقسَّم الخلية إلى صفّين: الأعلى للنظري
   /// والأسفل للعملي (بدل دمجهما في سطر واحد) حسب طلب المستخدم صراحةً، مع
   /// توسيط كل المحتوى أفقيًا وعموديًا داخل الخلية.
+  /// DataTable لا يُوسّط محتوى الخلايا رأسيًا تلقائيًا (يُثبّت كل خلية أعلى
+  /// الصف) - فحين يحوي عمودا اليوم/الوقت بنفس الصف موعدين أسبوعيين (سطرين)
+  /// بينما بقية الأعمدة (الساعات/الشعبة/النشاط...) قيمة واحدة سطر واحد،
+  /// تظهر القيمة المفردة عالقة أعلى الصف بدل توسّطها. الحل: إعطاء كل خلية
+  /// ذات قيمة مفردة ارتفاعًا أدنى مطابقًا لعدد أسطر مواعيد نفس الصف، فيتوسّط
+  /// المحتوى داخله فعليًا (Center لا يُوسّط بلا ارتفاع محدَّد).
+  double _singleValueCellMinHeight(CourseSectionRecord r) {
+    final theoryLines = r.meetings.isEmpty ? 1 : r.meetings.length;
+    final practicalLines = r.practicalMeetings.isEmpty ? 1 : r.practicalMeetings.length;
+    final lines = theoryLines > practicalLines ? theoryLines : practicalLines;
+    return 20.0 * lines;
+  }
+
+  Widget _singleCenteredCell(Widget child, double minHeight) {
+    return ConstrainedBox(
+      constraints: BoxConstraints(minHeight: minHeight),
+      child: Center(child: child),
+    );
+  }
+
   Widget _splitCell(Widget theoryRow, Widget practicalRow) {
     return Center(
       child: Column(
@@ -981,7 +870,9 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
   }
 
   Widget _sectionCell(CourseSectionRecord r) {
-    if (r.practicalSection == null) return Center(child: Text(r.theorySection, textAlign: TextAlign.center));
+    if (r.practicalSection == null) {
+      return _singleCenteredCell(Text(r.theorySection, textAlign: TextAlign.center), _singleValueCellMinHeight(r));
+    }
     return _splitCell(Text(r.theorySection, textAlign: TextAlign.center), Text(r.practicalSection!, textAlign: TextAlign.center));
   }
 
@@ -1031,29 +922,37 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
   }
 
   Widget _hoursCell(CourseSectionRecord r) {
-    if (r.practicalSection == null) return Center(child: Text('${r.theoryHours}'));
+    if (r.practicalSection == null) {
+      return _singleCenteredCell(Text('${r.theoryHours}'), _singleValueCellMinHeight(r));
+    }
     return _splitCell(Text('${r.theoryHours}'), Text('${r.practicalHours}'));
   }
 
   Widget _activityCell(CourseSectionRecord r) {
-    if (r.practicalSection == null) return const Center(child: Text('نظري'));
+    if (r.practicalSection == null) {
+      return _singleCenteredCell(const Text('نظري'), _singleValueCellMinHeight(r));
+    }
     return _splitCell(const Text('نظري'), const Text('عملي'));
   }
 
   Widget _maxCapacityCell(CourseSectionRecord r) {
-    if (r.practicalSection == null) return Center(child: Text('${r.theoryMaxCapacity}'));
+    if (r.practicalSection == null) {
+      return _singleCenteredCell(Text('${r.theoryMaxCapacity}'), _singleValueCellMinHeight(r));
+    }
     return _splitCell(Text('${r.theoryMaxCapacity}'), Text('${r.practicalMaxCapacity ?? 0}'));
   }
 
   Widget _registeredCell(CourseSectionRecord r) {
-    if (r.practicalSection == null) return Center(child: Text('${r.theoryRegistered}'));
+    if (r.practicalSection == null) {
+      return _singleCenteredCell(Text('${r.theoryRegistered}'), _singleValueCellMinHeight(r));
+    }
     return _splitCell(Text('${r.theoryRegistered}'), Text('${r.practicalRegistered ?? 0}'));
   }
 
   Widget _instructorCell(CourseSectionRecord r) {
     const unassigned = 'لم تُسكَّن بعد';
     if (r.practicalSection == null || r.practicalInstructorName == null || r.practicalInstructorName == r.instructorName) {
-      return Center(child: Text(r.instructorName ?? unassigned, textAlign: TextAlign.center));
+      return _singleCenteredCell(Text(r.instructorName ?? unassigned, textAlign: TextAlign.center), _singleValueCellMinHeight(r));
     }
     return _splitCell(
       Text(r.instructorName ?? unassigned, textAlign: TextAlign.center),
@@ -1110,8 +1009,10 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
 
     return Column(
       children: [
+        // فراغ إضافي أعلى صف الفلاتر - كان يلتصق مباشرة بشريط التبويبات
+        // العلوي بلا مسافة كافية تفصل بينهما (لاحظه سليمان 2026-08-17).
         Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.fromLTRB(12, 20, 12, 12),
           child: Wrap(
             spacing: 12,
             runSpacing: 8,
@@ -1345,8 +1246,8 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
                     spacing: 12,
                     runSpacing: 10,
                     children: [
-                      _infoChip('الفصل الدراسي', 'الفصل الدراسي الأول 1448هـ', icon: Icons.calendar_month_outlined),
-                      _infoChip('القسم', department, icon: Icons.apartment_outlined),
+                      _infoChip('الفصل الدراسي', 'الأول 1448هـ', icon: Icons.calendar_month_outlined),
+                      _infoChip('القسم', department.replaceFirst('قسم ', ''), icon: Icons.apartment_outlined),
                       _infoChip('عضو هيئة التدريس', name, icon: Icons.person_outline),
                       _infoChip('رقم المكتب', _officeNumberFor(name) ?? '—', icon: Icons.meeting_room_outlined),
                     ],
@@ -1568,20 +1469,22 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
     if (status == _QuotaStatus.over) return _optionalOverageBadge(note);
     final color = _quotaColor(status);
     final icon = status == _QuotaStatus.overWithinRounding ? Icons.remove_circle_outline : Icons.info_outline;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.4)),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: color, size: 18),
-          const SizedBox(width: 8),
-          Expanded(child: Text(note, style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 12.5))),
-        ],
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color.withValues(alpha: 0.4)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color, size: 18),
+            const SizedBox(width: 8),
+            Text(note, style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 12.5)),
+          ],
+        ),
       ),
     );
   }

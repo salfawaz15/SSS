@@ -25,4 +25,17 @@ class AdvisingScheduleRepository {
     final list = doc.data()?['slots'] as List<dynamic>? ?? [];
     return list.map((e) => AdvisingScheduleSlot.fromJson(e as Map<String, dynamic>)).toList();
   }
+
+  /// أحدث تاريخ رفع بين كل مستندات (قسم × شطر) - لعرض ملخّص واحد بصفحة "رفع
+  /// ملفات" المركزية بلا حاجة لمعرفة القسم/الشطر تحديدًا مسبقًا.
+  static Future<DateTime?> latestUploadDate() async {
+    final snap = await _col.get();
+    DateTime? latest;
+    for (final doc in snap.docs) {
+      final ts = doc.data()['uploadedAt'] as Timestamp?;
+      final date = ts?.toDate();
+      if (date != null && (latest == null || date.isAfter(latest))) latest = date;
+    }
+    return latest;
+  }
 }
