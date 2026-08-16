@@ -73,7 +73,7 @@ class MobileHomeScreen extends StatefulWidget {
 }
 
 class _MobileHomeScreenState extends State<MobileHomeScreen> with SingleTickerProviderStateMixin {
-  late final _tabController = TabController(length: 7, vsync: this);
+  late final _tabController = TabController(length: 8, vsync: this);
 
   @override
   void dispose() {
@@ -183,6 +183,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> with SingleTickerPr
                   Tab(text: 'الأهداف'),
                   Tab(text: 'الهيكل التنظيمي'),
                   Tab(text: 'أعضاء الوحدة'),
+                  Tab(text: 'مواقع مهمة'),
                   Tab(text: 'التواصل'),
                 ],
               ),
@@ -197,6 +198,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> with SingleTickerPr
                   _GoalsTabBody(),
                   _OrgChartTabBody(),
                   _CommitteeTabBody(),
+                  _ImportantLinksTabBody(),
                   _ContactTabBody(),
                 ],
               ),
@@ -718,6 +720,85 @@ class _CommitteeTabBody extends StatelessWidget {
   }
 }
 
+class _ImportantLink {
+  const _ImportantLink(this.label, this.url, this.icon);
+
+  final String label;
+  final String url;
+  final IconData icon;
+}
+
+const _kImportantLinks = <_ImportantLink>[
+  _ImportantLink('جامعة الطائف', 'https://www.tu.edu.sa/', Icons.account_balance_outlined),
+  _ImportantLink(
+    'كلية إدارة الأعمال',
+    'https://www.tu.edu.sa/Ar/%D8%A7%D9%84%D9%83%D9%84%D9%8A%D8%A7%D8%AA/98/%D9%83%D9%84%D9%8A%D8%A9-%D8%A5%D8%AF%D8%A7%D8%B1%D8%A9-%D8%A7%D9%84%D8%A7%D8%B9%D9%85%D8%A7%D9%84',
+    Icons.apartment_outlined,
+  ),
+  _ImportantLink(
+    'وحدة الإرشاد على موقع الكلية',
+    'https://www.tu.edu.sa/Ar/%D9%83%D9%84%D9%8A%D8%A9-%D8%A5%D8%AF%D8%A7%D8%B1%D8%A9-%D8%A7%D9%84%D8%A7%D8%B9%D9%85%D8%A7%D9%84/98/Pages/22234/%D9%88%D8%AD%D8%AF%D8%A9-%D8%A7%D9%84%D8%A5%D8%B1%D8%B4%D8%A7%D8%AF-%D8%A7%D9%84%D8%A3%D9%83%D8%A7%D8%AF%D9%8A%D9%85%D9%8A-%D9%88%D8%A7%D9%84%D8%AE%D8%B1%D9%8A%D8%AC%D9%8A%D9%86',
+    Icons.groups_outlined,
+  ),
+  _ImportantLink('المنظومة الخارجية', 'https://edugate.tu.edu.sa/tu/init', Icons.public_outlined),
+  _ImportantLink('المنظومة الداخلية', 'http://ereg.tu.edu.sa:7778/forms/frmservlet?config=sis', Icons.dns_outlined),
+  _ImportantLink('منصة بلاك بورد', 'https://lms.tu.edu.sa/', Icons.laptop_outlined),
+];
+
+class _ImportantLinksTabBody extends StatelessWidget {
+  const _ImportantLinksTabBody();
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.count(
+      padding: const EdgeInsets.all(20),
+      crossAxisCount: 2,
+      mainAxisSpacing: 14,
+      crossAxisSpacing: 14,
+      childAspectRatio: 1.05,
+      children: [
+        for (final link in _kImportantLinks)
+          InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () => launchUrl(Uri.parse(link.url), mode: LaunchMode.externalApplication),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.gold.withValues(alpha: 0.35)),
+                boxShadow: [BoxShadow(color: AppColors.greenDark.withValues(alpha: 0.08), blurRadius: 8, offset: const Offset(0, 3))],
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    alignment: Alignment.center,
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(colors: [AppColors.greenDark, AppColors.green], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(link.icon, color: AppColors.goldLight, size: 20),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    link.label,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11, color: AppColors.greenDark, height: 1.3),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 class _ContactTabBody extends StatelessWidget {
   const _ContactTabBody();
 
@@ -728,7 +809,14 @@ class _ContactTabBody extends StatelessWidget {
       children: [
         _ContactTile(
           icon: Icons.email_outlined,
-          label: 'البريد الرسمي',
+          label: 'البريد الرسمي للوحدة',
+          value: 'cba.ag@tu.edu.sa',
+          onTap: () => launchUrl(Uri.parse('mailto:cba.ag@tu.edu.sa')),
+        ),
+        const SizedBox(height: 12),
+        _ContactTile(
+          icon: Icons.build_outlined,
+          label: 'الدعم الفني للموقع',
           value: 'salfawaz@tu.edu.sa',
           onTap: () => launchUrl(Uri.parse('mailto:salfawaz@tu.edu.sa')),
         ),
