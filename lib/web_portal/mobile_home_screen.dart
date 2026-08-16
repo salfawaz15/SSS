@@ -78,6 +78,15 @@ class MobileHomeScreen extends StatefulWidget {
 class _MobileHomeScreenState extends State<MobileHomeScreen> with SingleTickerProviderStateMixin {
   late final _tabController = TabController(length: 8, vsync: this);
 
+  // فهرس التبويب النشط بالشريط السفلي (0 = الرئيسية دائمًا) - يتحكم بأي
+  // عنصر يظهر داخل IndexedStack بالأسفل بدل الدفع (Navigator.push) لصفحة
+  // منفصلة. بطلب سليمان الصريح (2026-08-16): "المفترض إذا ذهبت لأي تبويب
+  // بالأسفل يبقى التبويب بالأسفل ثابت... لا يتوجب الرجوع بالسهم للخلف" -
+  // الشريطان العلوي والسفلي يبقيان مرئيَّين دائمًا الآن، فقط المحتوى
+  // الأوسط يتبدّل.
+  int _bottomIndex = 0;
+  String _moreLabel = '';
+
   @override
   void dispose() {
     _tabController.dispose();
@@ -90,19 +99,9 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> with SingleTickerPr
     );
   }
 
-  /// عناصر الشريط السفلي حسب دور الحساب الحالي - "الرئيسية" أولًا دائمًا
-  /// (نفس هذه الصفحة، بلا تنقّل)، ثم أهم أقسام بوابة هذا الدور تحديدًا على
-  /// الويب (ترتيب/تسمية مطابقان لـ`admin_nav.dart`/`coordinator_nav.dart`) -
-  /// بطلب سليمان الصريح (2026-08-16): "إظهار كل صفحة حسب دورها وأهميتها
-  /// بالتبويب السفلي" بدل التبويبات العامة الثابتة السابقة. محتوى كل قسم
-  /// (غير "الرئيسية") لا يزال "قيد التطوير" - سيُبنى جوّالًا أصيلاً واحدًا
-  /// تلو الآخر بجلسات قادمة (لا دفع شاشات الويب العريضة كما ثبت فشله سابقًا).
-  /// أقسام الدور (بلا "الرئيسية") مرتَّبة حسب الأهمية - أول عنصرين فقط
-  /// يظهران كتبويب مباشر، والباقي (إن وجد) ينتقل لقائمة "المزيد" - بطلب
-  /// سليمان صراحةً (2026-08-16): "أربع اختيارات كما هي، على أن يكون الخيار
-  /// الأخير المزيد ويفتح قائمة نختار منها" (بدل تكديس كل الأقسام كتبويبات
-  /// مباشرة، كما كان مع دور الإدارة - 3 تبويبات + الرئيسية = 4 بلا مساحة
-  /// لأي قسم إضافي مستقبلي).
+  /// أقسام الدور (بلا "الرئيسية") مرتَّبة حسب الأهمية - تطابق تسمية/ترتيب
+  /// `admin_nav.dart`/`coordinator_nav.dart` بالويب. بطلب سليمان الصريح
+  /// (2026-08-16): "إظهار كل صفحة حسب دورها وأهميتها بالتبويب السفلي".
   List<(IconData, String)> _roleSections(PortalRole? role) => switch (role) {
         PortalRole.superAdmin || PortalRole.admin => const [
             (Icons.dashboard_outlined, 'لوحة الإدارة'),
@@ -119,7 +118,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> with SingleTickerPr
         PortalRole.unknown || null => const [],
       };
 
-  void _openMoreSheet(BuildContext context, List<(IconData, String)> items) {
+  void _openMoreSheet(BuildContext context, List<(IconData, String)> items, int extraIndex) {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
@@ -136,7 +135,10 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> with SingleTickerPr
                 title: Text(item.$2),
                 onTap: () {
                   Navigator.of(sheetContext).pop();
-                  _showComingSoon(context, item.$2);
+                  setState(() {
+                    _moreLabel = item.$2;
+                    _bottomIndex = extraIndex;
+                  });
                 },
               ),
             const SizedBox(height: 8),
@@ -146,217 +148,280 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> with SingleTickerPr
     );
   }
 
-  MobileBottomNavBar _bottomNavForRole(BuildContext context, PortalRole? role) {
-    // كان بلا أثر (onTap فارغ) - يفترض أن المستخدم بصفحة "الرئيسية" أصلًا
-    // فلا حاجة لفعل شيء، لكن هذا خطأ حين يكون مفتوحًا بتبويب علوي آخر (مثال
-    // "الأهداف") - الآن يُعيد تبويبات الصفحة العلوية لـ"الرئيسية" فعليًا
-    // (سليمان لاحظه صراحةً 2026-08-16 بلقطة شاشة من تبويب "الأهداف").
+  /// يبني الشريط السفلي **و**قائمة محتويات `IndexedStack` معًا (مترابطان -
+  /// كل تبويب سفلي مباشر يقابله بالضبط عنصر بنفس الفهرس بالقائمة) - بطلب
+  /// سليمان الصريح (2026-08-16): "إذا كان عدد التبويبات أربعة لا يكون هناك
+  /// تبويب المزيد، تظهر الأربعة كما هي - إذا كان أكثر من أربعة تظهر المزيد
+  /// ويظهر المتبقي" (أي: الرئيسية + حتى 3 أقسام مباشرة = 4 بلا "المزيد"
+  /// إطلاقًا؛ "المزيد" يظهر فقط لو تجاوزت الأقسام 3).
+  ({MobileBottomNavBar navBar, List<Widget> bodies}) _bottomNavAndBodies(BuildContext context, PortalRole? role) {
     final home = MobileNavTab(
       icon: Icons.home_outlined,
       label: 'الرئيسية',
-      onTap: () => _tabController.animateTo(0),
+      onTap: () => setState(() {
+        _bottomIndex = 0;
+        _tabController.animateTo(0);
+      }),
     );
 
     final sections = _roleSections(role);
-    final direct = sections.take(2);
-    final overflow = sections.skip(2).toList();
+    final needsMore = sections.length > 3;
+    final direct = needsMore ? sections.take(3).toList() : sections;
+    final overflow = needsMore ? sections.skip(3).toList() : const <(IconData, String)>[];
+    final extraIndex = direct.length + 1; // فهرس محتوى "المزيد" المختار حاليًا بـIndexedStack.
 
-    // "لوحة الإدارة" لحساب المدير العام (salfawaz) تحديدًا هي القسم الوحيد
-    // المبني فعليًا كشاشة جوّالة أصيلة حتى الآن (بطلب سليمان صراحةً
-    // 2026-08-16: "اعمل ما يكون مناسب بحيث تحتوي كل الصلاحيات") - بقية
-    // الأقسام (لغير المدير العام أيضًا) تبقى "قيد التطوير".
-    VoidCallback onTapFor(String label) {
+    Widget bodyFor(String label) {
+      // "لوحة الإدارة" لحساب المدير العام (salfawaz) تحديدًا هي القسم
+      // الوحيد المبني فعليًا كشاشة جوّالة أصيلة حتى الآن (بطلب سليمان
+      // صراحةً: "اعمل ما يكون مناسب بحيث تحتوي كل الصلاحيات") - بقية
+      // الأقسام (لغير المدير العام أيضًا) تبقى "قيد التطوير".
       if (role == PortalRole.superAdmin && label == 'لوحة الإدارة') {
-        return () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const MobileAdminDashboardScreen()),
-            );
+        return const MobileAdminDashboardBody();
       }
-      return () => _showComingSoon(context, label);
+      return _ComingSoonBody(label: label);
     }
 
-    return MobileBottomNavBar(
-      currentIndex: 0,
-      tabs: [
-        home,
-        for (final s in direct) MobileNavTab(icon: s.$1, label: s.$2, onTap: onTapFor(s.$2)),
+    return (
+      navBar: MobileBottomNavBar(
+        currentIndex: _bottomIndex,
+        tabs: [
+          home,
+          for (var i = 0; i < direct.length; i++)
+            MobileNavTab(
+              icon: direct[i].$1,
+              label: direct[i].$2,
+              onTap: () => setState(() => _bottomIndex = i + 1),
+            ),
+        ],
+        onMore: overflow.isEmpty ? null : () => _openMoreSheet(context, overflow, extraIndex),
+      ),
+      bodies: [
+        _buildHomeBody(),
+        for (final s in direct) bodyFor(s.$2),
+        if (overflow.isNotEmpty) _ComingSoonBody(label: _moreLabel.isEmpty ? overflow.first.$2 : _moreLabel),
       ],
-      onMore: overflow.isEmpty ? null : () => _openMoreSheet(context, overflow),
+    );
+  }
+
+  Widget _buildHomeBody() {
+    return Column(
+      children: [
+        Material(
+          color: Colors.white,
+          child: TabBar(
+            controller: _tabController,
+            isScrollable: true,
+            labelColor: AppColors.greenDark,
+            unselectedLabelColor: Colors.grey.shade500,
+            indicatorColor: AppColors.gold,
+            indicatorWeight: 3,
+            labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+            tabs: const [
+              Tab(text: 'الرئيسية'),
+              Tab(text: 'نبذة'),
+              Tab(text: 'الرؤية والرسالة'),
+              Tab(text: 'الأهداف'),
+              Tab(text: 'الهيكل التنظيمي'),
+              Tab(text: 'أعضاء الوحدة'),
+              Tab(text: 'مواقع مهمة'),
+              Tab(text: 'التواصل'),
+            ],
+          ),
+        ),
+        Expanded(
+          child: TabBarView(
+            controller: _tabController,
+            children: [
+              const _StatsTabBody(),
+              _TextTabBody(paragraphs: [_kIntroText]),
+              _TextTabBody(paragraphs: [_kVisionText], heading: 'الرؤية'),
+              _GoalsTabBody(),
+              _OrgChartTabBody(),
+              _CommitteeTabBody(),
+              _ImportantLinksTabBody(),
+              _ContactTabBody(),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHeader(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      'جامعة الطائف - كلية إدارة الأعمال',
+                      textAlign: TextAlign.right,
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.greenDark),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'وحدة الإرشاد الأكاديمي والخريجين',
+                      textAlign: TextAlign.right,
+                      style: TextStyle(fontSize: 12, color: AppColors.green, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+              ),
+              StreamBuilder<User?>(
+                stream: FirebaseAuth.instance.authStateChanges(),
+                builder: (context, snapshot) {
+                  final loggedIn = snapshot.data != null;
+                  // مسجَّل الدخول: قائمة منبثقة سريعة (تغيير كلمة المرور/
+                  // خروج) بدل فتح صفحة كاملة منفصلة - سليمان لاحظ صراحةً
+                  // (2026-08-16) أن فتح صفحة جديدة لمجرد هذين الإجراءين
+                  // مزعج مقارنة بباقي التصميم الممتاز. غير مسجَّل: يبقى
+                  // الدفع لصفحة الدخول كما هي (إجراء متعدد الحقول يستحق
+                  // صفحة كاملة).
+                  if (loggedIn) {
+                    return PopupMenuButton<VoidCallback>(
+                      tooltip: 'حسابي',
+                      icon: const Icon(Icons.account_circle, color: AppColors.greenDark),
+                      onSelected: (action) => action(),
+                      itemBuilder: (context) => [
+                        PopupMenuItem(
+                          value: () => showChangePasswordDialog(context),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.lock_outline, size: 18, color: AppColors.greenDark),
+                              SizedBox(width: 10),
+                              Text('تغيير كلمة المرور'),
+                            ],
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: () => FirebaseAuth.instance.signOut(),
+                          child: Row(
+                            children: [
+                              Icon(Icons.logout, size: 18, color: Colors.red.shade700),
+                              const SizedBox(width: 10),
+                              Text('تسجيل خروج', style: TextStyle(color: Colors.red.shade700)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  }
+                  return IconButton(
+                    tooltip: 'تسجيل الدخول',
+                    icon: const Icon(Icons.person_add_alt_1_outlined, color: AppColors.greenDark),
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const MobileAccountScreen()),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [AppColors.greenDark, AppColors.green],
+                begin: Alignment.topRight,
+                end: Alignment.bottomLeft,
+              ),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: const Row(
+              children: [
+                Text('👋', style: TextStyle(fontSize: 26)),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'أهلاً بك',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 17),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        'نتمنى لك يومًا موفقًا',
+                        style: TextStyle(color: Colors.white70, fontSize: 12.5),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F7F6),
-      body: SafeArea(
-        bottom: false,
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, authSnapshot) {
+        return FutureBuilder<PortalResolvedRole?>(
+          // key بمعرِّف المستخدم يجبر إعادة الحساب عند تبدّل الدخول/الخروج
+          // بدل الاحتفاظ بنتيجة Future الحساب السابق.
+          key: ValueKey(authSnapshot.data?.uid),
+          future: PortalRoleGate.resolveSimple(authSnapshot.data),
+          builder: (context, roleSnapshot) {
+            final result = _bottomNavAndBodies(context, roleSnapshot.data?.role);
+            // فهرس المحتوى قد يتجاوز عدد العناصر مؤقتًا خلال لحظة تبديل
+            // الدور (مثال: دخول/خروج يغيّر عدد الأقسام) - يُعاد لـ0 أمانًا.
+            final safeIndex = _bottomIndex < result.bodies.length ? _bottomIndex : 0;
+            return Scaffold(
+              backgroundColor: const Color(0xFFF5F7F6),
+              body: SafeArea(
+                bottom: false,
+                child: Column(
+                  children: [
+                    _buildHeader(context),
+                    const SizedBox(height: 14),
+                    Expanded(child: IndexedStack(index: safeIndex, children: result.bodies)),
+                  ],
+                ),
+              ),
+              bottomNavigationBar: result.navBar,
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+/// محتوى بديل مؤقت لأي قسم لم يُبنَ جوّالًا بعد - نفس رسالة "قيد التطوير"
+/// السابقة لكن كصفحة ثابتة ضمن `IndexedStack` (لا SnackBar) حتى يبقى
+/// الشريطان العلوي والسفلي ظاهرين دون أي تنقّل صفحة.
+class _ComingSoonBody extends StatelessWidget {
+  const _ComingSoonBody({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      const Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              'جامعة الطائف - كلية إدارة الأعمال',
-                              textAlign: TextAlign.right,
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.greenDark),
-                            ),
-                            SizedBox(height: 2),
-                            Text(
-                              'وحدة الإرشاد الأكاديمي والخريجين',
-                              textAlign: TextAlign.right,
-                              style: TextStyle(fontSize: 12, color: AppColors.green, fontWeight: FontWeight.w600),
-                            ),
-                          ],
-                        ),
-                      ),
-                      StreamBuilder<User?>(
-                        stream: FirebaseAuth.instance.authStateChanges(),
-                        builder: (context, snapshot) {
-                          final loggedIn = snapshot.data != null;
-                          // مسجَّل الدخول: قائمة منبثقة سريعة (تغيير كلمة
-                          // المرور/خروج) بدل فتح صفحة كاملة منفصلة - سليمان
-                          // لاحظ صراحةً (2026-08-16) أن فتح صفحة جديدة لمجرد
-                          // هذين الإجراءين مزعج مقارنة بباقي التصميم الممتاز.
-                          // غير مسجَّل: يبقى الدفع لصفحة الدخول كما هي (إجراء
-                          // متعدد الحقول يستحق صفحة كاملة).
-                          if (loggedIn) {
-                            return PopupMenuButton<VoidCallback>(
-                              tooltip: 'حسابي',
-                              icon: const Icon(Icons.account_circle, color: AppColors.greenDark),
-                              onSelected: (action) => action(),
-                              itemBuilder: (context) => [
-                                PopupMenuItem(
-                                  value: () => showChangePasswordDialog(context),
-                                  child: const Row(
-                                    children: [
-                                      Icon(Icons.lock_outline, size: 18, color: AppColors.greenDark),
-                                      SizedBox(width: 10),
-                                      Text('تغيير كلمة المرور'),
-                                    ],
-                                  ),
-                                ),
-                                PopupMenuItem(
-                                  value: () => FirebaseAuth.instance.signOut(),
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.logout, size: 18, color: Colors.red.shade700),
-                                      const SizedBox(width: 10),
-                                      Text('تسجيل خروج', style: TextStyle(color: Colors.red.shade700)),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            );
-                          }
-                          return IconButton(
-                            tooltip: 'تسجيل الدخول',
-                            icon: const Icon(Icons.person_add_alt_1_outlined, color: AppColors.greenDark),
-                            onPressed: () => Navigator.of(context).push(
-                              MaterialPageRoute(builder: (_) => const MobileAccountScreen()),
-                            ),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [AppColors.greenDark, AppColors.green],
-                        begin: Alignment.topRight,
-                        end: Alignment.bottomLeft,
-                      ),
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: const Row(
-                      children: [
-                        Text('👋', style: TextStyle(fontSize: 26)),
-                        SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'أهلاً بك',
-                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 17),
-                              ),
-                              SizedBox(height: 4),
-                              Text(
-                                'نتمنى لك يومًا موفقًا',
-                                style: TextStyle(color: Colors.white70, fontSize: 12.5),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            const Icon(Icons.construction_outlined, size: 44, color: Colors.grey),
             const SizedBox(height: 14),
-            Material(
-              color: Colors.white,
-              child: TabBar(
-                controller: _tabController,
-                isScrollable: true,
-                labelColor: AppColors.greenDark,
-                unselectedLabelColor: Colors.grey.shade500,
-                indicatorColor: AppColors.gold,
-                indicatorWeight: 3,
-                labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-                tabs: const [
-                  Tab(text: 'الرئيسية'),
-                  Tab(text: 'نبذة'),
-                  Tab(text: 'الرؤية والرسالة'),
-                  Tab(text: 'الأهداف'),
-                  Tab(text: 'الهيكل التنظيمي'),
-                  Tab(text: 'أعضاء الوحدة'),
-                  Tab(text: 'مواقع مهمة'),
-                  Tab(text: 'التواصل'),
-                ],
-              ),
-            ),
-            Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                children: [
-                  const _StatsTabBody(),
-                  _TextTabBody(paragraphs: [_kIntroText]),
-                  _TextTabBody(paragraphs: [_kVisionText], heading: 'الرؤية'),
-                  _GoalsTabBody(),
-                  _OrgChartTabBody(),
-                  _CommitteeTabBody(),
-                  _ImportantLinksTabBody(),
-                  _ContactTabBody(),
-                ],
-              ),
-            ),
+            Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+            const SizedBox(height: 6),
+            const Text('قيد التطوير - قريبًا بإذن الله', style: TextStyle(color: Colors.grey, fontSize: 12.5)),
           ],
         ),
-      ),
-      bottomNavigationBar: StreamBuilder<User?>(
-        stream: FirebaseAuth.instance.authStateChanges(),
-        builder: (context, authSnapshot) {
-          return FutureBuilder<PortalResolvedRole?>(
-            // key بمعرِّف المستخدم يجبر إعادة الحساب عند تبدّل الدخول/الخروج
-            // بدل الاحتفاظ بنتيجة Future الحساب السابق.
-            key: ValueKey(authSnapshot.data?.uid),
-            future: PortalRoleGate.resolveSimple(authSnapshot.data),
-            builder: (context, roleSnapshot) => _bottomNavForRole(context, roleSnapshot.data?.role),
-          );
-        },
       ),
     );
   }
