@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../theme/app_theme.dart';
 import 'change_password_dialog.dart';
+import 'mobile_about_unit_screen.dart';
 import 'mobile_bottom_nav_bar.dart';
 import 'portal_role_gate.dart';
 
@@ -117,6 +118,34 @@ class MobileHomeScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 20),
+            Material(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const MobileAboutUnitScreen()),
+                ),
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.grey.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.groups_outlined, color: AppColors.green),
+                      const SizedBox(width: 10),
+                      const Expanded(
+                        child: Text('عن الوحدة - الهيكل التنظيمي والتواصل', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5)),
+                      ),
+                      const Icon(Icons.arrow_back_ios_new, size: 14, color: Colors.grey),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(16),
