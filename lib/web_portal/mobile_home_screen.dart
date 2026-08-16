@@ -209,7 +209,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> with SingleTickerPr
       bodies: [
         _buildHomeBody(),
         for (final s in direct) bodyFor(s.$2),
-        if (overflow.isNotEmpty) _ComingSoonBody(label: _moreLabel.isEmpty ? overflow.first.$2 : _moreLabel),
+        if (overflow.isNotEmpty) bodyFor(_moreLabel.isEmpty ? overflow.first.$2 : _moreLabel),
       ],
     );
   }
