@@ -99,7 +99,15 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> with SingleTickerPr
     MobileNavTab soon(IconData icon, String label) =>
         MobileNavTab(icon: icon, label: label, onTap: () => _showComingSoon(context, label));
 
-    final home = MobileNavTab(icon: Icons.home_outlined, label: 'الرئيسية', onTap: () {});
+    // كان بلا أثر (onTap فارغ) - يفترض أن المستخدم بصفحة "الرئيسية" أصلًا
+    // فلا حاجة لفعل شيء، لكن هذا خطأ حين يكون مفتوحًا بتبويب علوي آخر (مثال
+    // "الأهداف") - الآن يُعيد تبويبات الصفحة العلوية لـ"الرئيسية" فعليًا
+    // (سليمان لاحظه صراحةً 2026-08-16 بلقطة شاشة من تبويب "الأهداف").
+    final home = MobileNavTab(
+      icon: Icons.home_outlined,
+      label: 'الرئيسية',
+      onTap: () => _tabController.animateTo(0),
+    );
 
     return switch (role) {
       PortalRole.superAdmin || PortalRole.admin => [
