@@ -353,6 +353,14 @@ service cloud.firestore {
       allow read, write: if isUnitCoordinator();
     }
 
+    // سجل تغييرات جدول المقررات الدائم/التراكمي (إضافة/حذف شعب، تغيير عضو
+    // هيئة تدريس - عبر كل رفعات "رفع المقررات الدراسية") - نفس مبدأ
+    // advisingAdvisorMovements تمامًا: مستندات مستقلة، تُضاف فقط ولا تُعدَّل.
+    match /courseScheduleChanges/{entryId} {
+      allow read, write: if isSuperAdmin();
+      allow read, write: if isUnitCoordinator();
+    }
+
     // بيانات منسوبي الكلية الرسمية (أعضاء هيئة تدريس وإداريين) - رفع وقراءة
     // مقصوران على حساب المدير العام (salfawaz) فقط، نفس مبدأ courseSchedules.
     match /collegeRoster/{docId} {

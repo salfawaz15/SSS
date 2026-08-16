@@ -5,8 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../data/course_catalog.dart';
+import '../models/course_schedule_change.dart';
 import '../services/advising_report_repository.dart';
 import '../services/advising_schedule_repository.dart';
+import '../services/course_schedule_change_repository.dart';
+import '../services/course_schedule_diff_service.dart';
 import '../services/course_schedule_repository.dart';
 import '../services/docx_schedule_parser_service.dart';
 import '../services/outside_course_repository.dart';
@@ -90,7 +93,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     }
   }
 
-  /// رفع موحَّد لملف "الحويّة" الشامل لشطر واحد - يستخرج منه دفعة واحدة كلا
+  /// رفع موحَّد لملف المقررات الدراسية الشامل لشطر واحد - يستخرج منه دفعة واحدة كلا
   /// العنصرين معًا: (أ) جدول شعب كليتنا الخاصة (شعب "المستفيد" منها كلية
   /// إدارة الأعمال وكودها ليس ضمن قائمة "مواد خارج الكلية")، و(ب) قائمة
   /// "مواد خارج الكلية" المعتمَدة لهذا الفصل (شرطها: كودها بقائمة الخطة +
@@ -115,7 +118,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     try {
       final sections = DocxScheduleParserService.parseSections(bytes);
       if (sections.isEmpty) {
-        throw Exception('لم يتم العثور على أي شعبة في الملف - تأكد من أنه ملف "الحويّة" الشامل الصحيح بصيغة Word (.docx).');
+        throw Exception('لم يتم العثور على أي شعبة في الملف - تأكد من أنه ملف المقررات الدراسية الشامل الصحيح بصيغة Word (.docx).');
       }
 
       final ourSections = sections.where((s) => s.beneficiary.contains('كلية إدارة الأعمال')).toList();
@@ -148,6 +151,13 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
         );
       }
 
+      // مقارنة النسخة الحالية المخزَّنة بالنسخة الجديدة **قبل** استبدالها -
+      // تُبنى منها إضافات/حذوفات الشعب وتغييرات عضو هيئة التدريس، وتُحفَظ
+      // كسجل تراكمي دائم (لا يُستبدَل أبدًا) لتقرير "التغييرات" - بطلب
+      // سليمان صراحةً (2026-08-17). عدد الطلاب المسجَّلين لا يُقارَن أبدًا.
+      final previousRecords = await CourseScheduleRepository.loadSchedule(shatr);
+      final changes = CourseScheduleDiffService.diff(shatrLabel: shatr.label, previous: previousRecords, current: ownRecords);
+
       if (!mounted) return;
       final confirmed = await showDialog<bool>(
         context: context,
@@ -157,7 +167,8 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
             'من إجمالي ${sections.length} سطر بالملف لـ ${shatr.label}'
             '${exportDate != null ? ' (تاريخ السحب: ${DateFormat('yyyy/MM/dd').format(exportDate)})' : ''}:\n\n'
             '• ${ownRecords.length} شعبة لجدول كليتنا الخاص.\n'
-            '• ${outsideOptions.length} مادة من قائمة "خارج الكلية" (من أصل ${CourseCatalog.outsideCollegeCourses.length}).\n\n'
+            '• ${outsideOptions.length} مادة من قائمة "خارج الكلية" (من أصل ${CourseCatalog.outsideCollegeCourses.length}).\n'
+            '${previousRecords.isNotEmpty ? '• ${changes.length} تغيير مكتشَف عن النسخة السابقة (إضافة/حذف شعب أو تغيير محاضر).\n' : ''}\n'
             'سيستبدل هذا آخر نسخة معتمدة لكليهما لهذا الشطر بالكامل. هل تريد الاعتماد؟',
           ),
           actions: [
@@ -170,10 +181,16 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
 
       await CourseScheduleRepository.saveSchedule(shatr, ownRecords, exportDate: exportDate);
       await OutsideCourseRepository.save(shatr, outsideOptions, outsideRecords);
+      if (previousRecords.isNotEmpty) await CourseScheduleChangeRepository.appendChanges(changes);
       await _loadDates();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تم اعتماد جدول ${shatr.label} (${ownRecords.length} شعبة) ومواد خارج الكلية (${outsideOptions.length} مادة) بنجاح.')),
+        SnackBar(
+          content: Text(
+            'تم اعتماد جدول ${shatr.label} (${ownRecords.length} شعبة) ومواد خارج الكلية (${outsideOptions.length} مادة) بنجاح'
+            '${previousRecords.isNotEmpty ? ' - ${changes.length} تغيير سُجِّل بالتقرير' : ''}.',
+          ),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
@@ -213,7 +230,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                       ),
                       const SizedBox(height: 20),
                       _sectionCard(
-                        title: 'المقررات الدراسية (الحويّة)',
+                        title: 'المقررات الدراسية',
                         subtitle: 'يستخرج تلقائيًا جدول شعب كليتنا + قائمة مواد خارج الكلية معًا من نفس الملف.',
                         icon: Icons.table_chart_outlined,
                         child: Wrap(
@@ -226,6 +243,12 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                               date: _maleExportDate,
                               fmt: fmt,
                               onPressed: () => _uploadCourses(Shatr.male),
+                              onClear: () async {
+                                if (!await _confirmClear('جدول الطلاب ومواد خارج الكلية - طلاب')) return;
+                                await CourseScheduleRepository.clear(Shatr.male);
+                                await OutsideCourseRepository.clear(Shatr.male);
+                                await _loadDates();
+                              },
                             ),
                             _uploadButton(
                               label: 'رفع المقررات الدراسية - طالبات',
@@ -233,9 +256,22 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                               date: _femaleExportDate,
                               fmt: fmt,
                               onPressed: () => _uploadCourses(Shatr.female),
+                              onClear: () async {
+                                if (!await _confirmClear('جدول الطالبات ومواد خارج الكلية - طالبات')) return;
+                                await CourseScheduleRepository.clear(Shatr.female);
+                                await OutsideCourseRepository.clear(Shatr.female);
+                                await _loadDates();
+                              },
                             ),
                           ],
                         ),
+                      ),
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        onPressed: _showChangesReport,
+                        icon: const Icon(Icons.fact_check_outlined, size: 16),
+                        label: const Text('عرض تقرير التغييرات (إضافة/حذف شعب، تغيير محاضرين)'),
+                        style: OutlinedButton.styleFrom(foregroundColor: AppColors.green, side: BorderSide(color: AppColors.green)),
                       ),
                       const SizedBox(height: 16),
                       _sectionCard(
@@ -248,19 +284,30 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                             _dateLine('شطر الطلاب', _allCollegesMaleDate, fmt),
                             _dateLine('شطر الطالبات', _allCollegesFemaleDate, fmt),
                             const SizedBox(height: 8),
-                            FilledButton.icon(
-                              onPressed: _uploadingAllColleges
-                                  ? null
-                                  : () => runUploadAllColleges(
-                                        context: context,
-                                        setUploading: (v) => setState(() => _uploadingAllColleges = v),
-                                        onSuccess: _loadDates,
-                                      ),
-                              icon: _uploadingAllColleges
-                                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                                  : const Icon(Icons.upload_file, size: 18),
-                              label: const Text('رفع ملف "كل الكليات"'),
-                              style: FilledButton.styleFrom(backgroundColor: AppColors.green),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                FilledButton.icon(
+                                  onPressed: _uploadingAllColleges
+                                      ? null
+                                      : () => runUploadAllColleges(
+                                            context: context,
+                                            setUploading: (v) => setState(() => _uploadingAllColleges = v),
+                                            onSuccess: _loadDates,
+                                          ),
+                                  icon: _uploadingAllColleges
+                                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                      : const Icon(Icons.upload_file, size: 18),
+                                  label: const Text('رفع ملف "كل الكليات"'),
+                                  style: FilledButton.styleFrom(backgroundColor: AppColors.green),
+                                ),
+                                if (_allCollegesMaleDate != null || _allCollegesFemaleDate != null)
+                                  IconButton(
+                                    tooltip: 'تفريغ البيانات (للاختبار)',
+                                    onPressed: () => _clearKindBoth(AdvisingReportKind.allColleges, 'رفع جميع الطلاب (كل الكليات)'),
+                                    icon: Icon(Icons.delete_sweep_outlined, color: Colors.red.shade700, size: 20),
+                                  ),
+                              ],
                             ),
                           ],
                         ),
@@ -276,19 +323,30 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                             _dateLine('شطر الطلاب', _healthMaleDate, fmt),
                             _dateLine('شطر الطالبات', _healthFemaleDate, fmt),
                             const SizedBox(height: 8),
-                            FilledButton.icon(
-                              onPressed: _uploadingHealth
-                                  ? null
-                                  : () => runUploadHealth(
-                                        context: context,
-                                        setUploading: (v) => setState(() => _uploadingHealth = v),
-                                        onSuccess: _loadDates,
-                                      ),
-                              icon: _uploadingHealth
-                                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                                  : const Icon(Icons.upload_file, size: 18),
-                              label: const Text('رفع ملف طلبة ذوي الإعاقة'),
-                              style: FilledButton.styleFrom(backgroundColor: AppColors.green),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                FilledButton.icon(
+                                  onPressed: _uploadingHealth
+                                      ? null
+                                      : () => runUploadHealth(
+                                            context: context,
+                                            setUploading: (v) => setState(() => _uploadingHealth = v),
+                                            onSuccess: _loadDates,
+                                          ),
+                                  icon: _uploadingHealth
+                                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                      : const Icon(Icons.upload_file, size: 18),
+                                  label: const Text('رفع ملف طلبة ذوي الإعاقة'),
+                                  style: FilledButton.styleFrom(backgroundColor: AppColors.green),
+                                ),
+                                if (_healthMaleDate != null || _healthFemaleDate != null)
+                                  IconButton(
+                                    tooltip: 'تفريغ البيانات (للاختبار)',
+                                    onPressed: () => _clearKindBoth(AdvisingReportKind.health, 'رفع طلبة ذوي الإعاقة'),
+                                    icon: Icon(Icons.delete_sweep_outlined, color: Colors.red.shade700, size: 20),
+                                  ),
+                              ],
                             ),
                           ],
                         ),
@@ -344,17 +402,29 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     required DateTime? date,
     required DateFormat fmt,
     required VoidCallback onPressed,
+    VoidCallback? onClear,
   }) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        FilledButton.icon(
-          onPressed: uploading ? null : onPressed,
-          icon: uploading
-              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-              : const Icon(Icons.upload_file, size: 18),
-          label: Text(label),
-          style: FilledButton.styleFrom(backgroundColor: AppColors.green),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            FilledButton.icon(
+              onPressed: uploading ? null : onPressed,
+              icon: uploading
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.upload_file, size: 18),
+              label: Text(label),
+              style: FilledButton.styleFrom(backgroundColor: AppColors.green),
+            ),
+            if (onClear != null && date != null)
+              IconButton(
+                tooltip: 'تفريغ البيانات (للاختبار)',
+                onPressed: onClear,
+                icon: Icon(Icons.delete_sweep_outlined, color: Colors.red.shade700, size: 20),
+              ),
+          ],
         ),
         const SizedBox(height: 4),
         Text(
@@ -363,6 +433,119 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
         ),
       ],
     );
+  }
+
+  Future<void> _clearKindBoth(AdvisingReportKind kind, String label) async {
+    if (!await _confirmClear(label)) return;
+    try {
+      await AdvisingReportRepository.clear(Shatr.male, kind: kind);
+      await AdvisingReportRepository.clear(Shatr.female, kind: kind);
+      await _loadDates();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تم تفريغ $label بنجاح.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذّر التفريغ: $e'), backgroundColor: Colors.red.shade700),
+      );
+    }
+  }
+
+  /// تقرير التغييرات التراكمي (كل رفعات المقررات الدراسية) - إضافة/حذف
+  /// شعب وتغييرات عضو هيئة التدريس فقط، مرتَّبة الأحدث أولًا.
+  Future<void> _showChangesReport() async {
+    final changes = await CourseScheduleChangeRepository.loadAll();
+    if (!mounted) return;
+    final fmt = DateFormat('yyyy/MM/dd HH:mm');
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('تقرير التغييرات (${changes.length})'),
+        content: SizedBox(
+          width: 620,
+          child: changes.isEmpty
+              ? const Text('لا توجد تغييرات مسجَّلة بعد - تُضاف تلقائيًا بعد أول رفعة ثانية لنفس الشطر.')
+              : SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (final c in changes)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                switch (c.type) {
+                                  CourseScheduleChangeType.added => Icons.add_circle_outline,
+                                  CourseScheduleChangeType.removed => Icons.remove_circle_outline,
+                                  CourseScheduleChangeType.instructorChanged => Icons.person_outline,
+                                },
+                                size: 18,
+                                color: switch (c.type) {
+                                  CourseScheduleChangeType.added => Colors.green.shade700,
+                                  CourseScheduleChangeType.removed => Colors.red.shade700,
+                                  CourseScheduleChangeType.instructorChanged => Colors.orange.shade800,
+                                },
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(c.note, style: const TextStyle(fontSize: 12.5)),
+                                    Text(
+                                      '${c.shatr}${c.detectedAt != null ? ' - ${fmt.format(c.detectedAt!)}' : ''}',
+                                      style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+        ),
+        actions: [
+          if (changes.isNotEmpty)
+            TextButton.icon(
+              onPressed: () async {
+                if (!await _confirmClear('تقرير التغييرات')) return;
+                await CourseScheduleChangeRepository.clear();
+                if (!context.mounted) return;
+                Navigator.pop(context);
+              },
+              icon: Icon(Icons.delete_sweep_outlined, color: Colors.red.shade700, size: 18),
+              label: Text('تفريغ التقرير', style: TextStyle(color: Colors.red.shade700)),
+            ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق')),
+        ],
+      ),
+    );
+  }
+
+  Future<bool> _confirmClear(String label) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('تفريغ $label'),
+        content: const Text('سيُحذَف كل ما هو مخزَّن حاليًا لهذا العنصر (لتسهيل إعادة اختبار الرفع). هل تريد المتابعة؟'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+            child: const Text('تفريغ'),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
   }
 
   Widget _sectionCard({
