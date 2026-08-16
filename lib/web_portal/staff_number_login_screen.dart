@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import 'hidden_admin_login_screen.dart';
 import 'portal_footer.dart';
 import 'portal_login_screen.dart' show BrandPanel;
 
@@ -155,43 +156,68 @@ class _StaffNumberLoginScreenState extends State<StaffNumberLoginScreen> {
             : null,
       ),
       bottomNavigationBar: const PortalFooterBar(),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final isWide = constraints.maxWidth >= 760;
+      body: Stack(
+        children: [
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isWide = constraints.maxWidth >= 760;
 
-          if (isWide) {
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Expanded(flex: 5, child: BrandPanel()),
-                Expanded(
-                  flex: 6,
-                  child: Center(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 32),
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 440),
-                        child: _buildFormPanel(),
+              if (isWide) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Expanded(flex: 5, child: BrandPanel()),
+                    Expanded(
+                      flex: 6,
+                      child: Center(
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 32),
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 440),
+                            child: _buildFormPanel(),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
-              ],
-            );
-          }
+                  ],
+                );
+              }
 
-          return SingleChildScrollView(
-            child: Column(
-              children: [
-                const SizedBox(height: 280, child: BrandPanel()),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: _buildFormPanel(),
+              return SingleChildScrollView(
+                child: Column(
+                  children: [
+                    const SizedBox(height: 280, child: BrandPanel()),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: _buildFormPanel(),
+                    ),
+                  ],
                 ),
-              ],
+              );
+            },
+          ),
+          // نقطة دخول مخفية للمدير العام (اسم مستخدم/كلمة مرور نصّيان - بلا
+          // قيد لوحة مفاتيح رقمية كخانة "رقم المنسوب" أعلاه) - نفس نمط
+          // portal_login_screen.dart بالضبط. سليمان لاحظ صراحةً (2026-08-16)
+          // أن خانة رقم المنسوب تفرض لوحة مفاتيح رقمية فيتعذّر كتابة
+          // "admin"/"salfawaz" بها مباشرة - هذا المدخل المخفي يتجاوز المشكلة.
+          Positioned(
+            bottom: 10,
+            right: 10,
+            child: GestureDetector(
+              onDoubleTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const HiddenAdminLoginScreen()),
+              ),
+              child: Container(
+                width: 60,
+                height: 60,
+                alignment: Alignment.center,
+                color: Colors.transparent,
+                child: Icon(Icons.circle, size: 8, color: Colors.black.withValues(alpha: 0.06)),
+              ),
             ),
-          );
-        },
+          ),
+        ],
       ),
     );
   }
