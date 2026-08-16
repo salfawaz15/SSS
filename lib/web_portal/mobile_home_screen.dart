@@ -13,6 +13,7 @@ import 'mobile_admin_dashboard_screen.dart';
 import 'mobile_bottom_nav_bar.dart';
 import 'portal_cards.dart';
 import 'portal_role_gate.dart';
+import 'public_landing_screen.dart' show AcademicCalendarContent;
 
 /// أسماء الأقسام الخمسة بترتيبها المعتمَد - لفرز جدول منسّقي الأقسام
 /// بالهيكل التنظيمي (نفس الترتيب المستخدَم بالصفحة العامة بالموقع).
@@ -76,7 +77,7 @@ class MobileHomeScreen extends StatefulWidget {
 }
 
 class _MobileHomeScreenState extends State<MobileHomeScreen> with SingleTickerProviderStateMixin {
-  late final _tabController = TabController(length: 8, vsync: this);
+  late final _tabController = TabController(length: 9, vsync: this);
 
   // فهرس التبويب النشط بالشريط السفلي (0 = الرئيسية دائمًا) - يتحكم بأي
   // عنصر يظهر داخل IndexedStack بالأسفل بدل الدفع (Navigator.push) لصفحة
@@ -225,6 +226,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> with SingleTickerPr
               Tab(text: 'الهيكل التنظيمي'),
               Tab(text: 'أعضاء الوحدة'),
               Tab(text: 'مواقع مهمة'),
+              Tab(text: 'التقويم'),
               Tab(text: 'التواصل'),
             ],
           ),
@@ -240,6 +242,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> with SingleTickerPr
               _OrgChartTabBody(),
               _CommitteeTabBody(),
               _ImportantLinksTabBody(),
+              const _CalendarTabBody(),
               _ContactTabBody(),
             ],
           ),
@@ -996,6 +999,18 @@ class _ImportantLinksTabBody extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+class _CalendarTabBody extends StatelessWidget {
+  const _CalendarTabBody();
+
+  @override
+  Widget build(BuildContext context) {
+    return const SingleChildScrollView(
+      padding: EdgeInsets.all(16),
+      child: AcademicCalendarContent(),
     );
   }
 }

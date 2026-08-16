@@ -653,17 +653,32 @@ class AcademicCalendarPage extends StatelessWidget {
         title: 'التقويم الجامعي للفصل الدراسي الأول لعام 1448هـ',
         icon: Icons.calendar_month_outlined,
         maxWidth: 1180,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const _CalendarMonthsStrip(),
-            const SizedBox(height: 24),
-            const _CalendarTable(),
-            const SizedBox(height: 20),
-            const _CalendarNotesBox(),
-          ],
-        ),
+        child: AcademicCalendarContent(),
       ),
+    );
+  }
+}
+
+/// محتوى جدول "التقويم الجامعي" وحده (شريط الأشهر + الجدول + صندوق
+/// الملاحظات) بلا إطار الصفحة العامة المحيط بها (`InfoPageScaffold`) - عام
+/// (`public`) خلافًا لبقية عناصر التقويم الخاصة بهذا الملف، ليُعاد استخدامه
+/// مباشرة من تطبيق الجوال (`mobile_home_screen.dart`) كتبويب علوي بدل
+/// تكرار البيانات هناك - بطلب سليمان صراحةً (2026-08-16): "التقويم يكون
+/// بالشريط العلوي بالتطبيق مع التواصل".
+class AcademicCalendarContent extends StatelessWidget {
+  const AcademicCalendarContent({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _CalendarMonthsStrip(),
+        SizedBox(height: 24),
+        _CalendarTable(),
+        SizedBox(height: 20),
+        _CalendarNotesBox(),
+      ],
     );
   }
 }
