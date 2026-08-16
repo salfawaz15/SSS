@@ -424,7 +424,13 @@ class _PortalLoginScreenState extends State<PortalLoginScreen> {
 
 /// اللوح التعريفي بهوية الوحدة (أخضر متدرّج + دوائر زخرفية شفافة + الشعار).
 class BrandPanel extends StatelessWidget {
-  const BrandPanel({super.key});
+  /// نسخة مصغَّرة (دائرة/خطوط/تباعد أصغر، بلا سطر التعريف السفلي) - لشاشة
+  /// دخول الجوال تحديدًا (`staff_number_login_screen.dart`) بارتفاع صندوق
+  /// محدود؛ النسخة الكاملة نفسها تفيض وتُظهر شريط تمرير على شاشة جوال ضيقة
+  /// (سليمان لاحظه صراحةً 2026-08-16).
+  const BrandPanel({super.key, this.compact = false});
+
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -456,7 +462,7 @@ class BrandPanel extends StatelessWidget {
           ),
           Positioned.fill(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 20),
+              padding: EdgeInsets.symmetric(horizontal: 32, vertical: compact ? 12 : 20),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.center,
@@ -465,8 +471,8 @@ class BrandPanel extends StatelessWidget {
                   borderRadius: BorderRadius.circular(40),
                   onTap: () => Navigator.of(context).maybePop(),
                   child: Container(
-                    width: 78,
-                    height: 78,
+                    width: compact ? 52 : 78,
+                    height: compact ? 52 : 78,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
@@ -475,52 +481,54 @@ class BrandPanel extends StatelessWidget {
                         width: 1.6,
                       ),
                     ),
-                    child: const Text(
+                    child: Text(
                       'TU',
                       style: TextStyle(
                         color: AppColors.goldLight,
                         fontWeight: FontWeight.bold,
-                        fontSize: 26,
+                        fontSize: compact ? 18 : 26,
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 22),
-                const Text(
+                SizedBox(height: compact ? 12 : 22),
+                Text(
                   'وحدة الإرشاد الأكاديمي\nوالخريجين',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
-                    fontSize: 20,
-                    height: 1.4,
+                    fontSize: compact ? 16 : 20,
+                    height: 1.3,
                   ),
                 ),
-                const SizedBox(height: 10),
+                SizedBox(height: compact ? 6 : 10),
                 Text(
                   'جامعة الطائف — كلية إدارة الأعمال',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.75),
-                    fontSize: 13,
+                    fontSize: compact ? 11.5 : 13,
                   ),
                 ),
-                const SizedBox(height: 18),
-                Container(
-                  height: 1,
-                  width: 60,
-                  color: AppColors.gold.withValues(alpha: 0.5),
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  'بوابة رفع وتنزيل ملفات\nمتابعة طلبات الإضافة والحذف',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.65),
-                    fontSize: 12.5,
-                    height: 1.6,
+                if (!compact) ...[
+                  const SizedBox(height: 18),
+                  Container(
+                    height: 1,
+                    width: 60,
+                    color: AppColors.gold.withValues(alpha: 0.5),
                   ),
-                ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'بوابة الإرشاد الأكاديمي\nمتابعة وإحصائيات وتقارير',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.65),
+                      fontSize: 12.5,
+                      height: 1.6,
+                    ),
+                  ),
+                ],
               ],
               ),
             ),

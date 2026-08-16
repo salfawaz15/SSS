@@ -186,7 +186,7 @@ class _StaffNumberLoginScreenState extends State<StaffNumberLoginScreen> {
               return SingleChildScrollView(
                 child: Column(
                   children: [
-                    const SizedBox(height: 280, child: BrandPanel()),
+                    const SizedBox(height: 205, child: BrandPanel(compact: true)),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       child: _buildFormPanel(),
