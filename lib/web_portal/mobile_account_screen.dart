@@ -4,8 +4,8 @@ import 'package:intl/intl.dart';
 
 import '../theme/app_theme.dart';
 import 'change_password_dialog.dart';
-import 'portal_login_screen.dart';
 import 'portal_role_gate.dart';
+import 'staff_number_login_screen.dart';
 
 /// عنوان ترحيب مختصر لكل دور.
 String _roleTitle(PortalRole role) => switch (role) {
@@ -20,7 +20,9 @@ String _roleTitle(PortalRole role) => switch (role) {
     };
 
 /// شاشة "حسابي" - تُفتَح فقط عند ضغط زر تسجيل الدخول من الصفحة الرئيسية
-/// العامة (`mobile_home_screen.dart`)، بلا تأثير على أول ما يفتح به التطبيق
+/// العامة (`mobile_home_screen.dart`)، بلا تأثير على أول ما يفتح به التطبيق.
+/// الدخول عبر [StaffNumberLoginScreen] (نظام رقم المنسوب الجديد) حصرًا -
+/// لا شاشة الدخول القديمة بالبريد الحرفي (بطلب سليمان صراحةً 2026-08-16).
 /// (بطلب سليمان الصريح 2026-08-16: "طبيعي عندما أدخل الموقع يفتح على
 /// الصفحة الرئيسية، كذلك في التطبيق - بعدها لي الخيار أن أبقى بالصفحة
 /// الرئيسية أو أذهب لتسجيل الدخول"). تعرض شاشة الدخول إن لم تكن هناك جلسة،
@@ -33,7 +35,7 @@ class MobileAccountScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PortalRoleGate(
-      loginBuilder: (context) => const PortalLoginScreen(),
+      loginBuilder: (context) => const StaffNumberLoginScreen(),
       builder: (context, resolved) => Scaffold(
         backgroundColor: const Color(0xFFF5F7F6),
         appBar: AppBar(

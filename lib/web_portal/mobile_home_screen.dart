@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -8,6 +9,22 @@ import '../theme/app_theme.dart';
 import '../utils/name_display.dart';
 import 'mobile_account_screen.dart';
 import 'mobile_bottom_nav_bar.dart';
+import 'portal_cards.dart';
+
+/// أسماء الأقسام الخمسة بترتيبها المعتمَد - لفرز جدول منسّقي الأقسام
+/// بالهيكل التنظيمي (نفس الترتيب المستخدَم بالصفحة العامة بالموقع).
+const _memberDeptOrder = <String>[
+  'الإدارة',
+  'المحاسبة',
+  'التسويق',
+  'الاقتصاد والتمويل',
+  'نظم المعلومات الإدارية',
+];
+
+int _deptIndex(String department) {
+  final i = _memberDeptOrder.indexOf(department);
+  return i == -1 ? _memberDeptOrder.length : i;
+}
 
 const String _kIntroText =
     'نظراً لأهمية الدور الذي تؤديه كلية إدارة الأعمال بجامعة الطائف في خدمة '
@@ -56,7 +73,7 @@ class MobileHomeScreen extends StatefulWidget {
 }
 
 class _MobileHomeScreenState extends State<MobileHomeScreen> with SingleTickerProviderStateMixin {
-  late final _tabController = TabController(length: 5, vsync: this);
+  late final _tabController = TabController(length: 7, vsync: this);
 
   @override
   void dispose() {
@@ -160,9 +177,11 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> with SingleTickerPr
                 labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                 unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
                 tabs: const [
+                  Tab(text: 'الرئيسية'),
                   Tab(text: 'نبذة'),
                   Tab(text: 'الرؤية والرسالة'),
                   Tab(text: 'الأهداف'),
+                  Tab(text: 'الهيكل التنظيمي'),
                   Tab(text: 'أعضاء الوحدة'),
                   Tab(text: 'التواصل'),
                 ],
@@ -171,10 +190,12 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> with SingleTickerPr
             Expanded(
               child: TabBarView(
                 controller: _tabController,
-                children: const [
+                children: [
+                  const _StatsTabBody(),
                   _TextTabBody(paragraphs: [_kIntroText]),
                   _TextTabBody(paragraphs: [_kVisionText], heading: 'الرؤية'),
                   _GoalsTabBody(),
+                  _OrgChartTabBody(),
                   _CommitteeTabBody(),
                   _ContactTabBody(),
                 ],
@@ -198,6 +219,339 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> with SingleTickerPr
             onTap: () => _showComingSoon(context, 'التقارير'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _StatsTabBody extends StatelessWidget {
+  const _StatsTabBody();
+
+  static String _displayValue(int? value, {bool isPercent = false}) {
+    if (value == null || value == 0) return 'قيد الرصد التلقائي';
+    return isPercent ? '$value%' : value.toString();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance.collection('public_stats').doc('summary').snapshots(),
+      builder: (context, snapshot) {
+        final data = snapshot.data?.data();
+        final stats = <({IconData icon, String label, String value, Color color})>[
+          (
+            icon: Icons.assignment_turned_in_outlined,
+            label: 'عدد الطلبات المُنجزة',
+            value: _displayValue(data?['completed_requests'] as int?),
+            color: AppColors.greenDark,
+          ),
+          (
+            icon: Icons.groups_outlined,
+            label: 'عدد الطلاب المستفيدين',
+            value: _displayValue(data?['students_served'] as int?),
+            color: AppColors.gold,
+          ),
+          (
+            icon: Icons.support_agent_outlined,
+            label: 'عدد المرشدين الأكاديميين',
+            value: _displayValue(data?['advisors_count'] as int?),
+            color: AppColors.green,
+          ),
+          (
+            icon: Icons.trending_up,
+            label: 'نسبة الإنجاز',
+            value: _displayValue(data?['completion_rate'] as int?, isPercent: true),
+            color: AppColors.goldLight,
+          ),
+        ];
+
+        return ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            const Text('إحصائيات هامة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.greenDark)),
+            const SizedBox(height: 4),
+            Text('تُحدَّث تلقائيًا كلما أنجز المنسّقون طلبات جديدة', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+            const SizedBox(height: 16),
+            for (final s in stats) ...[
+              PortalStatCard(icon: s.icon, value: s.value, label: s.label, accentColor: s.color),
+              const SizedBox(height: 12),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _OrgChartTabBody extends StatelessWidget {
+  const _OrgChartTabBody();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: StreamBuilder<List<UnitCommitteeMember>>(
+        stream: UnitCommitteeRepository.watch(),
+        builder: (context, snapshot) {
+          final members = snapshot.data ?? const <UnitCommitteeMember>[];
+          if (snapshot.connectionState == ConnectionState.waiting && members.isEmpty) {
+            return const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()));
+          }
+          if (members.isEmpty) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text('لم يُعتمَد الهيكل التنظيمي بعد.', style: TextStyle(color: Colors.grey)),
+              ),
+            );
+          }
+
+          UnitCommitteeMember? firstMatch(bool Function(UnitCommitteeMember) test) {
+            for (final m in members) {
+              if (test(m)) return m;
+            }
+            return null;
+          }
+
+          final head = firstMatch((m) => m.role.contains('رئيس') && !m.role.contains('نائب'));
+          final deputy = firstMatch((m) => m.role.contains('نائب'));
+          final unitSecretaryGeneral = firstMatch((m) => m.role.contains('أمين الوحدة'));
+          final unitCoordinator = firstMatch((m) => m.role.contains('منسّق الوحدة') || m.role.contains('منسق الوحدة'));
+          final unitSecretary = firstMatch((m) => m.role.contains('سكرتير الوحدة'));
+
+          final collegeCoords = members.where((m) => m.role.contains('الكلية')).toList();
+          final trackCoords = members.where((m) => m.role.contains('مسار')).toList();
+          final deptCoords = members.where((m) => m.role.contains('قسم')).toList()
+            ..sort((a, b) => _deptIndex(a.department) - _deptIndex(b.department));
+          final depts = deptCoords.map((m) => m.department).toSet().toList()
+            ..sort((a, b) => _deptIndex(a) - _deptIndex(b));
+
+          return ListView(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (head != null) Expanded(child: _OrgLeaderCard(member: head)),
+                  if (head != null && deputy != null) const SizedBox(width: 10),
+                  if (deputy != null) Expanded(child: _OrgLeaderCard(member: deputy)),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Container(height: 2, color: AppColors.gold),
+              const SizedBox(height: 16),
+              _OrgClusterCard(
+                icon: Icons.explore_outlined,
+                title: 'منسّقو المسارات النوعية',
+                child: Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: trackCoords
+                      .map((m) => _OrgMemberChip(
+                            role: m.role.replaceFirst(RegExp('^منسّ?ق مسار '), ''),
+                            name: displayName(m.name),
+                            width: 140,
+                          ))
+                      .toList(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              _OrgClusterCard(
+                icon: Icons.groups_outlined,
+                title: 'القيادة الإدارية للوحدة',
+                child: Column(
+                  children: [
+                    if (unitSecretaryGeneral != null)
+                      _OrgMemberChip(role: 'أمين الوحدة', name: displayName(unitSecretaryGeneral.name), accent: true),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        if (unitCoordinator != null)
+                          Expanded(child: _OrgMemberChip(role: 'منسّق الوحدة', name: displayName(unitCoordinator.name))),
+                        if (unitCoordinator != null && unitSecretary != null) const SizedBox(width: 8),
+                        if (unitSecretary != null)
+                          Expanded(child: _OrgMemberChip(role: 'سكرتير الوحدة', name: displayName(unitSecretary.name))),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              _OrgClusterCard(
+                icon: Icons.school_outlined,
+                title: 'منسّقو الكلية للشؤون الأكاديمية',
+                child: Row(
+                  children: collegeCoords
+                      .map((m) => Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 4),
+                              child: _OrgMemberChip(
+                                role: m.role.contains('منسقة') ? 'شطر الطالبات' : 'شطر الطلاب',
+                                name: displayName(m.name),
+                              ),
+                            ),
+                          ))
+                      .toList(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              _OrgClusterCard(
+                icon: Icons.grid_view_outlined,
+                title: 'منسّقو الأقسام العلمية',
+                child: _OrgDeptTable(depts: depts, deptCoords: deptCoords),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _OrgLeaderCard extends StatelessWidget {
+  const _OrgLeaderCard({required this.member});
+
+  final UnitCommitteeMember member;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(colors: [AppColors.greenDark, AppColors.green]),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(member.role, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12)),
+          const SizedBox(height: 3),
+          Text(displayName(member.name), textAlign: TextAlign.center, style: const TextStyle(color: AppColors.goldLight, fontWeight: FontWeight.w600, fontSize: 11)),
+        ],
+      ),
+    );
+  }
+}
+
+class _OrgClusterCard extends StatelessWidget {
+  const _OrgClusterCard({required this.icon, required this.title, required this.child});
+
+  final IconData icon;
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: Colors.grey.shade300),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+            decoration: const BoxDecoration(gradient: LinearGradient(colors: [AppColors.greenDark, AppColors.green])),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 15, color: AppColors.goldLight),
+                const SizedBox(width: 6),
+                Text(title, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12)),
+              ],
+            ),
+          ),
+          Padding(padding: const EdgeInsets.all(10), child: child),
+        ],
+      ),
+    );
+  }
+}
+
+class _OrgMemberChip extends StatelessWidget {
+  const _OrgMemberChip({required this.role, required this.name, this.width, this.accent = false});
+
+  final String role;
+  final String name;
+  final double? width;
+  final bool accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFBF8F1),
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(color: accent ? AppColors.gold : Colors.grey.shade300, width: accent ? 1.4 : 1),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(role, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11.5, color: AppColors.green)),
+          const SizedBox(height: 3),
+          Text(name, textAlign: TextAlign.center, style: TextStyle(fontSize: 11.5, color: Colors.grey.shade700)),
+        ],
+      ),
+    );
+  }
+}
+
+class _OrgDeptTable extends StatelessWidget {
+  const _OrgDeptTable({required this.depts, required this.deptCoords});
+
+  final List<String> depts;
+  final List<UnitCommitteeMember> deptCoords;
+
+  @override
+  Widget build(BuildContext context) {
+    UnitCommitteeMember? byShatr(String dept, bool female) => deptCoords.cast<UnitCommitteeMember?>().firstWhere(
+          (m) => m!.department == dept && m.role.contains('الطالبات') == female,
+          orElse: () => null,
+        );
+
+    return Table(
+      border: TableBorder.all(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(6)),
+      columnWidths: const {0: FlexColumnWidth(1.4), 1: FlexColumnWidth(1), 2: FlexColumnWidth(1)},
+      children: [
+        TableRow(
+          decoration: const BoxDecoration(color: Color(0xFFE7EFEA)),
+          children: [
+            const SizedBox(),
+            _OrgDeptCell('شطر الطلاب', bold: true),
+            _OrgDeptCell('شطر الطالبات', bold: true),
+          ],
+        ),
+        for (final dept in depts)
+          TableRow(children: [
+            _OrgDeptCell(dept, bold: true, small: true),
+            _OrgDeptCell(displayName(byShatr(dept, false)?.name ?? '—')),
+            _OrgDeptCell(displayName(byShatr(dept, true)?.name ?? '—')),
+          ]),
+      ],
+    );
+  }
+}
+
+class _OrgDeptCell extends StatelessWidget {
+  const _OrgDeptCell(this.text, {this.bold = false, this.small = false});
+
+  final String text;
+  final bool bold;
+  final bool small;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: TextStyle(fontSize: small ? 10.5 : 11.5, fontWeight: bold ? FontWeight.w700 : FontWeight.w500),
       ),
     );
   }
