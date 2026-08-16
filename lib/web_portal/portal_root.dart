@@ -4,8 +4,8 @@ import 'admin_workspace_screen.dart';
 import 'college_coordinator_workspace_screen.dart';
 import 'coordinator_workspace_screen.dart';
 import 'inactivity_auto_logout.dart';
-import 'portal_login_screen.dart';
 import 'portal_role_gate.dart';
+import 'staff_number_login_screen.dart';
 import 'track_coordinator_workspace_screen.dart';
 import 'unit_coordinator_workspace_screen.dart';
 import 'viewer_reports_screen.dart';
@@ -25,7 +25,7 @@ class PortalRoot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PortalRoleGate(
-      loginBuilder: (context) => const PortalLoginScreen(),
+      loginBuilder: (context) => const StaffNumberLoginScreen(),
       builder: (context, resolved) => InactivityAutoLogout(
         child: switch (resolved.role) {
           PortalRole.superAdmin || PortalRole.admin => const AdminWorkspaceScreen(),
