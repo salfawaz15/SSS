@@ -1,27 +1,13 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/unit_committee_member.dart';
 import '../services/unit_committee_repository.dart';
 import '../theme/app_theme.dart';
 import '../utils/name_display.dart';
-import 'change_password_dialog.dart';
+import 'mobile_account_screen.dart';
 import 'mobile_bottom_nav_bar.dart';
-import 'portal_role_gate.dart';
-
-/// عنوان ترحيب مختصر لكل دور - يُعرَض بالشاشة الرئيسية الجوّالة الموحَّدة.
-String _roleTitle(PortalRole role) => switch (role) {
-      PortalRole.superAdmin => 'المدير العام',
-      PortalRole.admin => 'إدارة الوحدة',
-      PortalRole.ameen => 'أمين الوحدة',
-      PortalRole.unitCoordinator => 'منسّق الوحدة',
-      PortalRole.collegeCoordinator => 'منسّق الكلية',
-      PortalRole.deptCoordinator => 'منسّق القسم',
-      PortalRole.trackCoordinator => 'منسّق المسار',
-      PortalRole.unknown => 'حسابك',
-    };
 
 const String _kIntroText =
     'نظراً لأهمية الدور الذي تؤديه كلية إدارة الأعمال بجامعة الطائف في خدمة '
@@ -45,12 +31,17 @@ const String _kMissionText =
     'رعاية ودعم المتفوقين والموهوبين، وكذلك الطلبة من أصحاب الهمم، وإقامة '
     'علاقة مستدامة مع الخريجين.';
 
-/// الشاشة الرئيسية الجوّالة الموحَّدة لكل الأدوار - **صفحة واحدة فقط بلا أي
-/// صفحات إضافية** (بطلب سليمان الصريح 2026-08-16: "لا أرغب أن تضيف شاشات
-/// وخلافه، أرغب ما أراه بالصفحة الرئيسية [بالموقع] أراه بالتطبيق بالصفحة
-/// الرئيسية مثل التبويبات"). محتوى "عن الوحدة"/"الهيكل التنظيمي" من الصفحة
-/// العامة بالموقع (`public_landing_screen.dart`) مُضمَّن هنا **مباشرة كتبويب
-/// داخل نفس الصفحة** (`TabBar`/`TabBarView`) بدل الدفع لصفحة منفصلة.
+/// الصفحة الرئيسية الجوّالة **العامة** - أول ما يُفتح به التطبيق دائمًا، بلا
+/// أي بوابة دخول (بطلب سليمان الصريح 2026-08-16: "طبيعي عندما أدخل الموقع
+/// يفتح على الصفحة الرئيسية، كذلك التطبيق - بعدها لي الخيار أن أبقى بالصفحة
+/// الرئيسية أو أذهب لتسجيل الدخول"). محتوى "عن الوحدة" من الصفحة العامة
+/// بالموقع (`public_landing_screen.dart`) مُضمَّن هنا **كتبويب داخل نفس
+/// الصفحة** (`TabBar`/`TabBarView`) لا صفحة منفصلة.
+///
+/// أيقونة الحساب أعلى يمين الصفحة تفتح [MobileAccountScreen] (شاشة الدخول
+/// إن لم تكن هناك جلسة، أو بطاقة الحساب إن كانت هناك جلسة محفوظة) - الجلسة
+/// تبقى محفوظة طبيعيًا بين مرات فتح التطبيق، لكن **هذه الصفحة العامة تبقى
+/// دائمًا أول ما يظهر**، لا انتقال تلقائي لأي لوحة بعد الدخول.
 ///
 /// بعد أن كشف اختبار سليمان الحي أن دفع شاشات الموقع العريضة
 /// (`AdminWorkspaceScreen`, `CoordinatorWorkspaceScreen`...) مباشرة على
@@ -58,9 +49,7 @@ const String _kMissionText =
 /// بالجوال. تبويبا "إدارة الطلبات"/"التقارير" بالشريط السفلي معطَّلان مؤقتًا
 /// (رسالة "قيد التطوير") لنفس السبب.
 class MobileHomeScreen extends StatefulWidget {
-  const MobileHomeScreen({super.key, required this.role});
-
-  final PortalRole role;
+  const MobileHomeScreen({super.key});
 
   @override
   State<MobileHomeScreen> createState() => _MobileHomeScreenState();
@@ -83,9 +72,6 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> with SingleTickerPr
 
   @override
   Widget build(BuildContext context) {
-    final title = _roleTitle(widget.role);
-    final today = DateFormat('EEEE، d MMMM y', 'ar').format(DateTime.now());
-
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7F6),
       body: SafeArea(
@@ -98,31 +84,32 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> with SingleTickerPr
                 children: [
                   Row(
                     children: [
-                      const CircleAvatar(
-                        radius: 22,
-                        backgroundColor: Color(0xFFE7EFEA),
-                        child: Icon(Icons.person_outline, color: AppColors.greenDark),
+                      const Expanded(
+                        child: Text(
+                          'وحدة الإرشاد الأكاديمي والخريجين',
+                          textAlign: TextAlign.right,
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.greenDark),
+                        ),
                       ),
-                      const Spacer(),
-                      IconButton(
-                        tooltip: 'تغيير كلمة المرور',
-                        icon: const Icon(Icons.lock_outline, color: AppColors.greenDark),
-                        onPressed: () => showChangePasswordDialog(context),
-                      ),
-                      IconButton(
-                        tooltip: 'تسجيل خروج',
-                        icon: const Icon(Icons.logout, color: AppColors.greenDark),
-                        onPressed: () => FirebaseAuth.instance.signOut(),
+                      StreamBuilder<User?>(
+                        stream: FirebaseAuth.instance.authStateChanges(),
+                        builder: (context, snapshot) {
+                          final loggedIn = snapshot.data != null;
+                          return IconButton(
+                            tooltip: loggedIn ? 'حسابي' : 'تسجيل الدخول',
+                            icon: Icon(
+                              loggedIn ? Icons.account_circle : Icons.login,
+                              color: AppColors.greenDark,
+                            ),
+                            onPressed: () => Navigator.of(context).push(
+                              MaterialPageRoute(builder: (_) => const MobileAccountScreen()),
+                            ),
+                          );
+                        },
                       ),
                     ],
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    title,
-                    textAlign: TextAlign.right,
-                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.greenDark),
-                  ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 14),
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(20),
@@ -134,22 +121,22 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> with SingleTickerPr
                       ),
                       borderRadius: BorderRadius.circular(18),
                     ),
-                    child: Row(
+                    child: const Row(
                       children: [
-                        const Text('👋', style: TextStyle(fontSize: 26)),
-                        const SizedBox(width: 12),
+                        Text('👋', style: TextStyle(fontSize: 26)),
+                        SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
+                              Text(
                                 'أهلاً بك',
                                 style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 17),
                               ),
-                              const SizedBox(height: 4),
+                              SizedBox(height: 4),
                               Text(
-                                today,
-                                style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 12.5),
+                                'كلية إدارة الأعمال - جامعة الطائف',
+                                style: TextStyle(color: Colors.white70, fontSize: 12.5),
                               ),
                             ],
                           ),
