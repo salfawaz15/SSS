@@ -6,6 +6,7 @@ import '../theme/app_theme.dart';
 import 'hidden_admin_login_screen.dart';
 import 'portal_footer.dart';
 import 'portal_login_screen.dart' show BrandPanel;
+import 'public_landing_screen.dart' show AcademicCalendarPage;
 
 /// شاشة الدخول الجديدة برقم المنسوب - المرحلة 3 من إعادة هيكلة الدخول
 /// والصلاحيات (2026-08-15). كل شخص له حساب فردي (بريد داخلي مبني على رقم
@@ -154,6 +155,15 @@ class _StaffNumberLoginScreenState extends State<StaffNumberLoginScreen> {
         leading: Navigator.of(context).canPop()
             ? BackButton(onPressed: () => Navigator.of(context).maybePop())
             : null,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.calendar_month_outlined),
+            tooltip: 'التقويم الجامعي',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AcademicCalendarPage()),
+            ),
+          ),
+        ],
       ),
       bottomNavigationBar: const PortalFooterBar(),
       body: Stack(

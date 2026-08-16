@@ -10,6 +10,7 @@ import 'change_password_dialog.dart';
 import 'portal_accounts.dart';
 import 'portal_footer.dart';
 import 'portal_operations_guide_page.dart';
+import 'public_landing_screen.dart';
 import 'quick_search_index.dart';
 import 'round_icon_button.dart';
 
@@ -362,6 +363,28 @@ class _QuickSearchDialogState extends State<_QuickSearchDialog> {
   }
 }
 
+/// زر "التقويم الجامعي" ثابت بالهيدر - يظهر في **كل** صفحات البوابة
+/// الداخلية بلا استثناء (إدارة/منسّقين/عرض) لأنه جزء من [PortalHeader] نفسه
+/// لا من `navItems` كل شاشة على حدة، بنفس فكرة زر البحث السريع. سليمان طلب
+/// (2026-08-16) أن يظهر التقويم بكل البوابات من الإدارة حتى صفحات الدخول -
+/// هذا الزر يحل الجزء الداخلي، وأزرار مشابهة أُضيفت لصفحتَي الدخول
+/// (`portal_login_screen.dart`/`staff_number_login_screen.dart`) للجزء قبل
+/// الدخول. يفتح نفس [AcademicCalendarPage] المستخدَمة بالصفحة العامة.
+class _PortalCalendarButton extends StatelessWidget {
+  const _PortalCalendarButton();
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      icon: const Icon(Icons.calendar_month_outlined, color: AppColors.green),
+      tooltip: 'التقويم الجامعي',
+      onPressed: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const AcademicCalendarPage()),
+      ),
+    );
+  }
+}
+
 /// زر "يتوفر تحديث" بالشريط العلوي (الويب فقط) - يظهر أصفر فقط عند اكتشاف
 /// أن `web/version.json` المنشور بجذر الموقع يحمل رقم بناء أحدث من النسخة
 /// المحمَّلة حاليًا بالمتصفح ([kAppBuildNumber])، والضغط عليه يعيد تحميل
@@ -490,6 +513,7 @@ class PortalHeader extends StatelessWidget implements PreferredSizeWidget {
                       const Spacer(),
                     ...?trailing,
                     const _PortalUpdateButton(),
+                    const _PortalCalendarButton(),
                     const _PortalQuickSearchButton(),
                     const _PortalAccountMenu(),
                   ],
@@ -505,6 +529,7 @@ class PortalHeader extends StatelessWidget implements PreferredSizeWidget {
                     children: [
                       ...?trailing,
                       const _PortalUpdateButton(),
+                      const _PortalCalendarButton(),
                       const _PortalQuickSearchButton(),
                       const _PortalAccountMenu(),
                       if (navItems.isNotEmpty)

@@ -53,3 +53,13 @@ jobs:
         run: npx firebase-tools deploy --only hosting --token "$FIREBASE_TOKEN"
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+
+      - name: Build APK (advising flavor)
+        run: flutter build apk --release --flavor advising -t lib/main_advising_app.dart
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-advising-release
+          path: build/app/outputs/flutter-apk/app-advising-release.apk
+          retention-days: 30
