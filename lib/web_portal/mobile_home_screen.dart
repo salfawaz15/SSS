@@ -7,13 +7,19 @@ import '../models/unit_committee_member.dart';
 import '../services/unit_committee_repository.dart';
 import '../theme/app_theme.dart';
 import '../utils/name_display.dart';
+import 'advisor_roster_screen.dart';
 import 'change_password_dialog.dart';
+import 'coordinators_contacts_screen.dart';
 import 'mobile_account_screen.dart';
 import 'mobile_admin_dashboard_screen.dart';
 import 'mobile_bottom_nav_bar.dart';
+import 'portal_accounts.dart';
 import 'portal_cards.dart';
+import 'portal_operations_guide_page.dart';
 import 'portal_role_gate.dart';
+import 'portal_sitemap_screen.dart';
 import 'public_landing_screen.dart' show AcademicCalendarContent;
+import 'reset_user_password_screen.dart';
 
 /// أسماء الأقسام الخمسة بترتيبها المعتمَد - لفرز جدول منسّقي الأقسام
 /// بالهيكل التنظيمي (نفس الترتيب المستخدَم بالصفحة العامة بالموقع).
@@ -108,6 +114,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> with SingleTickerPr
             (Icons.dashboard_outlined, 'لوحة الإدارة'),
             (Icons.assessment_outlined, 'تقارير'),
             (Icons.fact_check_outlined, 'لوحة الإرشاد'),
+            (Icons.more_horiz_outlined, 'أدوات إضافية'),
           ],
         PortalRole.ameen => const [(Icons.assessment_outlined, 'تقارير')],
         PortalRole.unitCoordinator => const [(Icons.upload_file_outlined, 'رفع الملفات')],
@@ -178,6 +185,9 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> with SingleTickerPr
       // الأقسام (لغير المدير العام أيضًا) تبقى "قيد التطوير".
       if (role == PortalRole.superAdmin && label == 'لوحة الإدارة') {
         return const MobileAdminDashboardBody();
+      }
+      if ((role == PortalRole.superAdmin || role == PortalRole.admin) && label == 'أدوات إضافية') {
+        return const _MobileAdminToolsBody();
       }
       return _ComingSoonBody(label: label);
     }
@@ -303,7 +313,13 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> with SingleTickerPr
                           ),
                         ),
                         PopupMenuItem(
-                          value: () => FirebaseAuth.instance.signOut(),
+                          value: () {
+                            setState(() => _bottomIndex = 0);
+                            FirebaseAuth.instance.signOut();
+                            Navigator.of(context).push(
+                              MaterialPageRoute(builder: (_) => const MobileAccountScreen()),
+                            );
+                          },
                           child: Row(
                             children: [
                               Icon(Icons.logout, size: 18, color: Colors.red.shade700),
@@ -426,6 +442,70 @@ class _ComingSoonBody extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// روابط "أدوات إضافية" الإدارية الجوّالة - نفس روابط قائمة "المزيد"
+/// المنبثقة بصفحة الإدارة على الويب (`admin_workspace_screen.dart`) لكن
+/// كتبويب سفلي ("المزيد") بدل قائمة منبثقة، بطلب سليمان الصريح (2026-08-16):
+/// "أي تبويب داخل البوابة ينتقل للتبويب السفلي ما عدا تسجيل الخروج". الروابط
+/// الثلاثة الأخرى بنفس القائمة على الويب (تقارير متابعة الحذف والإضافة/
+/// تنزيل ملفات الحالات/تفريغ البيانات) مؤجَّلة عمدًا - منطقها مبني داخل
+/// `_AdminWorkspaceScreenState` الخاصة بالويب (غير مُستخرَج كودجت مستقل بعد)
+/// وتتضمّن إجراءً حسّاسًا (حذف نهائي)، فتحتاج استخراجًا ومراجعة سلامة
+/// منفصلَين قبل نقلها للجوال - انظر TODO.md.
+class _MobileAdminToolsBody extends StatelessWidget {
+  const _MobileAdminToolsBody();
+
+  @override
+  Widget build(BuildContext context) {
+    final isSuperAdmin = FirebaseAuth.instance.currentUser?.email == PortalAccounts.superAdminEmail ||
+        PortalAccounts.isCurrentSessionSuperAdmin;
+
+    Widget tile(IconData icon, String label, VoidCallback onTap, {Color? color}) {
+      return Card(
+        margin: const EdgeInsets.only(bottom: 10),
+        child: ListTile(
+          leading: Icon(icon, color: color ?? AppColors.greenDark),
+          title: Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w600)),
+          trailing: const Icon(Icons.chevron_left),
+          onTap: onTap,
+        ),
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        tile(
+          Icons.menu_book_outlined,
+          'دليل تشغيل البوابة',
+          () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PortalOperationsGuidePage())),
+        ),
+        if (isSuperAdmin) ...[
+          tile(
+            Icons.contact_mail_outlined,
+            'بيانات منسقي الأقسام',
+            () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CoordinatorsContactsScreen())),
+          ),
+          tile(
+            Icons.groups_outlined,
+            'قائمة مرشدي القسم',
+            () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdvisorRosterScreen())),
+          ),
+          tile(
+            Icons.vpn_key_outlined,
+            'الحسابات وكلمات المرور',
+            () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ResetUserPasswordScreen())),
+          ),
+        ],
+        tile(
+          Icons.map_outlined,
+          'خريطة صفحات الموقع',
+          () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PortalSitemapScreen())),
+        ),
+      ],
     );
   }
 }

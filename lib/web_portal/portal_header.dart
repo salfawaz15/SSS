@@ -379,7 +379,7 @@ class _PortalCalendarButton extends StatelessWidget {
       icon: const Icon(Icons.calendar_month_outlined, color: AppColors.green),
       tooltip: 'التقويم الجامعي',
       onPressed: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const AcademicCalendarPage()),
+        MaterialPageRoute(builder: (_) => const PortalAcademicCalendarPage()),
       ),
     );
   }

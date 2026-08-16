@@ -206,7 +206,7 @@ class _CollegeCoordinatorBodyState extends State<_CollegeCoordinatorBody> {
       showBackButton: false,
       navItems: [
         PortalNavItem(
-          label: 'الموقع العام',
+          label: 'الرئيسية',
           icon: Icons.public_outlined,
           onTap: () => Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => const PublicLandingScreen()),
@@ -269,7 +269,7 @@ class _CollegeCoordinatorBodyState extends State<_CollegeCoordinatorBody> {
           showBackButton: true,
           navItems: [
             PortalNavItem(
-              label: 'الموقع العام',
+              label: 'الرئيسية',
               icon: Icons.public_outlined,
               onTap: () => Navigator.of(routeContext).push(
                 MaterialPageRoute(builder: (_) => const PublicLandingScreen()),

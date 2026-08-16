@@ -37,7 +37,7 @@ List<PortalNavItem> buildAdminNavItems(BuildContext context, {required String cu
 
   return [
     PortalNavItem(
-      label: 'الموقع العام',
+      label: 'الرئيسية',
       icon: Icons.public_outlined,
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => const PublicLandingScreen()),

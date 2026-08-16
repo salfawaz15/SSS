@@ -8,7 +8,7 @@ import '../theme/app_theme.dart';
 import 'hidden_admin_login_screen.dart';
 import 'portal_accounts.dart';
 import 'portal_footer.dart';
-import 'public_landing_screen.dart';
+import 'public_landing_screen.dart' show PortalAcademicCalendarPage;
 import 'staff_number_login_screen.dart';
 
 /// مفاتيح تخزين "تذكرني على هذا الجهاز" محليًا في متصفح المستخدم (لا تُرسَل
@@ -200,7 +200,7 @@ class _PortalLoginScreenState extends State<PortalLoginScreen> {
             icon: const Icon(Icons.calendar_month_outlined),
             tooltip: 'التقويم الجامعي',
             onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const AcademicCalendarPage()),
+              MaterialPageRoute(builder: (_) => const PortalAcademicCalendarPage()),
             ),
           ),
         ],

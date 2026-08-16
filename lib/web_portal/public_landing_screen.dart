@@ -659,6 +659,29 @@ class AcademicCalendarPage extends StatelessWidget {
   }
 }
 
+/// صفحة "التقويم الجامعي" الخفيفة - `Scaffold`/`AppBar` عاديان بلا إطار
+/// الموقع العام الكامل (`InfoPageScaffold` بشريطَي تنقّل وتذييل مصمَّمين
+/// لعرض حاسوب عريض) - تُستخدَم من داخل بوابات العمل (`PortalHeader`) وشاشتَي
+/// الدخول، حيث اكتُشف حيًّا (سليمان 2026-08-16) أن `AcademicCalendarPage`
+/// الكاملة تُظهر جدولاً لا يتناسب حجم الجوال + زر "تسجيل الدخول" مكرَّر
+/// بداخلها يدفع مسارًا جديدًا لـ`PortalRoot` فوق شاشة الدخول الأصلية، فيظهر
+/// عند الرجوع للخلف تكرار/تخبّط بالمسارات. هذه النسخة بلا أي عنصر تنقّل
+/// خاص بالموقع العام - رجوع بسيط فقط.
+class PortalAcademicCalendarPage extends StatelessWidget {
+  const PortalAcademicCalendarPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('التقويم الجامعي')),
+      body: const SingleChildScrollView(
+        padding: EdgeInsets.all(16),
+        child: AcademicCalendarContent(),
+      ),
+    );
+  }
+}
+
 /// محتوى جدول "التقويم الجامعي" وحده (شريط الأشهر + الجدول + صندوق
 /// الملاحظات) بلا إطار الصفحة العامة المحيط بها (`InfoPageScaffold`) - عام
 /// (`public`) خلافًا لبقية عناصر التقويم الخاصة بهذا الملف، ليُعاد استخدامه
