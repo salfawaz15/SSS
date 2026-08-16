@@ -143,10 +143,21 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> with SingleTickerPr
                   Row(
                     children: [
                       const Expanded(
-                        child: Text(
-                          'وحدة الإرشاد الأكاديمي والخريجين',
-                          textAlign: TextAlign.right,
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.greenDark),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              'جامعة الطائف - كلية إدارة الأعمال',
+                              textAlign: TextAlign.right,
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.greenDark),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'وحدة الإرشاد الأكاديمي والخريجين',
+                              textAlign: TextAlign.right,
+                              style: TextStyle(fontSize: 12, color: AppColors.green, fontWeight: FontWeight.w600),
+                            ),
+                          ],
                         ),
                       ),
                       StreamBuilder<User?>(
@@ -156,7 +167,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> with SingleTickerPr
                           return IconButton(
                             tooltip: loggedIn ? 'حسابي' : 'تسجيل الدخول',
                             icon: Icon(
-                              loggedIn ? Icons.account_circle : Icons.login,
+                              loggedIn ? Icons.account_circle : Icons.person_add_alt_1_outlined,
                               color: AppColors.greenDark,
                             ),
                             onPressed: () => Navigator.of(context).push(
@@ -193,7 +204,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> with SingleTickerPr
                               ),
                               SizedBox(height: 4),
                               Text(
-                                'كلية إدارة الأعمال - جامعة الطائف',
+                                'نتمنى لك يومًا موفقًا',
                                 style: TextStyle(color: Colors.white70, fontSize: 12.5),
                               ),
                             ],
