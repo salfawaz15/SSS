@@ -63,3 +63,14 @@ jobs:
           name: app-advising-release
           path: build/app/outputs/flutter-apk/app-advising-release.apk
           retention-days: 30
+
+      - name: Distribute APK via Firebase App Distribution
+        run: |
+          npx firebase-tools appdistribution:distribute \
+            build/app/outputs/flutter-apk/app-advising-release.apk \
+            --app 1:843787630334:android:01b9f5a9d7ea7712ea97af \
+            --release-notes "نشر تلقائي من الفرع main - $(git log -1 --pretty=%s)" \
+            --testers "salfawaz50@gmail.com" \
+            --token "$FIREBASE_TOKEN"
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
