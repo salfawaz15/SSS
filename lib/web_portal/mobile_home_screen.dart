@@ -9,6 +9,7 @@ import '../theme/app_theme.dart';
 import '../utils/name_display.dart';
 import 'change_password_dialog.dart';
 import 'mobile_account_screen.dart';
+import 'mobile_admin_dashboard_screen.dart';
 import 'mobile_bottom_nav_bar.dart';
 import 'portal_cards.dart';
 import 'portal_role_gate.dart';
@@ -160,11 +161,24 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> with SingleTickerPr
     final direct = sections.take(2);
     final overflow = sections.skip(2).toList();
 
+    // "لوحة الإدارة" لحساب المدير العام (salfawaz) تحديدًا هي القسم الوحيد
+    // المبني فعليًا كشاشة جوّالة أصيلة حتى الآن (بطلب سليمان صراحةً
+    // 2026-08-16: "اعمل ما يكون مناسب بحيث تحتوي كل الصلاحيات") - بقية
+    // الأقسام (لغير المدير العام أيضًا) تبقى "قيد التطوير".
+    VoidCallback onTapFor(String label) {
+      if (role == PortalRole.superAdmin && label == 'لوحة الإدارة') {
+        return () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const MobileAdminDashboardScreen()),
+            );
+      }
+      return () => _showComingSoon(context, label);
+    }
+
     return MobileBottomNavBar(
       currentIndex: 0,
       tabs: [
         home,
-        for (final s in direct) MobileNavTab(icon: s.$1, label: s.$2, onTap: () => _showComingSoon(context, s.$2)),
+        for (final s in direct) MobileNavTab(icon: s.$1, label: s.$2, onTap: onTapFor(s.$2)),
       ],
       onMore: overflow.isEmpty ? null : () => _openMoreSheet(context, overflow),
     );
