@@ -7,6 +7,7 @@ import '../models/unit_committee_member.dart';
 import '../services/unit_committee_repository.dart';
 import '../theme/app_theme.dart';
 import '../utils/name_display.dart';
+import 'change_password_dialog.dart';
 import 'mobile_account_screen.dart';
 import 'mobile_bottom_nav_bar.dart';
 import 'portal_cards.dart';
@@ -95,10 +96,56 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> with SingleTickerPr
   /// بالتبويب السفلي" بدل التبويبات العامة الثابتة السابقة. محتوى كل قسم
   /// (غير "الرئيسية") لا يزال "قيد التطوير" - سيُبنى جوّالًا أصيلاً واحدًا
   /// تلو الآخر بجلسات قادمة (لا دفع شاشات الويب العريضة كما ثبت فشله سابقًا).
-  List<MobileNavTab> _navTabsForRole(BuildContext context, PortalRole? role) {
-    MobileNavTab soon(IconData icon, String label) =>
-        MobileNavTab(icon: icon, label: label, onTap: () => _showComingSoon(context, label));
+  /// أقسام الدور (بلا "الرئيسية") مرتَّبة حسب الأهمية - أول عنصرين فقط
+  /// يظهران كتبويب مباشر، والباقي (إن وجد) ينتقل لقائمة "المزيد" - بطلب
+  /// سليمان صراحةً (2026-08-16): "أربع اختيارات كما هي، على أن يكون الخيار
+  /// الأخير المزيد ويفتح قائمة نختار منها" (بدل تكديس كل الأقسام كتبويبات
+  /// مباشرة، كما كان مع دور الإدارة - 3 تبويبات + الرئيسية = 4 بلا مساحة
+  /// لأي قسم إضافي مستقبلي).
+  List<(IconData, String)> _roleSections(PortalRole? role) => switch (role) {
+        PortalRole.superAdmin || PortalRole.admin => const [
+            (Icons.dashboard_outlined, 'لوحة الإدارة'),
+            (Icons.assessment_outlined, 'تقارير'),
+            (Icons.fact_check_outlined, 'لوحة الإرشاد'),
+          ],
+        PortalRole.ameen => const [(Icons.assessment_outlined, 'تقارير')],
+        PortalRole.unitCoordinator => const [(Icons.upload_file_outlined, 'رفع الملفات')],
+        PortalRole.collegeCoordinator || PortalRole.deptCoordinator => const [
+            (Icons.fact_check_outlined, 'متابعة الطلبات'),
+            (Icons.insights_outlined, 'متابعة الإنجاز'),
+          ],
+        PortalRole.trackCoordinator => const [(Icons.route_outlined, 'حالات المسار')],
+        PortalRole.unknown || null => const [],
+      };
 
+  void _openMoreSheet(BuildContext context, List<(IconData, String)> items) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 10),
+            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(4))),
+            const SizedBox(height: 6),
+            for (final item in items)
+              ListTile(
+                leading: Icon(item.$1, color: AppColors.greenDark),
+                title: Text(item.$2),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _showComingSoon(context, item.$2);
+                },
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  MobileBottomNavBar _bottomNavForRole(BuildContext context, PortalRole? role) {
     // كان بلا أثر (onTap فارغ) - يفترض أن المستخدم بصفحة "الرئيسية" أصلًا
     // فلا حاجة لفعل شيء، لكن هذا خطأ حين يكون مفتوحًا بتبويب علوي آخر (مثال
     // "الأهداف") - الآن يُعيد تبويبات الصفحة العلوية لـ"الرئيسية" فعليًا
@@ -109,23 +156,18 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> with SingleTickerPr
       onTap: () => _tabController.animateTo(0),
     );
 
-    return switch (role) {
-      PortalRole.superAdmin || PortalRole.admin => [
-          home,
-          soon(Icons.dashboard_outlined, 'لوحة الإدارة'),
-          soon(Icons.fact_check_outlined, 'لوحة الإرشاد'),
-          soon(Icons.assessment_outlined, 'تقارير'),
-        ],
-      PortalRole.ameen => [home, soon(Icons.assessment_outlined, 'تقارير')],
-      PortalRole.unitCoordinator => [home, soon(Icons.upload_file_outlined, 'رفع الملفات')],
-      PortalRole.collegeCoordinator || PortalRole.deptCoordinator => [
-          home,
-          soon(Icons.fact_check_outlined, 'متابعة الطلبات'),
-          soon(Icons.insights_outlined, 'متابعة الإنجاز'),
-        ],
-      PortalRole.trackCoordinator => [home, soon(Icons.route_outlined, 'حالات المسار')],
-      PortalRole.unknown || null => [home],
-    };
+    final sections = _roleSections(role);
+    final direct = sections.take(2);
+    final overflow = sections.skip(2).toList();
+
+    return MobileBottomNavBar(
+      currentIndex: 0,
+      tabs: [
+        home,
+        for (final s in direct) MobileNavTab(icon: s.$1, label: s.$2, onTap: () => _showComingSoon(context, s.$2)),
+      ],
+      onMore: overflow.isEmpty ? null : () => _openMoreSheet(context, overflow),
+    );
   }
 
   @override
@@ -164,12 +206,44 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> with SingleTickerPr
                         stream: FirebaseAuth.instance.authStateChanges(),
                         builder: (context, snapshot) {
                           final loggedIn = snapshot.data != null;
+                          // مسجَّل الدخول: قائمة منبثقة سريعة (تغيير كلمة
+                          // المرور/خروج) بدل فتح صفحة كاملة منفصلة - سليمان
+                          // لاحظ صراحةً (2026-08-16) أن فتح صفحة جديدة لمجرد
+                          // هذين الإجراءين مزعج مقارنة بباقي التصميم الممتاز.
+                          // غير مسجَّل: يبقى الدفع لصفحة الدخول كما هي (إجراء
+                          // متعدد الحقول يستحق صفحة كاملة).
+                          if (loggedIn) {
+                            return PopupMenuButton<VoidCallback>(
+                              tooltip: 'حسابي',
+                              icon: const Icon(Icons.account_circle, color: AppColors.greenDark),
+                              onSelected: (action) => action(),
+                              itemBuilder: (context) => [
+                                PopupMenuItem(
+                                  value: () => showChangePasswordDialog(context),
+                                  child: const Row(
+                                    children: [
+                                      Icon(Icons.lock_outline, size: 18, color: AppColors.greenDark),
+                                      SizedBox(width: 10),
+                                      Text('تغيير كلمة المرور'),
+                                    ],
+                                  ),
+                                ),
+                                PopupMenuItem(
+                                  value: () => FirebaseAuth.instance.signOut(),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.logout, size: 18, color: Colors.red.shade700),
+                                      const SizedBox(width: 10),
+                                      Text('تسجيل خروج', style: TextStyle(color: Colors.red.shade700)),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            );
+                          }
                           return IconButton(
-                            tooltip: loggedIn ? 'حسابي' : 'تسجيل الدخول',
-                            icon: Icon(
-                              loggedIn ? Icons.account_circle : Icons.person_add_alt_1_outlined,
-                              color: AppColors.greenDark,
-                            ),
+                            tooltip: 'تسجيل الدخول',
+                            icon: const Icon(Icons.person_add_alt_1_outlined, color: AppColors.greenDark),
                             onPressed: () => Navigator.of(context).push(
                               MaterialPageRoute(builder: (_) => const MobileAccountScreen()),
                             ),
@@ -266,10 +340,7 @@ class _MobileHomeScreenState extends State<MobileHomeScreen> with SingleTickerPr
             // بدل الاحتفاظ بنتيجة Future الحساب السابق.
             key: ValueKey(authSnapshot.data?.uid),
             future: PortalRoleGate.resolveSimple(authSnapshot.data),
-            builder: (context, roleSnapshot) {
-              final tabs = _navTabsForRole(context, roleSnapshot.data?.role);
-              return MobileBottomNavBar(currentIndex: 0, tabs: tabs);
-            },
+            builder: (context, roleSnapshot) => _bottomNavForRole(context, roleSnapshot.data?.role),
           );
         },
       ),
