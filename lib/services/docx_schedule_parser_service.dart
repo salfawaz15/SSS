@@ -85,7 +85,13 @@ class DocxScheduleParserService {
 
   /// يُرجع كل شعب الجدول من ملف .docx (نفس مخرجات SectionScheduleParserService
   /// لكن من مصدر Word بدل HTML).
-  static List<CourseSectionRecord> parse(List<int> docxBytes) {
+  static List<CourseSectionRecord> parse(List<int> docxBytes) =>
+      parseSections(docxBytes).map((s) => s.record).toList();
+
+  /// كـ[parse] لكنه يحتفظ بعمود "المستفيد" الخام لكل شعبة - يُستخدم لتصنيف
+  /// شعب ملف "الحويّة" الشامل تلقائيًا حسب الكلية المستفيدة عند رفعه دفعة
+  /// واحدة (بدل الاعتماد على أن يكون الملف مُصفّى مسبقًا لكليتنا فقط).
+  static List<ParsedCourseSection> parseSections(List<int> docxBytes) {
     final archive = ZipDecoder().decodeBytes(docxBytes);
     final docFile = archive.files.firstWhere((f) => f.name == 'word/document.xml');
     final xmlStr = utf8.decode(docFile.content as List<int>);
@@ -104,6 +110,7 @@ class DocxScheduleParserService {
     const colSequence = 10, colActivity = 11;
     const colHours = 12, colCourseName = 13, colCourseCode = 14, colSection = 15;
     const colInstructor = 3;
+    const colBeneficiary = 2;
 
     final activityRows = <_RawActivityRow>[];
     _RawActivityRow? lastRow;
@@ -141,6 +148,7 @@ class DocxScheduleParserService {
           hours: hours,
           registered: registered,
           maxCapacity: maxCapacity,
+          beneficiary: cells[colBeneficiary],
         );
         activityRows.add(row);
         lastRow = row;
@@ -166,7 +174,7 @@ class DocxScheduleParserService {
       }
     }
 
-    final result = <CourseSectionRecord>[];
+    final result = <ParsedCourseSection>[];
     for (final entry in theoryByKey.entries) {
       final theory = entry.value;
       final practical = practicalByKey[entry.key];
@@ -175,28 +183,31 @@ class DocxScheduleParserService {
       final theoryHours = practical != null ? (totalHours - 1).clamp(0, totalHours) : totalHours;
       final practicalHours = practical != null ? 1 : 0;
 
-      result.add(CourseSectionRecord(
-        courseCode: theory.courseCode,
-        courseName: theory.courseName,
-        sequence: theory.sequence,
-        theorySection: theory.sectionNumber,
-        practicalSection: practical?.sectionNumber,
-        meetings: theory.meetings,
-        practicalMeetings: practical?.meetings ?? const [],
-        instructorName: theory.instructorName,
-        practicalInstructorName: practical?.instructorName,
-        theoryHours: theoryHours,
-        practicalHours: practicalHours,
-        theoryMaxCapacity: theory.maxCapacity,
-        theoryRegistered: theory.registered,
-        practicalMaxCapacity: practical?.maxCapacity,
-        practicalRegistered: practical?.registered,
+      result.add(ParsedCourseSection(
+        beneficiary: theory.beneficiary,
+        record: CourseSectionRecord(
+          courseCode: theory.courseCode,
+          courseName: theory.courseName,
+          sequence: theory.sequence,
+          theorySection: theory.sectionNumber,
+          practicalSection: practical?.sectionNumber,
+          meetings: theory.meetings,
+          practicalMeetings: practical?.meetings ?? const [],
+          instructorName: theory.instructorName,
+          practicalInstructorName: practical?.instructorName,
+          theoryHours: theoryHours,
+          practicalHours: practicalHours,
+          theoryMaxCapacity: theory.maxCapacity,
+          theoryRegistered: theory.registered,
+          practicalMaxCapacity: practical?.maxCapacity,
+          practicalRegistered: practical?.registered,
+        ),
       ));
     }
 
     result.sort((a, b) {
-      final c = a.courseCode.compareTo(b.courseCode);
-      return c != 0 ? c : a.sequence.compareTo(b.sequence);
+      final c = a.record.courseCode.compareTo(b.record.courseCode);
+      return c != 0 ? c : a.record.sequence.compareTo(b.record.sequence);
     });
     return result;
   }
@@ -219,6 +230,7 @@ class _RawActivityRow {
   final int hours;
   final int registered;
   final int maxCapacity;
+  final String beneficiary;
 
   _RawActivityRow({
     required this.courseCode,
@@ -231,5 +243,16 @@ class _RawActivityRow {
     required this.hours,
     required this.registered,
     required this.maxCapacity,
+    required this.beneficiary,
   });
+}
+
+/// شعبة مُستخرَجة مع عمود "المستفيد" الخام (اسم الكلية المستفيدة كما ورد
+/// بالملف) - يُستخدم لتصنيف الشعب تلقائيًا (شعب كليتنا مقابل شعب كليات
+/// أخرى) عند رفع ملف "الحويّة" الشامل لكل الجامعة دفعة واحدة.
+class ParsedCourseSection {
+  final CourseSectionRecord record;
+  final String beneficiary;
+
+  const ParsedCourseSection({required this.record, required this.beneficiary});
 }

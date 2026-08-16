@@ -147,8 +147,6 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
 
   List<String> _maleOutsideCourses = [];
   List<String> _femaleOutsideCourses = [];
-  DateTime? _maleOutsideUploadDate;
-  DateTime? _femaleOutsideUploadDate;
   bool _uploadingMaleOutside = false;
   bool _uploadingFemaleOutside = false;
 
@@ -226,8 +224,6 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
         };
         _maleOutsideCourses = results[5] as List<String>;
         _femaleOutsideCourses = results[6] as List<String>;
-        _maleOutsideUploadDate = results[7] as DateTime?;
-        _femaleOutsideUploadDate = results[8] as DateTime?;
       });
     } catch (e) {
       if (!mounted) return;
@@ -242,71 +238,13 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
   List<String> _outsideCoursesFor(Shatr shatr) =>
       shatr == Shatr.male ? _maleOutsideCourses : _femaleOutsideCourses;
 
-  Future<void> _uploadOutsideCoursesFor(Shatr shatr) async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['docx'],
-      withData: true,
-    );
-    if (result == null || result.files.single.bytes == null) return;
-    final Uint8List bytes = result.files.single.bytes!;
-
-    setState(() {
-      if (shatr == Shatr.male) {
-        _uploadingMaleOutside = true;
-      } else {
-        _uploadingFemaleOutside = true;
-      }
-    });
-
-    try {
-      final records = DocxScheduleParserService.parse(bytes);
-      if (records.isEmpty) {
-        throw Exception('لم يتم العثور على أي مقرر في الملف - تأكد من أنه ملف "الحويّة" الشامل الصحيح بصيغة Word (.docx).');
-      }
-      final offeredCodes = records.map((r) => r.courseCode).toSet();
-      final options = CourseCatalog.filterOutsideCoursesByOfferedCodes(offeredCodes);
-
-      if (!mounted) return;
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('تأكيد اعتماد مواد خارج الكلية'),
-          content: Text(
-            'تم العثور على ${options.length} من أصل ${CourseCatalog.outsideCollegeCourses.length} مادة '
-            'من قائمة مواد خارج الكلية ضمن ${records.length} مقرر مستخرَج من الملف لـ ${shatr.label}.\n\n'
-            'سيستبدل هذا آخر قائمة معتمدة لمواد خارج الكلية لهذا الشطر بالكامل. هل تريد الاعتماد؟',
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('اعتماد')),
-          ],
-        ),
-      );
-      if (confirmed != true) return;
-
-      await OutsideCourseRepository.save(shatr, options);
-      await _loadAll();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تم اعتماد مواد خارج الكلية لـ ${shatr.label} بنجاح (${options.length} مادة).')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذّر قراءة الملف: $e'), backgroundColor: Colors.red.shade700),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _uploadingMaleOutside = false;
-          _uploadingFemaleOutside = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _uploadFor(Shatr shatr) async {
+  /// رفع موحَّد لملف "الحويّة" الشامل لشطر واحد - يستخرج منه دفعة واحدة
+  /// كلا العنصرين معًا بدل رفعتين منفصلتين كسابقًا: (أ) جدول شعب كليتنا
+  /// الخاصة (شعب "المستفيد" منها كلية إدارة الأعمال وكودها ليس ضمن قائمة
+  /// "مواد خارج الكلية")، و(ب) قائمة "مواد خارج الكلية" المعتمَدة لهذا
+  /// الفصل (شرطها: كودها بقائمة الخطة + شعبة فعلية مستفيدها كليتنا - انظر
+  /// [[project_faculty_columns_meaning]] وتعليق CourseCatalog.outsideCollegeCourses).
+  Future<void> _uploadCombinedFor(Shatr shatr) async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['docx'],
@@ -318,16 +256,33 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
     setState(() {
       if (shatr == Shatr.male) {
         _uploadingMale = true;
+        _uploadingMaleOutside = true;
       } else {
         _uploadingFemale = true;
+        _uploadingFemaleOutside = true;
       }
     });
 
     try {
-      final records = DocxScheduleParserService.parse(bytes);
-      if (records.isEmpty) {
-        throw Exception('لم يتم العثور على أي شعبة في الملف - تأكد من أنه ملف "الحوية" الصحيح بصيغة Word (.docx).');
+      final sections = DocxScheduleParserService.parseSections(bytes);
+      if (sections.isEmpty) {
+        throw Exception('لم يتم العثور على أي شعبة في الملف - تأكد من أنه ملف "الحويّة" الشامل الصحيح بصيغة Word (.docx).');
       }
+
+      final ourSections = sections.where((s) => s.beneficiary.contains('كلية إدارة الأعمال')).toList();
+      final outsideCodes = CourseCatalog.outsideCollegeCourses.map(CourseCatalog.outsideCourseCode).toSet();
+
+      final ownRecords = ourSections.where((s) => !outsideCodes.contains(s.record.courseCode)).map((s) => s.record).toList();
+      final offeredOutsideCodes = ourSections.where((s) => outsideCodes.contains(s.record.courseCode)).map((s) => s.record.courseCode).toSet();
+      final outsideOptions = CourseCatalog.filterOutsideCoursesByOfferedCodes(offeredOutsideCodes);
+
+      if (ownRecords.isEmpty) {
+        throw Exception(
+          'لم يُعثر على أي شعبة "المستفيد" منها كلية إدارة الأعمال ضمن ${sections.length} سطر بالملف. '
+          'تأكد أن الملف يحوي عمود "المستفيد" فعليًا وأن نص الكلية مطابق.',
+        );
+      }
+
       final exportDate = DocxScheduleParserService.extractExportDate(bytes);
       final currentExportDate = await CourseScheduleRepository.currentExportDate(shatr);
       if (exportDate != null && currentExportDate != null && !exportDate.isAfter(currentExportDate)) {
@@ -337,15 +292,18 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
           '(${fmt.format(currentExportDate)}). تأكد من رفع أحدث ملف من المنظومة الداخلية.',
         );
       }
+
       if (!mounted) return;
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('تأكيد الاعتماد'),
           content: Text(
-            'تم استخراج ${records.length} شعبة فعلية من الملف لـ ${shatr.label}'
-            '${exportDate != null ? ' (تاريخ السحب: ${DateFormat('yyyy/MM/dd').format(exportDate)})' : ''}.\n\n'
-            'سيستبدل هذا آخر نسخة معتمدة لهذا الشطر بالكامل. هل تريد الاعتماد؟',
+            'من إجمالي ${sections.length} سطر بالملف لـ ${shatr.label}'
+            '${exportDate != null ? ' (تاريخ السحب: ${DateFormat('yyyy/MM/dd').format(exportDate)})' : ''}:\n\n'
+            '• ${ownRecords.length} شعبة لجدول كليتنا الخاص.\n'
+            '• ${outsideOptions.length} مادة من قائمة "خارج الكلية" (من أصل ${CourseCatalog.outsideCollegeCourses.length}).\n\n'
+            'سيستبدل هذا آخر نسخة معتمدة لكليهما لهذا الشطر بالكامل. هل تريد الاعتماد؟',
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
@@ -355,11 +313,12 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
       );
       if (confirmed != true) return;
 
-      await CourseScheduleRepository.saveSchedule(shatr, records, exportDate: exportDate);
+      await CourseScheduleRepository.saveSchedule(shatr, ownRecords, exportDate: exportDate);
+      await OutsideCourseRepository.save(shatr, outsideOptions);
       await _loadAll();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تم اعتماد جدول ${shatr.label} بنجاح (${records.length} شعبة).')),
+        SnackBar(content: Text('تم اعتماد جدول ${shatr.label} (${ownRecords.length} شعبة) ومواد خارج الكلية (${outsideOptions.length} مادة) بنجاح.')),
       );
     } catch (e) {
       if (!mounted) return;
@@ -371,6 +330,8 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
         setState(() {
           _uploadingMale = false;
           _uploadingFemale = false;
+          _uploadingMaleOutside = false;
+          _uploadingFemaleOutside = false;
         });
       }
     }
@@ -579,51 +540,27 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
             runSpacing: 10,
             children: [
               _uploadTile(
-                label: 'رفع جدول الطلاب',
-                uploading: _uploadingMale,
+                label: 'رفع ملف الحويّة الشامل - طلاب',
+                uploading: _uploadingMale || _uploadingMaleOutside,
                 date: _maleExportDate,
                 fmt: fmt,
-                onPressed: () => _uploadFor(Shatr.male),
+                onPressed: () => _uploadCombinedFor(Shatr.male),
                 onClear: () async {
-                  if (!await _confirmClear('جدول الطلاب')) return;
+                  if (!await _confirmClear('جدول الطلاب ومواد خارج الكلية - طلاب')) return;
                   await CourseScheduleRepository.clear(Shatr.male);
-                  await _loadAll();
-                },
-              ),
-              _uploadTile(
-                label: 'رفع مواد خارج الكلية - طلاب',
-                uploading: _uploadingMaleOutside,
-                date: _maleOutsideUploadDate,
-                fmt: fmt,
-                onPressed: () => _uploadOutsideCoursesFor(Shatr.male),
-                color: AppColors.gold,
-                onClear: () async {
-                  if (!await _confirmClear('مواد خارج الكلية - طلاب')) return;
                   await OutsideCourseRepository.clear(Shatr.male);
                   await _loadAll();
                 },
               ),
               _uploadTile(
-                label: 'رفع جدول الطالبات',
-                uploading: _uploadingFemale,
+                label: 'رفع ملف الحويّة الشامل - طالبات',
+                uploading: _uploadingFemale || _uploadingFemaleOutside,
                 date: _femaleExportDate,
                 fmt: fmt,
-                onPressed: () => _uploadFor(Shatr.female),
+                onPressed: () => _uploadCombinedFor(Shatr.female),
                 onClear: () async {
-                  if (!await _confirmClear('جدول الطالبات')) return;
+                  if (!await _confirmClear('جدول الطالبات ومواد خارج الكلية - طالبات')) return;
                   await CourseScheduleRepository.clear(Shatr.female);
-                  await _loadAll();
-                },
-              ),
-              _uploadTile(
-                label: 'رفع مواد خارج الكلية - طالبات',
-                uploading: _uploadingFemaleOutside,
-                date: _femaleOutsideUploadDate,
-                fmt: fmt,
-                onPressed: () => _uploadOutsideCoursesFor(Shatr.female),
-                color: AppColors.gold,
-                onClear: () async {
-                  if (!await _confirmClear('مواد خارج الكلية - طالبات')) return;
                   await OutsideCourseRepository.clear(Shatr.female);
                   await _loadAll();
                 },
@@ -700,26 +637,11 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
                     icon: const Icon(Icons.print_outlined),
                     color: AppColors.green,
                   ),
-                  PopupMenuButton<String>(
-                    tooltip: 'نسخ خيارات لمايكروسوفت فورمز',
+                  IconButton(
+                    tooltip: 'نسخ مقررات القسم المحدَّد لفورمز (مع مواد خارج الكلية تلقائيًا)',
+                    onPressed: _showFormsExportDialog,
                     icon: const Icon(Icons.ios_share_outlined),
-                    color: Colors.white,
-                    onSelected: (v) {
-                      if (v == 'dept') _showFormsExportDialog();
-                      if (v == 'outside') {
-                        if (_shatrFilter == _kAllShatr) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('اختر شطرًا محدَّدًا أولًا (وليس "الكل") لتصدير قائمة مواد خارج الكلية.')),
-                          );
-                          return;
-                        }
-                        _showOutsideCollegeExportDialog(_shatrFilter == Shatr.male.label ? Shatr.male : Shatr.female);
-                      }
-                    },
-                    itemBuilder: (context) => const [
-                      PopupMenuItem(value: 'dept', child: Text('نسخ مقررات القسم المحدَّد لفورمز')),
-                      PopupMenuItem(value: 'outside', child: Text('نسخ مقررات خارج الكلية لفورمز')),
-                    ],
+                    color: AppColors.green,
                   ),
                 ],
               ),
@@ -918,12 +840,22 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
   /// المُختارين حاليًا في الفلتر، بصيغة "رمز - اسم" - جاهزة للصق دفعة
   /// واحدة في خيارات سؤال "المقرر الدراسي" بمايكروسوفت فورمز، ومحدَّثة
   /// تلقائيًا من آخر جدول مُعتمَد بدل الاعتماد على ملف خارجي ثابت.
+  ///
+  /// تُضاف دائمًا مواد خارج الكلية لنفس الشطر في نهاية القائمة - بطلب
+  /// سليمان صراحةً أن يظهر خيار "مقرر خارج الكلية" ضمن قائمة كل قسم على
+  /// حدة بفورمز، لا كتصدير منفصل، فتتكرر نفس مواد خارج الكلية بكل قسم.
   List<String> _formsExportOptions() {
     final seen = <String>{};
     final options = <String>[];
     for (final row in _filteredRows(includeShared: true)) {
       final option = '${row.record.courseCode} - ${row.record.courseName}';
       if (seen.add(option)) options.add(option);
+    }
+    if (_shatrFilter != _kAllShatr) {
+      final shatr = _shatrFilter == Shatr.male.label ? Shatr.male : Shatr.female;
+      for (final option in _outsideCoursesFor(shatr)) {
+        if (seen.add(option)) options.add(option);
+      }
     }
     return options;
   }
@@ -947,7 +879,7 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('${options.length} مقرر - انسخ القائمة كاملة والصقها دفعة واحدة في خيارات السؤال بفورمز.',
+              Text('${options.length} مقرر (تشمل مواد خارج الكلية لنفس الشطر تلقائيًا) - انسخ القائمة كاملة والصقها دفعة واحدة في خيارات السؤال بفورمز.',
                   style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
               const SizedBox(height: 10),
               ConstrainedBox(
