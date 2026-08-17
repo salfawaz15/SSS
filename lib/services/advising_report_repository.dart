@@ -47,7 +47,7 @@ class AdvisingReportRepository {
   /// شطر، بخلاف التحويل اليدوي السابق الذي كان غالبًا أصغر)، فتجاوز الحد
   /// فعليًا وفشل الحفظ. السجلات تُقسَّم الآن لقطع (`chunks`) في مجموعة فرعية
   /// تحت مستند كل شطر بدل حقل مصفوفة واحد بالمستند نفسه.
-  static const int _chunkSize = 400;
+  static const int _chunkSize = 150;
 
   /// يُنفِّذ [ops] على دفعات Firestore متتالية (لا دفعة واحدة ضخمة) - حد
   /// Firestore الأقصى 500 عملية للدفعة الواحدة، بالإضافة لحد حجم إجمالي
@@ -80,27 +80,25 @@ class AdvisingReportRepository {
       450,
     );
 
-    // كتابة القطع الجديدة: كل قطعة ثقيلة نسبيًا (حتى 400 سجل/قطعة، قد تصل
-    // ~150 كيلوبايت) - دفعات أصغر بكثير حتى لا يتجاوز حجم الطلب الإجمالي.
-    final writeOps = <void Function(WriteBatch)>[
-      (b) => b.set(docRef, {
-            'uploadedAt': FieldValue.serverTimestamp(),
-            'studentsCount': records.length,
-          }),
-    ];
+    await docRef.set({
+      'uploadedAt': FieldValue.serverTimestamp(),
+      'studentsCount': records.length,
+    });
+
+    // كتابة القطع الجديدة: **دفعة Firestore مستقلة لكل قطعة على حدة** (لا
+    // تجميع عدة قطع بدفعة واحدة). خُفِّض حجم القطعة نفسها إلى 150 سجلًا (كانت
+    // 400)، وحتى بعد تخفيض عدد القطع بالدفعة الواحدة من 20 إلى 6 استمر فشل
+    // الحفظ فعليًا بخطأ "Transaction too big" مع ملف "كل الكليات" الحقيقي
+    // (سليمان 2026-08-18، مرتين متتاليتين) - أي أن حجم القطعة الفعلي أكبر
+    // بكثير من التقدير الأصلي مهما قلَّ عدد القطع بالدفعة. دفعة بقطعة واحدة
+    // تضمن ألا يتجاوز أي طلب حجم مستند واحد (محدود أصلًا بـ1 ميجابايت من
+    // Firestore نفسها)، بصرف النظر عن حجم البيانات الفعلي لكل سجل.
     for (var i = 0; i < records.length; i += _chunkSize) {
       final chunk = records.sublist(i, i + _chunkSize > records.length ? records.length : i + _chunkSize);
       final chunkDocId = i.toString();
       final chunkData = {'records': chunk.map((r) => r.toJson()).toList()};
-      writeOps.add((b) => b.set(chunksRef.doc(chunkDocId), chunkData));
+      await chunksRef.doc(chunkDocId).set(chunkData);
     }
-    // كانت 20 قطعة/دفعة (حتى ~3-4 ميجابايت نظريًا) لكنها اقتربت فعليًا من حد
-    // Firestore الأقصى للطلب الواحد (~10 ميجابايت) وفشلت بخطأ "Transaction
-    // too big" مع ملف "كل الكليات" الفعلي (سليمان 2026-08-18، رغم نفس
-    // الحماية التي أصلحت خطأ مطابقًا في 2026-08-14) - قطع القيم الفعلية أكبر
-    // من التقدير الأصلي (375 بايت/سجل تقريبًا). خُفِّضت لـ6 قطع/دفعة لهامش
-    // أمان أوسع بكثير (~1 ميجابايت كحد أقصى للدفعة) بغض النظر عن حجم أي حقل.
-    await _commitInGroups(writeOps, 6);
   }
 
   static Future<List<AdvisingCaseRecord>> load(Shatr shatr, {AdvisingReportKind kind = AdvisingReportKind.base}) async {
