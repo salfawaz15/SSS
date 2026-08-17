@@ -4,8 +4,10 @@ import 'package:archive/archive.dart';
 import 'package:xml/xml.dart';
 
 import '../models/course_section_record.dart';
+import 'course_schedule_repository.dart' show Shatr;
 
 const String _wNs = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+const String _relNs = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
 
 /// يقرأ جدول "الحويّة" بعد تحويله من PDF إلى Word (.docx) - بديل موثوق تمامًا
 /// لملف الإكسل (.xls) الذي يفقد بيانات حقيقية أحيانًا بسبب طريقة تصديره من
@@ -217,6 +219,206 @@ class DocxScheduleParserService {
     if (name == null) return null;
     return name.replaceFirst(_titlePrefixPattern, '').trim();
   }
+
+  /// كـ[parseSections] لكن لملف Word ناتج عن تحويل PDF **يحوي الشطرين معًا**
+  /// (لا ملفًا مفصولاً مسبقًا لشطر واحد) - يحدَّد شطر كل شعبة تلقائيًا من
+  /// حقل "المقر" بأعلى كل صفحة أصلية بالـPDF (يُحفَظ كرأس قسم Word مستقل لكل
+  /// كتلة صفحات متتالية بنفس الرأس): "حويّة طالبات" = شطر طالبات، "حويّة"
+  /// فقط (بلا "طالبات") = شطر طلاب - بطلب سليمان صراحةً (زر تجريبي 2026-08-17
+  /// لاختبار دقة القراءة قبل حذف صندوقَي الرفع المنفصلين للشطرين).
+  static List<ParsedCourseSectionWithShatr> parseSectionsWithShatr(List<int> docxBytes) {
+    final archive = ZipDecoder().decodeBytes(docxBytes);
+    ArchiveFile? findFile(String name) {
+      for (final f in archive.files) {
+        if (f.name == name) return f;
+      }
+      return null;
+    }
+
+    final docFile = findFile('word/document.xml');
+    if (docFile == null) return const [];
+    final doc = XmlDocument.parse(utf8.decode(docFile.content as List<int>));
+
+    final relsMap = <String, String>{};
+    final relsFile = findFile('word/_rels/document.xml.rels');
+    if (relsFile != null) {
+      final relsDoc = XmlDocument.parse(utf8.decode(relsFile.content as List<int>));
+      for (final rel in relsDoc.findAllElements('Relationship')) {
+        final id = rel.getAttribute('Id');
+        final target = rel.getAttribute('Target');
+        if (id != null && target != null) relsMap[id] = target;
+      }
+    }
+
+    final headerTextCache = <String, String>{};
+    String? headerTextForRId(String? rId) {
+      if (rId == null) return null;
+      final target = relsMap[rId];
+      if (target == null) return null;
+      final name = target.startsWith('word/') ? target : 'word/$target';
+      return headerTextCache.putIfAbsent(name, () {
+        final f = findFile(name);
+        if (f == null) return '';
+        final hdoc = XmlDocument.parse(utf8.decode(f.content as List<int>));
+        return hdoc.findAllElements('t', namespace: _wNs).map((t) => t.innerText).join();
+      });
+    }
+
+    Shatr? shatrFromSectPr(XmlElement sectPr) {
+      final refs = sectPr.findElements('headerReference', namespace: _wNs).toList();
+      if (refs.isEmpty) return null;
+      var chosen = refs.first;
+      for (final r in refs) {
+        if (r.getAttribute('type', namespace: _wNs) == 'default') {
+          chosen = r;
+          break;
+        }
+      }
+      final rId = chosen.getAttribute('id', namespace: _relNs);
+      final text = headerTextForRId(rId);
+      if (text == null || text.isEmpty || !text.contains('المقر')) return null;
+      return text.contains('طالبات') ? Shatr.female : Shatr.male;
+    }
+
+    final bodies = doc.findAllElements('body', namespace: _wNs);
+    if (bodies.isEmpty) return const [];
+    final body = bodies.first;
+
+    final rows = <List<String>>[];
+    final rowShatr = <Shatr?>[];
+    final pendingRows = <List<String>>[];
+
+    void flush(Shatr? shatr) {
+      for (final r in pendingRows) {
+        rows.add(r);
+        rowShatr.add(shatr);
+      }
+      pendingRows.clear();
+    }
+
+    for (final child in body.childElements) {
+      if (child.name.local == 'tbl') {
+        for (final tr in child.findAllElements('tr', namespace: _wNs)) {
+          final cells = tr.findAllElements('tc', namespace: _wNs).map(_cellText).toList();
+          if (cells.isNotEmpty) pendingRows.add(cells);
+        }
+      } else if (child.name.local == 'p') {
+        final sectPr = child.getElement('pPr', namespace: _wNs)?.getElement('sectPr', namespace: _wNs);
+        if (sectPr != null) flush(shatrFromSectPr(sectPr));
+      } else if (child.name.local == 'sectPr') {
+        flush(shatrFromSectPr(child));
+      }
+    }
+    flush(null); // أي صفوف متبقية بلا حد قسم صريح (نادر) تبقى بلا شطر محدَّد
+
+    const colTo = 5, colFrom = 6, colDay = 7, colRegistered = 8, colMaxCapacity = 9;
+    const colSequence = 10, colActivity = 11;
+    const colHours = 12, colCourseName = 13, colCourseCode = 14, colSection = 15;
+    const colInstructor = 3;
+    const colBeneficiary = 2;
+
+    final activityRows = <_RawActivityRow>[];
+    _RawActivityRow? lastRow;
+
+    for (var i = 0; i < rows.length; i++) {
+      final cells = rows[i];
+      final shatr = rowShatr[i];
+      if (cells.length < 16) continue;
+      final activity = cells[colActivity];
+      final isMain = activity == 'نظري' || activity == 'عملي';
+
+      if (isMain && cells[colCourseCode].contains('-') && cells[colSection].isNotEmpty) {
+        final courseCode = cells[colCourseCode].split('-').first;
+        final sectionNumber = cells[colSection];
+        final sequence = int.tryParse(cells[colSequence]) ?? 0;
+        final hours = int.tryParse(cells[colHours]) ?? 0;
+        final registered = int.tryParse(cells[colRegistered]) ?? 0;
+        final maxCapacity = int.tryParse(cells[colMaxCapacity]) ?? 0;
+        final meetings = <CourseMeeting>[];
+        final day = int.tryParse(cells[colDay]);
+        final from = cells[colFrom];
+        final to = cells[colTo];
+        if (day != null && _dayPattern.hasMatch('$day') && from.isNotEmpty && to.isNotEmpty) {
+          meetings.add(CourseMeeting(day: day, from: _fixTimeValue(from), to: _fixTimeValue(to)));
+        }
+        var instructorName = cells[colInstructor].isEmpty ? null : cells[colInstructor];
+        instructorName = _stripTitlePrefix(instructorName);
+
+        final row = _RawActivityRow(
+          courseCode: courseCode,
+          courseName: cells[colCourseName],
+          activity: activity,
+          sequence: sequence,
+          sectionNumber: sectionNumber,
+          meetings: meetings,
+          instructorName: instructorName,
+          hours: hours,
+          registered: registered,
+          maxCapacity: maxCapacity,
+          beneficiary: cells[colBeneficiary],
+          shatr: shatr,
+        );
+        activityRows.add(row);
+        lastRow = row;
+      } else if (lastRow != null) {
+        final day = int.tryParse(cells[colDay]);
+        final from = cells[colFrom];
+        final to = cells[colTo];
+        if (day != null && _dayPattern.hasMatch('$day') && from.isNotEmpty && to.isNotEmpty) {
+          lastRow.meetings.add(CourseMeeting(day: day, from: _fixTimeValue(from), to: _fixTimeValue(to)));
+        }
+      }
+    }
+
+    final Map<String, _RawActivityRow> theoryByKey = {};
+    final Map<String, _RawActivityRow> practicalByKey = {};
+    for (final row in activityRows) {
+      final key = '${row.courseCode}|${row.sequence}|${row.shatr}';
+      if (row.activity == 'نظري') {
+        theoryByKey[key] = row;
+      } else if (row.activity == 'عملي') {
+        practicalByKey[key] = row;
+      }
+    }
+
+    final result = <ParsedCourseSectionWithShatr>[];
+    for (final entry in theoryByKey.entries) {
+      final theory = entry.value;
+      final practical = practicalByKey[entry.key];
+
+      final totalHours = theory.hours;
+      final theoryHours = practical != null ? (totalHours - 1).clamp(0, totalHours) : totalHours;
+      final practicalHours = practical != null ? 1 : 0;
+
+      result.add(ParsedCourseSectionWithShatr(
+        beneficiary: theory.beneficiary,
+        shatr: theory.shatr,
+        record: CourseSectionRecord(
+          courseCode: theory.courseCode,
+          courseName: theory.courseName,
+          sequence: theory.sequence,
+          theorySection: theory.sectionNumber,
+          practicalSection: practical?.sectionNumber,
+          meetings: theory.meetings,
+          practicalMeetings: practical?.meetings ?? const [],
+          instructorName: theory.instructorName,
+          practicalInstructorName: practical?.instructorName,
+          theoryHours: theoryHours,
+          practicalHours: practicalHours,
+          theoryMaxCapacity: theory.maxCapacity,
+          theoryRegistered: theory.registered,
+          practicalMaxCapacity: practical?.maxCapacity,
+          practicalRegistered: practical?.registered,
+        ),
+      ));
+    }
+
+    result.sort((a, b) {
+      final c = a.record.courseCode.compareTo(b.record.courseCode);
+      return c != 0 ? c : a.record.sequence.compareTo(b.record.sequence);
+    });
+    return result;
+  }
 }
 
 class _RawActivityRow {
@@ -231,6 +433,7 @@ class _RawActivityRow {
   final int registered;
   final int maxCapacity;
   final String beneficiary;
+  final Shatr? shatr;
 
   _RawActivityRow({
     required this.courseCode,
@@ -244,6 +447,7 @@ class _RawActivityRow {
     required this.registered,
     required this.maxCapacity,
     required this.beneficiary,
+    this.shatr,
   });
 }
 
@@ -255,4 +459,15 @@ class ParsedCourseSection {
   final String beneficiary;
 
   const ParsedCourseSection({required this.record, required this.beneficiary});
+}
+
+/// كـ[ParsedCourseSection] لكن مع الشطر المكتشَف تلقائيًا من حقل "المقر"
+/// (انظر [DocxScheduleParserService.parseSectionsWithShatr]). قد يكون null
+/// إن تعذّر تحديد الشطر (مثلاً ملف بلا فواصل أقسام واضحة).
+class ParsedCourseSectionWithShatr {
+  final CourseSectionRecord record;
+  final String beneficiary;
+  final Shatr? shatr;
+
+  const ParsedCourseSectionWithShatr({required this.record, required this.beneficiary, required this.shatr});
 }

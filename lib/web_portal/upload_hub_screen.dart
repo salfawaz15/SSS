@@ -211,6 +211,52 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     }
   }
 
+  /// زر تجريبي حصرًا (بلا حفظ أي بيانات) لاختبار دقة التصنيف التلقائي
+  /// لشطر كل شعبة من حقل "المقر" في ملف Word شامل للشطرين معًا (محوَّل من
+  /// ملف PDF واحد) - بطلب سليمان صراحةً (2026-08-17) قبل حذف صندوقَي رفع
+  /// المقررات المنفصلين لكل شطر واستبدالهما بخانة رفع واحدة إن نجحت القراءة.
+  Future<void> _uploadCoursesTrial() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['docx'],
+      withData: true,
+    );
+    if (result == null || result.files.single.bytes == null) return;
+    final Uint8List bytes = result.files.single.bytes!;
+
+    try {
+      final sections = DocxScheduleParserService.parseSectionsWithShatr(bytes);
+      if (sections.isEmpty) {
+        throw Exception('لم يتم العثور على أي شعبة في الملف - تأكد من أنه ملف الحويّة الشامل الصحيح بصيغة Word (.docx).');
+      }
+      final ourSections = sections.where((s) => s.beneficiary.contains('كلية إدارة الأعمال')).toList();
+      final maleCount = ourSections.where((s) => s.shatr == Shatr.male).length;
+      final femaleCount = ourSections.where((s) => s.shatr == Shatr.female).length;
+      final unknownCount = ourSections.where((s) => s.shatr == null).length;
+
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('نتيجة التجربة (بلا حفظ)'),
+          content: Text(
+            'من إجمالي ${sections.length} سطر بالملف، ${ourSections.length} شعبة "المستفيد" منها كلية إدارة الأعمال:\n\n'
+            '• $maleCount شعبة صُنِّفت شطر طلاب.\n'
+            '• $femaleCount شعبة صُنِّفت شطر طالبات.\n'
+            '${unknownCount > 0 ? '• $unknownCount شعبة تعذّر تحديد شطرها (راجع الملف).\n' : ''}\n'
+            '${unknownCount == 0 && maleCount > 0 && femaleCount > 0 ? 'القراءة تبدو سليمة ✓' : 'راجع النتيجة قبل الاعتماد على هذا المسار.'}',
+          ),
+          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق'))],
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذّر قراءة الملف: $e'), backgroundColor: Colors.red.shade700),
+      );
+    }
+  }
+
   Future<void> _clearKindBoth(AdvisingReportKind kind, String label) async {
     if (!await _confirmClear(label)) return;
     try {
@@ -414,6 +460,12 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                                       ],
                                     );
                                   }),
+                                  const SizedBox(height: 14),
+                                  _fullWidthOutlinedButton(
+                                    icon: Icons.science_outlined,
+                                    label: 'رفع المقررات الدراسية (للتجربة)',
+                                    onPressed: _uploadCoursesTrial,
+                                  ),
                                   const SizedBox(height: 14),
                                   _fullWidthOutlinedButton(
                                     icon: Icons.fact_check_outlined,
