@@ -243,10 +243,16 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
       if (sections.isEmpty) {
         throw Exception('لم يتم العثور على أي شعبة في الملف - تأكد من أنه ملف الحويّة الشامل الصحيح بصيغة Word (.docx).');
       }
+      // "ourSections" هنا لا يزال يشمل مواد "خارج الكلية" (مقررات مستفيدها
+      // كليتنا لكنها تُدرَّس فعليًا بكليات أخرى، مثل المهارات العامة) - يجب
+      // استبعادها من تقرير التغييرات كما يفعل الرفع الحقيقي تمامًا (سليمان
+      // صراحةً 2026-08-17: التغييرات تخص مواد كليتنا فقط لا مواد خارج الكلية).
       final ourSections = sections.where((s) => s.beneficiary.contains('كلية إدارة الأعمال')).toList();
-      final maleRecords = ourSections.where((s) => s.shatr == Shatr.male).map((s) => s.record).toList();
-      final femaleRecords = ourSections.where((s) => s.shatr == Shatr.female).map((s) => s.record).toList();
-      final unknownCount = ourSections.where((s) => s.shatr == null).length;
+      final outsideCodes = CourseCatalog.outsideCollegeCourses.map(CourseCatalog.outsideCourseCode).toSet();
+      final ownSections = ourSections.where((s) => !outsideCodes.contains(s.record.courseCode)).toList();
+      final maleRecords = ownSections.where((s) => s.shatr == Shatr.male).map((s) => s.record).toList();
+      final femaleRecords = ownSections.where((s) => s.shatr == Shatr.female).map((s) => s.record).toList();
+      final unknownCount = ownSections.where((s) => s.shatr == null).length;
 
       // مقارنة فعلية بالتقرير الحقيقي (CourseScheduleDiffService) ضد النسخة
       // المحفوظة حاليًا لكل شطر - بلا حفظ أي شيء، فقط لعرض التغييرات الفعلية
