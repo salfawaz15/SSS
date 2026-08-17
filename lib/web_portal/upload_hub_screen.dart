@@ -700,16 +700,26 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
           Row(
             children: [
               // قاعدة ثابتة بكل الموقع: زر التفريغ دائمًا يسار المستطيل (الزر
-              // الرئيسي) - لذا الزر الرئيسي Expanded أولًا (يمينًا بـ RTL)
-              // وزر التفريغ بعده (يسار الزر مباشرة) - سليمان صراحةً 2026-08-17.
-              Expanded(
+              // الرئيسي) - لذا الزر الرئيسي أولاً (يمينًا بـ RTL) وزر التفريغ
+              // بعده (يسار الزر مباشرة) - سليمان صراحةً 2026-08-17.
+              //
+              // عرض ثابت (لا يمتد بعرض الصفحة) = نفس عرض شارة شعار الموقع
+              // أعلى يمين الصفحة (764×148px بارتفاع عرض 40 = ~206px + حشوة
+              // 20px ≈ 226px) - سليمان صراحةً 2026-08-17 بعد مقارنة صريحة.
+              // الارتفاع يبقى كما هو (42px) بلا تغيير.
+              SizedBox(
+                width: 226,
+                height: 42,
                 child: FilledButton.icon(
                   onPressed: uploading ? null : onPressed,
                   icon: uploading
                       ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                       : const Icon(Icons.upload_file, size: 18),
-                  label: Text(buttonLabel),
-                  style: FilledButton.styleFrom(backgroundColor: AppColors.greenDark, minimumSize: const Size.fromHeight(42)),
+                  label: Text(buttonLabel, overflow: TextOverflow.ellipsis),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.greenDark,
+                    side: BorderSide(color: AppColors.gold, width: 1.2),
+                  ),
                 ),
               ),
               if (hasAnyDate && onClear != null)
