@@ -317,7 +317,11 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
       body: _loadingDates
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
-              child: Center(
+              // Align(topCenter) بدل Center - يُلصق المحتوى بأعلى الصفحة فلا
+              // يتوزّع الفراغ المتبقي أعلى وأسفل معًا، بل يتجمّع فراغًا طبيعيًا
+              // واحدًا أسفل البطاقات فقط قبل الفوتر - سليمان صراحةً 2026-08-17.
+              child: Align(
+                alignment: Alignment.topCenter,
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 1400),
                   child: Column(
@@ -332,7 +336,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                           final coursesCard = _uploadCard(
                             icon: Icons.menu_book_outlined,
                             title: 'المقررات الدراسية',
-                            subtitle: 'لاستخراج شعب المقررات الدراسية.',
+                            subtitle: 'لاستخراج شعب المقررات الدراسية',
                             uploading: _uploadingCourses,
                             date: coursesDate,
                             clearLabel: 'مسح البيانات الحالية',
@@ -343,7 +347,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                           final casesCard = _uploadCard(
                             icon: Icons.groups_outlined,
                             title: 'حالات الإرشاد',
-                            subtitle: 'رفع ملف حالات الإرشاد.',
+                            subtitle: 'رفع ملف حالات الإرشاد',
                             uploading: _uploadingAllColleges,
                             date: casesDate,
                             clearLabel: 'مسح البيانات الحالية',
@@ -361,7 +365,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                           final disabilityCard = _uploadCard(
                             icon: Icons.accessible_outlined,
                             title: 'طلبة ذوو الإعاقة',
-                            subtitle: 'رفع الملف المعتمد لطلبة ذوي الإعاقة.',
+                            subtitle: 'رفع بيانات طلبة ذوي الإعاقة',
                             uploading: _uploadingHealth,
                             date: disabilityDate,
                             clearLabel: 'مسح البيانات الحالية',
@@ -379,7 +383,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                           final scheduleCard = _uploadCard(
                             icon: Icons.event_available_outlined,
                             title: 'جداول مواعيد الإرشاد',
-                            subtitle: 'رفع جداول مواعيد الإرشاد (حتى 10 ملفات).',
+                            subtitle: 'رفع جداول مواعيد الإرشاد (حتى 10 ملفات)',
                             uploading: _uploadingSchedule,
                             disabled: scheduleMaxed,
                             date: _scheduleLatestDate,
@@ -595,39 +599,43 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
             subText: subText,
             onTap: (uploading || disabled) ? null : onPressed,
           ),
-          if (fileCounterText != null) ...[
-            const SizedBox(height: 8),
-            Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF5FAF7),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFFBFD7CA)),
-                ),
-                child: Text(fileCounterText, style: const TextStyle(color: AppColors.green, fontSize: 12, fontWeight: FontWeight.bold)),
-              ),
-            ),
-          ],
           const SizedBox(height: 10),
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
+                child: Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 10,
+                  runSpacing: 4,
                   children: [
-                    Text('آخر رفع', style: TextStyle(color: Colors.grey.shade500, fontSize: 11)),
-                    const SizedBox(height: 1),
-                    Text(
-                      // عزل اتجاهي (Unicode Isolate) حول التاريخ/الوقت - يمنع
-                      // أي انعكاس/تداخل بصري عند اختلاط أرقام لاتينية وحروف
-                      // عربية داخل سياق RTL (سليمان صراحةً 2026-08-17، مطابق
-                      // لأثر unicode-bidi:isolate بالويب).
-                      hasData ? '\u2068${dateFmt.format(date)}، ${timeFmt.format(date)}\u2069' : 'لا توجد بيانات مرفوعة',
-                      style: TextStyle(color: Colors.grey.shade800, fontWeight: FontWeight.w700, fontSize: 12.5),
+                    RichText(
+                      text: TextSpan(
+                        style: TextStyle(color: Colors.grey.shade600, fontSize: 12.5),
+                        children: [
+                          const TextSpan(text: 'آخر رفع: '),
+                          TextSpan(
+                            text: hasData
+                                ? '\u2068${dateFmt.format(date)}، ${timeFmt.format(date)}\u2069'
+                                : 'لا توجد بيانات مرفوعة',
+                            style: TextStyle(color: Colors.grey.shade800, fontWeight: FontWeight.w700),
+                          ),
+                        ],
+                      ),
                     ),
+                    if (fileCounterText != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF3FAF6),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFFBFD8C9)),
+                        ),
+                        child: Text(
+                          fileCounterText,
+                          style: const TextStyle(color: Color(0xFF176044), fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -720,20 +728,20 @@ class _HoverableClearButtonState extends State<_HoverableClearButton> {
           borderRadius: BorderRadius.circular(10),
           onTap: widget.onPressed,
           child: Container(
-            height: 42,
-            padding: const EdgeInsets.symmetric(horizontal: 14),
+            constraints: const BoxConstraints(minHeight: 36),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(9),
               border: Border.all(color: _hovering ? Colors.red.shade700 : Colors.red.shade200),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.delete_sweep_outlined, color: _hovering ? Colors.white : Colors.red.shade700, size: 18),
-                const SizedBox(width: 6),
+                Icon(Icons.delete_sweep_outlined, color: _hovering ? Colors.white : Colors.red.shade700, size: 16),
+                const SizedBox(width: 5),
                 Text(
                   widget.label,
-                  style: TextStyle(color: _hovering ? Colors.white : Colors.red.shade700, fontWeight: FontWeight.bold, fontSize: 12.5),
+                  style: TextStyle(color: _hovering ? Colors.white : Colors.red.shade700, fontWeight: FontWeight.bold, fontSize: 12),
                 ),
               ],
             ),
