@@ -57,6 +57,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   DateTime? _healthMaleDate;
   DateTime? _healthFemaleDate;
   DateTime? _scheduleLatestDate;
+  int _scheduleUploadedCount = 0;
   bool _loadingDates = true;
 
   bool _uploadingAllColleges = false;
@@ -80,6 +81,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
         AdvisingReportRepository.currentUploadDate(Shatr.male, kind: AdvisingReportKind.health),
         AdvisingReportRepository.currentUploadDate(Shatr.female, kind: AdvisingReportKind.health),
         AdvisingScheduleRepository.latestUploadDate(),
+        AdvisingScheduleRepository.uploadedCount(),
       ]);
       if (!mounted) return;
       setState(() {
@@ -90,6 +92,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
         _healthMaleDate = results[4] as DateTime?;
         _healthFemaleDate = results[5] as DateTime?;
         _scheduleLatestDate = results[6] as DateTime?;
+        _scheduleUploadedCount = results[7] as int;
       });
     } finally {
       if (mounted) setState(() => _loadingDates = false);
@@ -272,6 +275,15 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     return confirmed == true;
   }
 
+  /// أحدث تاريخ بين قيمتين (شطر الطلاب/الطالبات) - كل قسم أصبح يعتمد رفع ملف
+  /// واحد يُحدَّث الشطرين معًا دفعة واحدة، فلا داعٍ لعرض تاريخين منفصلين
+  /// بالواجهة - سليمان صراحةً 2026-08-17.
+  DateTime? _latestOf(DateTime? a, DateTime? b) {
+    if (a == null) return b;
+    if (b == null) return a;
+    return a.isAfter(b) ? a : b;
+  }
+
   /// رسالة نجاح مؤقتة تختفي تلقائيًا - بلا خانة حالة دائمة بالواجهة.
   void _showSuccessSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -309,27 +321,25 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                         padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
                         child: LayoutBuilder(builder: (context, constraints) {
                           final wide = constraints.maxWidth >= 780;
+                          final coursesDate = _latestOf(_maleExportDate, _femaleExportDate);
                           final coursesCard = _uploadCard(
                             icon: Icons.menu_book_outlined,
                             title: 'المقررات الدراسية',
                             subtitle: 'لاستخراج شعب المقررات الدراسية.',
                             uploading: _uploadingCourses,
-                            dates: [
-                              (label: 'آخر رفع - شطر الطلاب', date: _maleExportDate),
-                              (label: 'آخر رفع - شطر الطالبات', date: _femaleExportDate),
-                            ],
+                            date: coursesDate,
+                            buttonLabel: coursesDate != null ? 'استبدال الملف' : 'رفع الملف',
                             onPressed: _uploadCoursesCombined,
-                            onClear: (_maleExportDate != null || _femaleExportDate != null) ? _clearCourses : null,
+                            onClear: coursesDate != null ? _clearCourses : null,
                           );
+                          final casesDate = _latestOf(_allCollegesMaleDate, _allCollegesFemaleDate);
                           final casesCard = _uploadCard(
                             icon: Icons.groups_outlined,
                             title: 'حالات الإرشاد',
                             subtitle: 'رفع ملف حالات الإرشاد.',
                             uploading: _uploadingAllColleges,
-                            dates: [
-                              (label: 'آخر رفع - شطر الطلاب', date: _allCollegesMaleDate),
-                              (label: 'آخر رفع - شطر الطالبات', date: _allCollegesFemaleDate),
-                            ],
+                            date: casesDate,
+                            buttonLabel: casesDate != null ? 'استبدال الملف' : 'رفع الملف',
                             onPressed: () => runUploadAllColleges(
                               context: context,
                               setUploading: (v) => setState(() => _uploadingAllColleges = v),
@@ -338,19 +348,16 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                                 if (mounted) _showSuccessSnackBar('تم رفع الملف بنجاح');
                               },
                             ),
-                            onClear: (_allCollegesMaleDate != null || _allCollegesFemaleDate != null)
-                                ? () => _clearKindBoth(AdvisingReportKind.allColleges, 'حالات الإرشاد')
-                                : null,
+                            onClear: casesDate != null ? () => _clearKindBoth(AdvisingReportKind.allColleges, 'حالات الإرشاد') : null,
                           );
+                          final disabilityDate = _latestOf(_healthMaleDate, _healthFemaleDate);
                           final disabilityCard = _uploadCard(
                             icon: Icons.accessible_outlined,
                             title: 'طلبة ذوو الإعاقة',
                             subtitle: 'رفع الملف المعتمد لطلبة ذوي الإعاقة.',
                             uploading: _uploadingHealth,
-                            dates: [
-                              (label: 'آخر رفع - شطر الطلاب', date: _healthMaleDate),
-                              (label: 'آخر رفع - شطر الطالبات', date: _healthFemaleDate),
-                            ],
+                            date: disabilityDate,
+                            buttonLabel: disabilityDate != null ? 'استبدال الملف' : 'رفع الملف',
                             onPressed: () => runUploadHealth(
                               context: context,
                               setUploading: (v) => setState(() => _uploadingHealth = v),
@@ -359,17 +366,16 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                                 if (mounted) _showSuccessSnackBar('تم رفع الملف بنجاح');
                               },
                             ),
-                            onClear: (_healthMaleDate != null || _healthFemaleDate != null)
-                                ? () => _clearKindBoth(AdvisingReportKind.health, 'طلبة ذوو الإعاقة')
-                                : null,
+                            onClear: disabilityDate != null ? () => _clearKindBoth(AdvisingReportKind.health, 'طلبة ذوو الإعاقة') : null,
                           );
                           final scheduleCard = _uploadCard(
                             icon: Icons.event_available_outlined,
                             title: 'جداول مواعيد الإرشاد',
                             subtitle: 'رفع جداول مواعيد الإرشاد (حتى 10 ملفات).',
                             uploading: _uploadingSchedule,
-                            dates: [(label: 'آخر رفع', date: _scheduleLatestDate)],
-                            buttonLabel: 'رفع الملفات',
+                            date: _scheduleLatestDate,
+                            fileCounterText: '$_scheduleUploadedCount / 10 ملفات',
+                            buttonLabel: _scheduleUploadedCount > 0 ? 'إضافة ملفات' : 'رفع الملفات',
                             dropzoneHint: 'اسحب الملفات هنا أو اضغط للاختيار',
                             onPressed: () => runUploadAdvisingSchedule(
                               context: context,
@@ -523,13 +529,15 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     required String title,
     required String subtitle,
     required bool uploading,
-    required List<({String label, DateTime? date})> dates,
+    required DateTime? date,
     required VoidCallback onPressed,
     required VoidCallback? onClear,
     String buttonLabel = 'رفع الملف',
     String dropzoneHint = 'اسحب الملف هنا أو اضغط للاختيار',
+    String? fileCounterText,
   }) {
-    final fmt = DateFormat('d MMMM yyyy، h:mm a', 'ar');
+    final dateFmt = DateFormat('d MMMM yyyy', 'ar');
+    final timeFmt = DateFormat('h:mm a', 'ar');
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -560,6 +568,20 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
           ),
           const SizedBox(height: 12),
           _dropzone(uploading: uploading, hint: dropzoneHint, onTap: uploading ? null : onPressed),
+          if (fileCounterText != null) ...[
+            const SizedBox(height: 8),
+            Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF5FAF7),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFBFD7CA)),
+                ),
+                child: Text(fileCounterText, style: const TextStyle(color: AppColors.green, fontSize: 12, fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
@@ -596,23 +618,13 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    for (final d in dates)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 2),
-                        child: RichText(
-                          textAlign: TextAlign.end,
-                          text: TextSpan(
-                            style: TextStyle(color: Colors.grey.shade600, fontSize: 11.5),
-                            children: [
-                              TextSpan(text: '${dates.length > 1 ? d.label : 'آخر رفع'}: '),
-                              TextSpan(
-                                text: d.date != null ? fmt.format(d.date!) : 'لا يوجد رفع سابق',
-                                style: TextStyle(color: Colors.grey.shade800, fontWeight: FontWeight.w600),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
+                    Text('آخر رفع', style: TextStyle(color: Colors.grey.shade500, fontSize: 11)),
+                    const SizedBox(height: 1),
+                    Text(
+                      date != null ? '${dateFmt.format(date)}، ${timeFmt.format(date)}' : 'لا يوجد رفع سابق',
+                      textAlign: TextAlign.end,
+                      style: TextStyle(color: Colors.grey.shade800, fontWeight: FontWeight.w700, fontSize: 12.5),
+                    ),
                   ],
                 ),
               ),

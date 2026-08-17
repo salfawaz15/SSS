@@ -39,6 +39,13 @@ class AdvisingScheduleRepository {
     return latest;
   }
 
+  /// عدد مستندات (قسم × شطر) التي رُفع لها ملف فعليًا حتى الآن - لعرض عدّاد
+  /// "X / 10 ملفات" بصفحة "رفع ملفات" المركزية (10 = 5 أقسام × شطرين).
+  static Future<int> uploadedCount() async {
+    final snap = await _col.get();
+    return snap.docs.length;
+  }
+
   /// تفريغ كامل لكل مستندات (قسم × شطر) - لتسهيل إعادة الاختبار، بنفس مبدأ
   /// تفريغ بقية تقارير الإرشاد.
   static Future<void> clearAll() async {
