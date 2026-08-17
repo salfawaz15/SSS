@@ -375,7 +375,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                                       icon: Icons.man_outlined,
                                       title: 'رفع المقررات الدراسية - طلاب',
                                       uploading: _uploadingMale,
-                                      date: _maleExportDate,
+                                      dates: [(label: 'آخر رفع', date: _maleExportDate)],
                                       fmt: fmt,
                                       onPressed: () => _uploadCourses(Shatr.male),
                                       onClear: () async {
@@ -389,7 +389,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                                       icon: Icons.woman_outlined,
                                       title: 'رفع المقررات الدراسية - طالبات',
                                       uploading: _uploadingFemale,
-                                      date: _femaleExportDate,
+                                      dates: [(label: 'آخر رفع', date: _femaleExportDate)],
                                       fmt: fmt,
                                       onPressed: () => _uploadCourses(Shatr.female),
                                       onClear: () async {
@@ -423,22 +423,24 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                             const SizedBox(height: 18),
                             _cardShell(
                               icon: Icons.groups_outlined,
-                              title: 'حالات الإرشاد - كل الكليات',
+                              title: 'حالات الإرشاد',
                               subtitle: 'تقرير "طلاب على غير مرشدهم" الرسمي لكل الجامعة.',
-                              child: _actionRow(
-                                dateLines: [
-                                  _dateLine('شطر الطلاب', _allCollegesMaleDate, fmt),
-                                  _dateLine('شطر الطالبات', _allCollegesFemaleDate, fmt),
-                                ],
+                              child: _uploadSlotBox(
+                                icon: Icons.groups_outlined,
+                                title: 'رفع حالات الإرشاد',
                                 uploading: _uploadingAllColleges,
-                                buttonLabel: 'رفع ملف "كل الكليات"',
+                                dates: [
+                                  (label: 'شطر الطلاب', date: _allCollegesMaleDate),
+                                  (label: 'شطر الطالبات', date: _allCollegesFemaleDate),
+                                ],
+                                fmt: fmt,
                                 onPressed: () => runUploadAllColleges(
                                   context: context,
                                   setUploading: (v) => setState(() => _uploadingAllColleges = v),
                                   onSuccess: _loadDates,
                                 ),
                                 onClear: (_allCollegesMaleDate != null || _allCollegesFemaleDate != null)
-                                    ? () => _clearKindBoth(AdvisingReportKind.allColleges, 'رفع جميع الطلاب (كل الكليات)')
+                                    ? () => _clearKindBoth(AdvisingReportKind.allColleges, 'رفع حالات الإرشاد')
                                     : null,
                               ),
                             ),
@@ -447,13 +449,15 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                               icon: Icons.accessible_outlined,
                               title: 'طلبة ذوو الإعاقة',
                               subtitle: 'ملف حالات ذوي الإعاقة الرسمي.',
-                              child: _actionRow(
-                                dateLines: [
-                                  _dateLine('شطر الطلاب', _healthMaleDate, fmt),
-                                  _dateLine('شطر الطالبات', _healthFemaleDate, fmt),
-                                ],
+                              child: _uploadSlotBox(
+                                icon: Icons.accessible_outlined,
+                                title: 'رفع طلبة ذوي الإعاقة',
                                 uploading: _uploadingHealth,
-                                buttonLabel: 'رفع ملف طلبة ذوي الإعاقة',
+                                dates: [
+                                  (label: 'شطر الطلاب', date: _healthMaleDate),
+                                  (label: 'شطر الطالبات', date: _healthFemaleDate),
+                                ],
+                                fmt: fmt,
                                 onPressed: () => runUploadHealth(
                                   context: context,
                                   setUploading: (v) => setState(() => _uploadingHealth = v),
@@ -469,10 +473,12 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                               icon: Icons.event_available_outlined,
                               title: 'جدول مواعيد الإرشاد لكل مرشد',
                               subtitle: 'حتى 10 ملفات دفعة واحدة، كل ملف يحدَّد قسمه/شطره من محتواه.',
-                              child: _actionRow(
-                                dateLines: [_dateLine('آخر رفع (أي قسم/شطر)', _scheduleLatestDate, fmt)],
+                              child: _uploadSlotBox(
+                                icon: Icons.event_available_outlined,
+                                title: 'رفع جدول مواعيد الإرشاد',
                                 uploading: _uploadingSchedule,
-                                buttonLabel: 'رفع جدول مواعيد الإرشاد',
+                                dates: [(label: 'أي قسم/شطر', date: _scheduleLatestDate)],
+                                fmt: fmt,
                                 onPressed: () => runUploadAdvisingSchedule(
                                   context: context,
                                   setUploading: (v) => setState(() => _uploadingSchedule = v),
@@ -596,17 +602,22 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     );
   }
 
-  /// صندوق رفع فرعي (طلاب/طالبات) - شارة أيقونة، عنوان، زر اختيار ملف، فاصل
-  /// منقّط، ثم تاريخ آخر رفع. مطابق للتصميم المرجعي المعتمد.
+  /// صندوق رفع موحَّد - نفس الشكل والألوان لكل بطاقات الرفع الأربعة بلا
+  /// استثناء (شارة أيقونة، عنوان، زر اختيار ملف، فاصل، صفوف تواريخ) - كان
+  /// لدى بطاقات "كل الكليات/ذوو الإعاقة/مواعيد الإرشاد" شكل مختلف تمامًا
+  /// (صف ممدود بفراغ كبير) عن صندوقَي "طلاب/طالبات" فبدت الصفحة غير موحَّدة
+  /// الهوية - سليمان صراحةً (2026-08-17): "لم تلتزم بنفس التصميم والطريقة".
   Widget _uploadSlotBox({
     required IconData icon,
     required String title,
     required bool uploading,
-    required DateTime? date,
+    required List<({String label, DateTime? date})> dates,
     required DateFormat fmt,
     required VoidCallback onPressed,
-    required VoidCallback onClear,
+    required VoidCallback? onClear,
+    String buttonLabel = 'اختر ملفًا للرفع',
   }) {
+    final hasAnyDate = dates.any((d) => d.date != null);
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -619,7 +630,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
         children: [
           Row(
             children: [
-              if (date != null)
+              if (hasAnyDate && onClear != null)
                 IconButton(
                   tooltip: 'تفريغ البيانات (للاختبار)',
                   onPressed: onClear,
@@ -639,89 +650,31 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
             icon: uploading
                 ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                 : const Icon(Icons.upload_file, size: 18),
-            label: const Text('اختر ملفًا للرفع'),
+            label: Text(buttonLabel),
             style: FilledButton.styleFrom(backgroundColor: AppColors.greenDark, minimumSize: const Size.fromHeight(42)),
           ),
           const SizedBox(height: 10),
           const Divider(height: 1),
           const SizedBox(height: 8),
-          Row(
-            children: [
-              Icon(Icons.access_time, size: 14, color: Colors.grey.shade500),
-              const SizedBox(width: 6),
-              Text('آخر رفع:', style: TextStyle(color: Colors.grey.shade600, fontSize: 11.5)),
-              const Spacer(),
-              Text(
-                date != null ? fmt.format(date) : 'لم يُرفع بعد',
-                style: TextStyle(color: Colors.grey.shade800, fontSize: 11.5, fontWeight: FontWeight.w600),
+          for (final d in dates)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Row(
+                children: [
+                  Icon(Icons.access_time, size: 14, color: Colors.grey.shade500),
+                  const SizedBox(width: 6),
+                  Text('${d.label}:', style: TextStyle(color: Colors.grey.shade600, fontSize: 11.5)),
+                  const Spacer(),
+                  Text(
+                    d.date != null ? fmt.format(d.date!) : 'لم يُرفع بعد',
+                    style: TextStyle(color: Colors.grey.shade800, fontSize: 11.5, fontWeight: FontWeight.w600),
+                  ),
+                ],
               ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _dateLine(String label, DateTime? date, DateFormat fmt) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Row(
-        children: [
-          Icon(Icons.circle, size: 6, color: date != null ? AppColors.green : Colors.grey.shade400),
-          const SizedBox(width: 8),
-          Icon(Icons.calendar_today_outlined, size: 13, color: Colors.grey.shade500),
-          const SizedBox(width: 6),
-          Text(
-            '$label - آخر رفع: ${date != null ? fmt.format(date) : 'لم يُرفع بعد'}',
-            style: TextStyle(color: Colors.grey.shade700, fontSize: 12.5),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// صف إجراء موحَّد للبطاقات ذات الرفعة الواحدة (كل الكليات/ذوو
-  /// الإعاقة/مواعيد الإرشاد): تواريخ على جهة، زر الرفع + التفريغ على الأخرى.
-  Widget _actionRow({
-    required List<Widget> dateLines,
-    required bool uploading,
-    required String buttonLabel,
-    required VoidCallback onPressed,
-    required VoidCallback? onClear,
-  }) {
-    return LayoutBuilder(builder: (context, constraints) {
-      final narrow = constraints.maxWidth < 520;
-      final dates = Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: dateLines);
-      final actions = Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FilledButton.icon(
-            onPressed: uploading ? null : onPressed,
-            icon: uploading
-                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Icon(Icons.upload_file, size: 18),
-            label: Text(buttonLabel),
-            style: FilledButton.styleFrom(backgroundColor: AppColors.greenDark),
-          ),
-          if (onClear != null)
-            IconButton(
-              tooltip: 'تفريغ البيانات (للاختبار)',
-              onPressed: onClear,
-              icon: Icon(Icons.delete_sweep_outlined, color: Colors.red.shade700, size: 20),
             ),
         ],
-      );
-      if (narrow) {
-        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [dates, const SizedBox(height: 12), actions]);
-      }
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(child: dates),
-          actions,
-        ],
-      );
-    });
+      ),
+    );
   }
 
   Widget _fullWidthOutlinedButton({required IconData icon, required String label, required VoidCallback onPressed}) {
