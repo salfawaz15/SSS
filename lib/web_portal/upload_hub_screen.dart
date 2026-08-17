@@ -16,6 +16,7 @@ import '../services/outside_course_repository.dart';
 import '../theme/app_theme.dart';
 import 'admin_nav.dart';
 import 'portal_header.dart';
+import 'upload_dialogs.dart';
 import 'upload_flows.dart';
 
 /// صفحة مركزية واحدة لكل الملفات التي مصدرها المنظومة الداخلية للجامعة
@@ -198,9 +199,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذّر قراءة الملف: $e'), backgroundColor: Colors.red.shade700),
-      );
+      showUploadErrorDialog(context, 'تعذّر قراءة الملف', '$e');
     } finally {
       if (mounted) {
         setState(() {
@@ -223,6 +222,20 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     );
     if (result == null || result.files.single.bytes == null) return;
     final Uint8List bytes = result.files.single.bytes!;
+    // ملف .docx الحقيقي هو أرشيف ZIP يبدأ دائمًا بالتوقيع "PK" - إن لم يكن
+    // كذلك فهو على الأغلب حُفظ فعليًا بصيغة .doc القديمة أو تالف، فتظهر رسالة
+    // مفهومة بدل خطأ ZipDecoder التقني (سليمان صراحةً بعد رسالة "Could not
+    // find End of Central Directory Record" غير المفهومة 2026-08-17).
+    if (bytes.length < 2 || bytes[0] != 0x50 || bytes[1] != 0x4B) {
+      if (!mounted) return;
+      showUploadErrorDialog(
+        context,
+        'الملف ليس Word صالحًا',
+        'الملف المختار لا يبدو ملف Word (.docx) حقيقيًا (قد يكون محفوظًا فعليًا بصيغة .doc القديمة أو تالفًا). '
+            'تأكد عند التحويل من PDF أن تحفظه بصيغة "Word Document (.docx)" وليس "Word 97-2003 (.doc)"، ثم أعد المحاولة.',
+      );
+      return;
+    }
 
     try {
       final sections = DocxScheduleParserService.parseSectionsWithShatr(bytes);
@@ -251,9 +264,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذّر قراءة الملف: $e'), backgroundColor: Colors.red.shade700),
-      );
+      showUploadErrorDialog(context, 'تعذّر قراءة الملف', '$e');
     }
   }
 
@@ -269,9 +280,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذّر التفريغ: $e'), backgroundColor: Colors.red.shade700),
-      );
+      showUploadErrorDialog(context, 'تعذّر التفريغ', '$e');
     }
   }
 
@@ -286,9 +295,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذّر التفريغ: $e'), backgroundColor: Colors.red.shade700),
-      );
+      showUploadErrorDialog(context, 'تعذّر التفريغ', '$e');
     }
   }
 
