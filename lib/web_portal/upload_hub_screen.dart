@@ -247,17 +247,33 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
       final femaleCount = ourSections.where((s) => s.shatr == Shatr.female).length;
       final unknownCount = ourSections.where((s) => s.shatr == null).length;
 
+      // إحصاء تشخيصي بكل الكليات (لا كليتنا فقط) - يكشف هل الشطر "طالبات"
+      // اكتُشف بأي مكان بالملف إطلاقًا، بمعزل عن فلترة "المستفيد" - بطلب
+      // ضمني بعد ظهور 0 شعبة طالبات بأول تجربتين (سليمان 2026-08-17).
+      final allMale = sections.where((s) => s.shatr == Shatr.male).length;
+      final allFemale = sections.where((s) => s.shatr == Shatr.female).length;
+      final allUnknown = sections.where((s) => s.shatr == null).length;
+      final sampleBeneficiaries = sections.map((s) => s.beneficiary).toSet().take(6).join(' | ');
+
       if (!mounted) return;
       await showDialog<void>(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('نتيجة التجربة (بلا حفظ)'),
-          content: Text(
-            'من إجمالي ${sections.length} سطر بالملف، ${ourSections.length} شعبة "المستفيد" منها كلية إدارة الأعمال:\n\n'
-            '• $maleCount شعبة صُنِّفت شطر طلاب.\n'
-            '• $femaleCount شعبة صُنِّفت شطر طالبات.\n'
-            '${unknownCount > 0 ? '• $unknownCount شعبة تعذّر تحديد شطرها (راجع الملف).\n' : ''}\n'
-            '${unknownCount == 0 && maleCount > 0 && femaleCount > 0 ? 'القراءة تبدو سليمة ✓' : 'راجع النتيجة قبل الاعتماد على هذا المسار.'}',
+          content: SingleChildScrollView(
+            child: SelectableText(
+              'من إجمالي ${sections.length} سطر بالملف، ${ourSections.length} شعبة "المستفيد" منها كلية إدارة الأعمال:\n\n'
+              '• $maleCount شعبة صُنِّفت شطر طلاب.\n'
+              '• $femaleCount شعبة صُنِّفت شطر طالبات.\n'
+              '${unknownCount > 0 ? '• $unknownCount شعبة تعذّر تحديد شطرها.\n' : ''}\n'
+              '${unknownCount == 0 && maleCount > 0 && femaleCount > 0 ? 'القراءة تبدو سليمة ✓' : 'راجع النتيجة قبل الاعتماد على هذا المسار.'}\n\n'
+              '— تشخيص إضافي (كل الكليات وليس كليتنا فقط) —\n'
+              'إجمالي كل الشعب بالملف: ${sections.length}\n'
+              '• $allMale شطر طلاب.\n'
+              '• $allFemale شطر طالبات.\n'
+              '• $allUnknown غير محدَّد.\n\n'
+              'عيّنة من نصوص "المستفيد" الفعلية بالملف:\n$sampleBeneficiaries',
+            ),
           ),
           actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق'))],
         ),
