@@ -33,6 +33,10 @@ import 'upload_flows.dart';
 /// تباعد بين نسختين لنفس المنطق (طلب سليمان صراحةً 2026-08-17: "نقل كامل
 /// بدون مخاطرة، يبقى كما هو بنفس الصفحة الأساسية وينقل إلى صفحة رفع الملفات").
 ///
+/// **التصميم**: بطاقات ذهبية الحدود على خلفية بيضاء بهوية الوحدة البصرية،
+/// برأس مصرَّف داكن مذيَّل بخط ذهبي وشارة ماسية - نفس تصميم مرجعي اعتمده
+/// سليمان صراحةً (2026-08-17) بدل التصميم الأولي البدائي.
+///
 /// **صلاحية الوصول حاليًا**: حساب المدير العام (super_admin) فقط، بنفس
 /// تقييد "خدمات أكاديمية"/"المنسوبين" المجاورين لها بالشريط. خطة مستقبلية
 /// (لم تُنفَّذ بعد): منح نفس الصلاحية لمنسّق الوحدة للشؤون الإدارية أيضًا.
@@ -93,11 +97,11 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     }
   }
 
-  /// رفع موحَّد لملف المقررات الدراسية الشامل لشطر واحد - يستخرج منه دفعة واحدة كلا
-  /// العنصرين معًا: (أ) جدول شعب كليتنا الخاصة (شعب "المستفيد" منها كلية
-  /// إدارة الأعمال وكودها ليس ضمن قائمة "مواد خارج الكلية")، و(ب) قائمة
-  /// "مواد خارج الكلية" المعتمَدة لهذا الفصل (شرطها: كودها بقائمة الخطة +
-  /// شعبة فعلية مستفيدها كليتنا).
+  /// رفع موحَّد لملف المقررات الدراسية الشامل لشطر واحد - يستخرج منه دفعة
+  /// واحدة كلا العنصرين معًا: (أ) جدول شعب كليتنا الخاصة (شعب "المستفيد"
+  /// منها كلية إدارة الأعمال وكودها ليس ضمن قائمة "مواد خارج الكلية")، و(ب)
+  /// قائمة "مواد خارج الكلية" المعتمَدة لهذا الفصل (شرطها: كودها بقائمة
+  /// الخطة + شعبة فعلية مستفيدها كليتنا).
   Future<void> _uploadCourses(Shatr shatr) async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -207,234 +211,6 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final fmt = DateFormat('yyyy/MM/dd');
-    return PortalScaffold(
-      title: 'رفع ملفات المنظومة الداخلية',
-      navItems: buildAdminNavItems(context, current: 'upload-hub'),
-      body: _loadingDates
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 820),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(
-                        'الملفات الأربعة هنا مصدرها المنظومة الداخلية الرسمية للجامعة (EduGate) حصرًا - '
-                        'لا علاقة لها بنموذج Microsoft Forms ولا بملفات الموقع الداخلية.',
-                        style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
-                      ),
-                      const SizedBox(height: 20),
-                      _sectionCard(
-                        title: 'المقررات الدراسية',
-                        subtitle: 'يستخرج تلقائيًا جدول شعب كليتنا + قائمة مواد خارج الكلية معًا من نفس الملف.',
-                        icon: Icons.table_chart_outlined,
-                        child: Wrap(
-                          spacing: 12,
-                          runSpacing: 10,
-                          children: [
-                            _uploadButton(
-                              label: 'رفع المقررات الدراسية - طلاب',
-                              uploading: _uploadingMale,
-                              date: _maleExportDate,
-                              fmt: fmt,
-                              onPressed: () => _uploadCourses(Shatr.male),
-                              onClear: () async {
-                                if (!await _confirmClear('جدول الطلاب ومواد خارج الكلية - طلاب')) return;
-                                await CourseScheduleRepository.clear(Shatr.male);
-                                await OutsideCourseRepository.clear(Shatr.male);
-                                await _loadDates();
-                              },
-                            ),
-                            _uploadButton(
-                              label: 'رفع المقررات الدراسية - طالبات',
-                              uploading: _uploadingFemale,
-                              date: _femaleExportDate,
-                              fmt: fmt,
-                              onPressed: () => _uploadCourses(Shatr.female),
-                              onClear: () async {
-                                if (!await _confirmClear('جدول الطالبات ومواد خارج الكلية - طالبات')) return;
-                                await CourseScheduleRepository.clear(Shatr.female);
-                                await OutsideCourseRepository.clear(Shatr.female);
-                                await _loadDates();
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      OutlinedButton.icon(
-                        onPressed: _showChangesReport,
-                        icon: const Icon(Icons.fact_check_outlined, size: 16),
-                        label: const Text('عرض تقرير التغييرات (إضافة/حذف شعب، تغيير محاضرين)'),
-                        style: OutlinedButton.styleFrom(foregroundColor: AppColors.green, side: BorderSide(color: AppColors.green)),
-                      ),
-                      const SizedBox(height: 16),
-                      _sectionCard(
-                        title: 'حالات الإرشاد - كل الكليات',
-                        subtitle: 'تقرير "طلاب على غير مرشدهم" الرسمي لكل الجامعة.',
-                        icon: Icons.groups_outlined,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _dateLine('شطر الطلاب', _allCollegesMaleDate, fmt),
-                            _dateLine('شطر الطالبات', _allCollegesFemaleDate, fmt),
-                            const SizedBox(height: 8),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                FilledButton.icon(
-                                  onPressed: _uploadingAllColleges
-                                      ? null
-                                      : () => runUploadAllColleges(
-                                            context: context,
-                                            setUploading: (v) => setState(() => _uploadingAllColleges = v),
-                                            onSuccess: _loadDates,
-                                          ),
-                                  icon: _uploadingAllColleges
-                                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                                      : const Icon(Icons.upload_file, size: 18),
-                                  label: const Text('رفع ملف "كل الكليات"'),
-                                  style: FilledButton.styleFrom(backgroundColor: AppColors.green),
-                                ),
-                                if (_allCollegesMaleDate != null || _allCollegesFemaleDate != null)
-                                  IconButton(
-                                    tooltip: 'تفريغ البيانات (للاختبار)',
-                                    onPressed: () => _clearKindBoth(AdvisingReportKind.allColleges, 'رفع جميع الطلاب (كل الكليات)'),
-                                    icon: Icon(Icons.delete_sweep_outlined, color: Colors.red.shade700, size: 20),
-                                  ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      _sectionCard(
-                        title: 'طلبة ذوو الإعاقة',
-                        subtitle: 'ملف حالات ذوي الإعاقة الرسمي.',
-                        icon: Icons.accessible_outlined,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _dateLine('شطر الطلاب', _healthMaleDate, fmt),
-                            _dateLine('شطر الطالبات', _healthFemaleDate, fmt),
-                            const SizedBox(height: 8),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                FilledButton.icon(
-                                  onPressed: _uploadingHealth
-                                      ? null
-                                      : () => runUploadHealth(
-                                            context: context,
-                                            setUploading: (v) => setState(() => _uploadingHealth = v),
-                                            onSuccess: _loadDates,
-                                          ),
-                                  icon: _uploadingHealth
-                                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                                      : const Icon(Icons.upload_file, size: 18),
-                                  label: const Text('رفع ملف طلبة ذوي الإعاقة'),
-                                  style: FilledButton.styleFrom(backgroundColor: AppColors.green),
-                                ),
-                                if (_healthMaleDate != null || _healthFemaleDate != null)
-                                  IconButton(
-                                    tooltip: 'تفريغ البيانات (للاختبار)',
-                                    onPressed: () => _clearKindBoth(AdvisingReportKind.health, 'رفع طلبة ذوي الإعاقة'),
-                                    icon: Icon(Icons.delete_sweep_outlined, color: Colors.red.shade700, size: 20),
-                                  ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      _sectionCard(
-                        title: 'جدول مواعيد الإرشاد لكل مرشد',
-                        subtitle: 'حتى 10 ملفات دفعة واحدة، كل ملف يحدَّد قسمه/شطره من محتواه.',
-                        icon: Icons.event_available_outlined,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _dateLine('آخر رفع (أي قسم/شطر)', _scheduleLatestDate, fmt),
-                            const SizedBox(height: 8),
-                            FilledButton.icon(
-                              onPressed: _uploadingSchedule
-                                  ? null
-                                  : () => runUploadAdvisingSchedule(
-                                        context: context,
-                                        setUploading: (v) => setState(() => _uploadingSchedule = v),
-                                        onSuccess: _loadDates,
-                                      ),
-                              icon: _uploadingSchedule
-                                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                                  : const Icon(Icons.upload_file, size: 18),
-                              label: const Text('رفع جدول مواعيد الإرشاد'),
-                              style: FilledButton.styleFrom(backgroundColor: AppColors.green),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-    );
-  }
-
-  Widget _dateLine(String label, DateTime? date, DateFormat fmt) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 2),
-      child: Text(
-        '$label - آخر رفع: ${date != null ? fmt.format(date) : 'لم يُرفع بعد'}',
-        style: TextStyle(color: Colors.grey.shade700, fontSize: 12.5),
-      ),
-    );
-  }
-
-  Widget _uploadButton({
-    required String label,
-    required bool uploading,
-    required DateTime? date,
-    required DateFormat fmt,
-    required VoidCallback onPressed,
-    VoidCallback? onClear,
-  }) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            FilledButton.icon(
-              onPressed: uploading ? null : onPressed,
-              icon: uploading
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Icon(Icons.upload_file, size: 18),
-              label: Text(label),
-              style: FilledButton.styleFrom(backgroundColor: AppColors.green),
-            ),
-            if (onClear != null && date != null)
-              IconButton(
-                tooltip: 'تفريغ البيانات (للاختبار)',
-                onPressed: onClear,
-                icon: Icon(Icons.delete_sweep_outlined, color: Colors.red.shade700, size: 20),
-              ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Text(
-          date != null ? 'آخر رفع: ${fmt.format(date)}' : 'لم يُرفع بعد',
-          style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
-        ),
-      ],
-    );
-  }
-
   Future<void> _clearKindBoth(AdvisingReportKind kind, String label) async {
     if (!await _confirmClear(label)) return;
     try {
@@ -444,6 +220,23 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('تم تفريغ $label بنجاح.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذّر التفريغ: $e'), backgroundColor: Colors.red.shade700),
+      );
+    }
+  }
+
+  Future<void> _clearSchedule() async {
+    if (!await _confirmClear('جدول مواعيد الإرشاد')) return;
+    try {
+      await AdvisingScheduleRepository.clearAll();
+      await _loadDates();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تم تفريغ جدول مواعيد الإرشاد بنجاح.')),
       );
     } catch (e) {
       if (!mounted) return;
@@ -548,35 +341,401 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     return confirmed == true;
   }
 
-  Widget _sectionCard({
+  @override
+  Widget build(BuildContext context) {
+    final fmt = DateFormat('yyyy/MM/dd');
+    return PortalScaffold(
+      title: 'رفع ملفات المنظومة الداخلية',
+      navItems: buildAdminNavItems(context, current: 'upload-hub'),
+      body: _loadingDates
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 980),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _headerBanner(),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _cardShell(
+                              icon: Icons.menu_book_outlined,
+                              title: 'المقررات الدراسية',
+                              subtitle: 'يستخرج تلقائيًا جدول شعب كليتنا + قائمة مواد خارج الكلية معًا من نفس الملف.',
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  LayoutBuilder(builder: (context, constraints) {
+                                    final narrow = constraints.maxWidth < 560;
+                                    final maleBox = _uploadSlotBox(
+                                      icon: Icons.man_outlined,
+                                      title: 'رفع المقررات الدراسية - طلاب',
+                                      uploading: _uploadingMale,
+                                      date: _maleExportDate,
+                                      fmt: fmt,
+                                      onPressed: () => _uploadCourses(Shatr.male),
+                                      onClear: () async {
+                                        if (!await _confirmClear('جدول الطلاب ومواد خارج الكلية - طلاب')) return;
+                                        await CourseScheduleRepository.clear(Shatr.male);
+                                        await OutsideCourseRepository.clear(Shatr.male);
+                                        await _loadDates();
+                                      },
+                                    );
+                                    final femaleBox = _uploadSlotBox(
+                                      icon: Icons.woman_outlined,
+                                      title: 'رفع المقررات الدراسية - طالبات',
+                                      uploading: _uploadingFemale,
+                                      date: _femaleExportDate,
+                                      fmt: fmt,
+                                      onPressed: () => _uploadCourses(Shatr.female),
+                                      onClear: () async {
+                                        if (!await _confirmClear('جدول الطالبات ومواد خارج الكلية - طالبات')) return;
+                                        await CourseScheduleRepository.clear(Shatr.female);
+                                        await OutsideCourseRepository.clear(Shatr.female);
+                                        await _loadDates();
+                                      },
+                                    );
+                                    if (narrow) {
+                                      return Column(children: [femaleBox, const SizedBox(height: 12), maleBox]);
+                                    }
+                                    return Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Expanded(child: femaleBox),
+                                        const SizedBox(width: 14),
+                                        Expanded(child: maleBox),
+                                      ],
+                                    );
+                                  }),
+                                  const SizedBox(height: 14),
+                                  _fullWidthOutlinedButton(
+                                    icon: Icons.fact_check_outlined,
+                                    label: 'عرض تقرير التغييرات (إضافة/حذف شعب، تغيير محاضرين)',
+                                    onPressed: _showChangesReport,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            _cardShell(
+                              icon: Icons.groups_outlined,
+                              title: 'حالات الإرشاد - كل الكليات',
+                              subtitle: 'تقرير "طلاب على غير مرشدهم" الرسمي لكل الجامعة.',
+                              child: _actionRow(
+                                dateLines: [
+                                  _dateLine('شطر الطلاب', _allCollegesMaleDate, fmt),
+                                  _dateLine('شطر الطالبات', _allCollegesFemaleDate, fmt),
+                                ],
+                                uploading: _uploadingAllColleges,
+                                buttonLabel: 'رفع ملف "كل الكليات"',
+                                onPressed: () => runUploadAllColleges(
+                                  context: context,
+                                  setUploading: (v) => setState(() => _uploadingAllColleges = v),
+                                  onSuccess: _loadDates,
+                                ),
+                                onClear: (_allCollegesMaleDate != null || _allCollegesFemaleDate != null)
+                                    ? () => _clearKindBoth(AdvisingReportKind.allColleges, 'رفع جميع الطلاب (كل الكليات)')
+                                    : null,
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            _cardShell(
+                              icon: Icons.accessible_outlined,
+                              title: 'طلبة ذوو الإعاقة',
+                              subtitle: 'ملف حالات ذوي الإعاقة الرسمي.',
+                              child: _actionRow(
+                                dateLines: [
+                                  _dateLine('شطر الطلاب', _healthMaleDate, fmt),
+                                  _dateLine('شطر الطالبات', _healthFemaleDate, fmt),
+                                ],
+                                uploading: _uploadingHealth,
+                                buttonLabel: 'رفع ملف طلبة ذوي الإعاقة',
+                                onPressed: () => runUploadHealth(
+                                  context: context,
+                                  setUploading: (v) => setState(() => _uploadingHealth = v),
+                                  onSuccess: _loadDates,
+                                ),
+                                onClear: (_healthMaleDate != null || _healthFemaleDate != null)
+                                    ? () => _clearKindBoth(AdvisingReportKind.health, 'رفع طلبة ذوي الإعاقة')
+                                    : null,
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            _cardShell(
+                              icon: Icons.event_available_outlined,
+                              title: 'جدول مواعيد الإرشاد لكل مرشد',
+                              subtitle: 'حتى 10 ملفات دفعة واحدة، كل ملف يحدَّد قسمه/شطره من محتواه.',
+                              child: _actionRow(
+                                dateLines: [_dateLine('آخر رفع (أي قسم/شطر)', _scheduleLatestDate, fmt)],
+                                uploading: _uploadingSchedule,
+                                buttonLabel: 'رفع جدول مواعيد الإرشاد',
+                                onPressed: () => runUploadAdvisingSchedule(
+                                  context: context,
+                                  setUploading: (v) => setState(() => _uploadingSchedule = v),
+                                  onSuccess: _loadDates,
+                                ),
+                                onClear: _scheduleLatestDate != null ? _clearSchedule : null,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+    );
+  }
+
+  // ==================== عناصر التصميم ====================
+
+  /// رأس مصرَّف داكن بخط ذهبي وشارة ماسية - نفس التصميم المرجعي الذي اعتمده
+  /// سليمان صراحةً بدل العنوان النصي البسيط الأولي.
+  Widget _headerBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 26, horizontal: 20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.centerRight,
+          end: Alignment.centerLeft,
+          colors: [AppColors.greenDark, AppColors.green],
+        ),
+        border: Border(
+          top: BorderSide(color: AppColors.gold, width: 4),
+          bottom: BorderSide(color: AppColors.gold, width: 2),
+        ),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.diamond_outlined, color: AppColors.gold, size: 18),
+          const SizedBox(height: 8),
+          Text(
+            'رفع ملفات الإرشاد الأكاديمي',
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.circle, size: 5, color: AppColors.gold),
+              const SizedBox(width: 8),
+              Text(
+                'إدارة رفع ملفات التقارير والبيانات الرسمية',
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 13.5),
+              ),
+              const SizedBox(width: 8),
+              Icon(Icons.circle, size: 5, color: AppColors.gold),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _goldIconBadge(IconData icon) {
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        color: AppColors.gold.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.gold.withValues(alpha: 0.5)),
+      ),
+      alignment: Alignment.center,
+      child: Icon(icon, color: AppColors.greenDark, size: 20),
+    );
+  }
+
+  /// بطاقة قسم موحَّدة (حدود ذهبية، خلفية بيضاء، ظل خفيف) - رأسها شارة أيقونة
+  /// ذهبية + عنوان/وصف، ومحتواها المُمرَّر بعدها.
+  Widget _cardShell({
+    required IconData icon,
     required String title,
     required String subtitle,
-    required IconData icon,
     required Widget child,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.gold.withValues(alpha: 0.5)),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, 3))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17, color: AppColors.greenDark)),
+                    const SizedBox(height: 4),
+                    Text(subtitle, style: TextStyle(color: Colors.grey.shade600, fontSize: 12.5)),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              _goldIconBadge(icon),
+            ],
+          ),
+          const SizedBox(height: 16),
+          child,
+        ],
+      ),
+    );
+  }
+
+  /// صندوق رفع فرعي (طلاب/طالبات) - شارة أيقونة، عنوان، زر اختيار ملف، فاصل
+  /// منقّط، ثم تاريخ آخر رفع. مطابق للتصميم المرجعي المعتمد.
+  Widget _uploadSlotBox({
+    required IconData icon,
+    required String title,
+    required bool uploading,
+    required DateTime? date,
+    required DateFormat fmt,
+    required VoidCallback onPressed,
+    required VoidCallback onClear,
   }) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: AppColors.gold.withValues(alpha: 0.35)),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 8, offset: const Offset(0, 2))],
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.gold.withValues(alpha: 0.3)),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
-              Icon(icon, size: 18, color: AppColors.green),
+              if (date != null)
+                IconButton(
+                  tooltip: 'تفريغ البيانات (للاختبار)',
+                  onPressed: onClear,
+                  icon: Icon(Icons.delete_sweep_outlined, color: Colors.red.shade700, size: 20),
+                  visualDensity: VisualDensity.compact,
+                ),
+              Expanded(
+                child: Text(title, textAlign: TextAlign.end, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+              ),
               const SizedBox(width: 8),
-              Text(title, style: AppTextStyles.h3(color: AppColors.greenDark)),
+              _goldIconBadge(icon),
             ],
           ),
-          const SizedBox(height: 4),
-          Text(subtitle, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
           const SizedBox(height: 12),
-          child,
+          FilledButton.icon(
+            onPressed: uploading ? null : onPressed,
+            icon: uploading
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.upload_file, size: 18),
+            label: const Text('اختر ملفًا للرفع'),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.greenDark, minimumSize: const Size.fromHeight(42)),
+          ),
+          const SizedBox(height: 10),
+          const Divider(height: 1),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Icon(Icons.access_time, size: 14, color: Colors.grey.shade500),
+              const SizedBox(width: 6),
+              Text('آخر رفع:', style: TextStyle(color: Colors.grey.shade600, fontSize: 11.5)),
+              const Spacer(),
+              Text(
+                date != null ? fmt.format(date) : 'لم يُرفع بعد',
+                style: TextStyle(color: Colors.grey.shade800, fontSize: 11.5, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _dateLine(String label, DateTime? date, DateFormat fmt) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        children: [
+          Icon(Icons.circle, size: 6, color: date != null ? AppColors.green : Colors.grey.shade400),
+          const SizedBox(width: 8),
+          Icon(Icons.calendar_today_outlined, size: 13, color: Colors.grey.shade500),
+          const SizedBox(width: 6),
+          Text(
+            '$label - آخر رفع: ${date != null ? fmt.format(date) : 'لم يُرفع بعد'}',
+            style: TextStyle(color: Colors.grey.shade700, fontSize: 12.5),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// صف إجراء موحَّد للبطاقات ذات الرفعة الواحدة (كل الكليات/ذوو
+  /// الإعاقة/مواعيد الإرشاد): تواريخ على جهة، زر الرفع + التفريغ على الأخرى.
+  Widget _actionRow({
+    required List<Widget> dateLines,
+    required bool uploading,
+    required String buttonLabel,
+    required VoidCallback onPressed,
+    required VoidCallback? onClear,
+  }) {
+    return LayoutBuilder(builder: (context, constraints) {
+      final narrow = constraints.maxWidth < 520;
+      final dates = Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: dateLines);
+      final actions = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FilledButton.icon(
+            onPressed: uploading ? null : onPressed,
+            icon: uploading
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.upload_file, size: 18),
+            label: Text(buttonLabel),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.greenDark),
+          ),
+          if (onClear != null)
+            IconButton(
+              tooltip: 'تفريغ البيانات (للاختبار)',
+              onPressed: onClear,
+              icon: Icon(Icons.delete_sweep_outlined, color: Colors.red.shade700, size: 20),
+            ),
+        ],
+      );
+      if (narrow) {
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [dates, const SizedBox(height: 12), actions]);
+      }
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(child: dates),
+          actions,
+        ],
+      );
+    });
+  }
+
+  Widget _fullWidthOutlinedButton({required IconData icon, required String label, required VoidCallback onPressed}) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 16),
+        label: Text(label),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.greenDark,
+          side: BorderSide(color: AppColors.gold),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+        ),
       ),
     );
   }

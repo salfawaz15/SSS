@@ -38,4 +38,20 @@ class AdvisingScheduleRepository {
     }
     return latest;
   }
+
+  /// تفريغ كامل لكل مستندات (قسم × شطر) - لتسهيل إعادة الاختبار، بنفس مبدأ
+  /// تفريغ بقية تقارير الإرشاد.
+  static Future<void> clearAll() async {
+    final snap = await _col.get();
+    const perBatch = 450;
+    final docs = snap.docs;
+    for (var i = 0; i < docs.length; i += perBatch) {
+      final batch = FirebaseFirestore.instance.batch();
+      final end = (i + perBatch < docs.length) ? i + perBatch : docs.length;
+      for (var j = i; j < end; j++) {
+        batch.delete(docs[j].reference);
+      }
+      await batch.commit();
+    }
+  }
 }
