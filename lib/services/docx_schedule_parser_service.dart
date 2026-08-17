@@ -271,8 +271,13 @@ class DocxScheduleParserService {
       if (debugMarkers != null && debugMarkers.length < 20 && !debugMarkers.contains(text)) {
         debugMarkers.add(text);
       }
-      // فقط مقر "حويّة" (الحرم الرئيسي) يُحتسَب - فروع أخرى تُستبعَد بالكامل.
-      if (!text.contains('حويّة') && !text.contains('حوية')) {
+      // استبعاد الفروع بالاسم صراحةً (لا اشتراط وجود "حويّة" إيجابًا) - محاولة
+      // سابقة اشترطت ظهور "حويّة"/"حوية" حرفيًا ففشلت مع نصوص شطر الطلاب
+      // تحديدًا لسبب غير معروف (0 من 274 شعبة!) رغم نجاحها باختبار محلي منفصل
+      // - النهج الأكثر أمانًا: افتراض الحرم الرئيسي دائمًا إلا إذا ذُكر اسم
+      // فرع معروف صراحةً (سليمان صراحةً 2026-08-17).
+      const branchKeywords = ['الخرمة', 'تربة', 'رنية'];
+      if (branchKeywords.any(text.contains)) {
         return (isMarker: true, shatr: null);
       }
       return (isMarker: true, shatr: text.contains('طالبات') ? Shatr.female : Shatr.male);
