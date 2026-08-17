@@ -238,7 +238,8 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     }
 
     try {
-      final sections = DocxScheduleParserService.parseSectionsWithShatr(bytes);
+      final debugMarkers = <String>[];
+      final sections = DocxScheduleParserService.parseSectionsWithShatr(bytes, debugMarkers: debugMarkers);
       if (sections.isEmpty) {
         throw Exception('لم يتم العثور على أي شعبة في الملف - تأكد من أنه ملف الحويّة الشامل الصحيح بصيغة Word (.docx).');
       }
@@ -272,7 +273,9 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
               '• $allMale شطر طلاب.\n'
               '• $allFemale شطر طالبات.\n'
               '• $allUnknown غير محدَّد.\n\n'
-              'عيّنة من نصوص "المستفيد" الفعلية بالملف:\n$sampleBeneficiaries',
+              'عيّنة من نصوص "المستفيد" الفعلية بالملف:\n$sampleBeneficiaries\n\n'
+              '— نص حقل "المقر" الخام كما استُخرج من الملف (${debugMarkers.length} عيّنة) —\n'
+              '${debugMarkers.isEmpty ? "(لم يُعثر على أي نص يحوي كلمة المقر إطلاقًا بالملف)" : debugMarkers.map((m) => '"$m"').join('\n')}',
             ),
           ),
           actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق'))],

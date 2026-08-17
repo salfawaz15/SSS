@@ -229,7 +229,15 @@ class DocxScheduleParserService {
   /// فقرة أو صف جدول يحوي "المقر" يُحدِّث الشطر الحالي فورًا ("طالبات" ضمن
   /// النص = شطر طالبات، وإلا فطلاب)، ويُطبَّق هذا الشطر على كل صفوف الجدول
   /// التالية حتى ظهور "المقر" التالي.
-  static List<ParsedCourseSectionWithShatr> parseSectionsWithShatr(List<int> docxBytes) {
+  /// [debugMarkers] معامل تشخيصي اختياري - إن مُرِّر، تُضاف إليه كل النصوص
+  /// الخام التي احتوت "المقر" فعليًا كما استُخرجت من الملف (بلا أي معالجة)،
+  /// حتى نرى بالضبط شكل النص الذي تنتجه أداة تحويل PDF إلى Word - ضروري
+  /// لتشخيص سبب عدم اكتشاف "طالبات" إطلاقًا رغم اكتشاف "المقر" (سليمان
+  /// صراحةً 2026-08-17 بعد نتيجة 0 شعبة طالبات من إجمالي 3017 سطر).
+  static List<ParsedCourseSectionWithShatr> parseSectionsWithShatr(
+    List<int> docxBytes, {
+    List<String>? debugMarkers,
+  }) {
     final archive = ZipDecoder().decodeBytes(docxBytes);
     ArchiveFile? findFile(String name) {
       for (final f in archive.files) {
@@ -248,6 +256,9 @@ class DocxScheduleParserService {
 
     Shatr? shatrFromText(String text) {
       if (!text.contains('المقر')) return null;
+      if (debugMarkers != null && debugMarkers.length < 20 && !debugMarkers.contains(text)) {
+        debugMarkers.add(text);
+      }
       return text.contains('طالبات') ? Shatr.female : Shatr.male;
     }
 
