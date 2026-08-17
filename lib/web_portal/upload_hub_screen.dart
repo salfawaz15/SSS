@@ -622,6 +622,12 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // الشارة أولًا (أقصى اليمين في RTL) ثم العنوان ملتصقًا بها مباشرة
+              // - كانت Expanded تسحب العنوان لعرض الصف كاملاً فتبتعد الشارة
+              // لأقصى اليسار بفراغ كبير بينهما (سليمان صراحةً: دائرة برتقالية
+              // حول الشارة المنعزلة).
+              _goldIconBadge(icon),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -632,8 +638,6 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                   ],
                 ),
               ),
-              const SizedBox(width: 12),
-              _goldIconBadge(icon),
             ],
           ),
           const SizedBox(height: 16),
@@ -677,8 +681,16 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
               // الكلام"). زر التفريغ يبقى وحده أقصى اليسار كإجراء ثانوي منفصل.
               _goldIconBadge(icon, size: 36),
               const SizedBox(width: 10),
-              Expanded(
-                child: Text(title, textAlign: TextAlign.right, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+              // Flexible بدل Expanded: يأخذ النص عرضه الطبيعي فقط بدل ابتلاع
+              // كامل الفراغ المتبقي - كان يدفع زر التفريغ لأقصى اليسار بفراغ
+              // كبير معزول عنه (سليمان صراحةً: دائرة برتقالية حول الزر المنعزل).
+              Flexible(
+                child: Text(
+                  title,
+                  textAlign: TextAlign.right,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
+                ),
               ),
               if (hasAnyDate && onClear != null)
                 IconButton(
