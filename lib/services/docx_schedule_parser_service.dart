@@ -7,7 +7,6 @@ import '../models/course_section_record.dart';
 import 'course_schedule_repository.dart' show Shatr;
 
 const String _wNs = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
-const String _relNs = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
 
 /// يقرأ جدول "الحويّة" بعد تحويله من PDF إلى Word (.docx) - بديل موثوق تمامًا
 /// لملف الإكسل (.xls) الذي يفقد بيانات حقيقية أحيانًا بسبب طريقة تصديره من
@@ -222,10 +221,14 @@ class DocxScheduleParserService {
 
   /// كـ[parseSections] لكن لملف Word ناتج عن تحويل PDF **يحوي الشطرين معًا**
   /// (لا ملفًا مفصولاً مسبقًا لشطر واحد) - يحدَّد شطر كل شعبة تلقائيًا من
-  /// حقل "المقر" بأعلى كل صفحة أصلية بالـPDF (يُحفَظ كرأس قسم Word مستقل لكل
-  /// كتلة صفحات متتالية بنفس الرأس): "حويّة طالبات" = شطر طالبات، "حويّة"
-  /// فقط (بلا "طالبات") = شطر طلاب - بطلب سليمان صراحةً (زر تجريبي 2026-08-17
-  /// لاختبار دقة القراءة قبل حذف صندوقَي الرفع المنفصلين للشطرين).
+  /// حقل "المقر" الذي يتكرر كنص عادي داخل تدفّق محتوى المستند نفسه (ليس رأس
+  /// صفحة Word حقيقي - أول محاولة اعتمدت على رؤوس الأقسام `sectPr` فشلت
+  /// تمامًا: 359 شعبة كلها بلا شطر محدَّد، لأن أداة تحويل PDF إلى Word لا
+  /// تستخدم آلية الرؤوس الحقيقية بل تكتب كل شيء كفقرات/جداول متتالية بنفس
+  /// تدفّق المستند - سليمان صراحةً بعد نتيجة التجربة الأولى 2026-08-17): كل
+  /// فقرة أو صف جدول يحوي "المقر" يُحدِّث الشطر الحالي فورًا ("طالبات" ضمن
+  /// النص = شطر طالبات، وإلا فطلاب)، ويُطبَّق هذا الشطر على كل صفوف الجدول
+  /// التالية حتى ظهور "المقر" التالي.
   static List<ParsedCourseSectionWithShatr> parseSectionsWithShatr(List<int> docxBytes) {
     final archive = ZipDecoder().decodeBytes(docxBytes);
     ArchiveFile? findFile(String name) {
@@ -239,77 +242,53 @@ class DocxScheduleParserService {
     if (docFile == null) return const [];
     final doc = XmlDocument.parse(utf8.decode(docFile.content as List<int>));
 
-    final relsMap = <String, String>{};
-    final relsFile = findFile('word/_rels/document.xml.rels');
-    if (relsFile != null) {
-      final relsDoc = XmlDocument.parse(utf8.decode(relsFile.content as List<int>));
-      for (final rel in relsDoc.findAllElements('Relationship')) {
-        final id = rel.getAttribute('Id');
-        final target = rel.getAttribute('Target');
-        if (id != null && target != null) relsMap[id] = target;
-      }
-    }
-
-    final headerTextCache = <String, String>{};
-    String? headerTextForRId(String? rId) {
-      if (rId == null) return null;
-      final target = relsMap[rId];
-      if (target == null) return null;
-      final name = target.startsWith('word/') ? target : 'word/$target';
-      return headerTextCache.putIfAbsent(name, () {
-        final f = findFile(name);
-        if (f == null) return '';
-        final hdoc = XmlDocument.parse(utf8.decode(f.content as List<int>));
-        return hdoc.findAllElements('t', namespace: _wNs).map((t) => t.innerText).join();
-      });
-    }
-
-    Shatr? shatrFromSectPr(XmlElement sectPr) {
-      final refs = sectPr.findElements('headerReference', namespace: _wNs).toList();
-      if (refs.isEmpty) return null;
-      var chosen = refs.first;
-      for (final r in refs) {
-        if (r.getAttribute('type', namespace: _wNs) == 'default') {
-          chosen = r;
-          break;
-        }
-      }
-      final rId = chosen.getAttribute('id', namespace: _relNs);
-      final text = headerTextForRId(rId);
-      if (text == null || text.isEmpty || !text.contains('المقر')) return null;
-      return text.contains('طالبات') ? Shatr.female : Shatr.male;
-    }
-
     final bodies = doc.findAllElements('body', namespace: _wNs);
     if (bodies.isEmpty) return const [];
     final body = bodies.first;
 
+    Shatr? shatrFromText(String text) {
+      if (!text.contains('المقر')) return null;
+      return text.contains('طالبات') ? Shatr.female : Shatr.male;
+    }
+
     final rows = <List<String>>[];
     final rowShatr = <Shatr?>[];
-    final pendingRows = <List<String>>[];
+    Shatr? currentShatr;
 
-    void flush(Shatr? shatr) {
-      for (final r in pendingRows) {
-        rows.add(r);
-        rowShatr.add(shatr);
-      }
-      pendingRows.clear();
+    void scanParagraph(XmlElement p) {
+      final text = p.findAllElements('t', namespace: _wNs).map((t) => t.innerText).join();
+      final detected = shatrFromText(text);
+      if (detected != null) currentShatr = detected;
     }
 
-    for (final child in body.childElements) {
-      if (child.name.local == 'tbl') {
-        for (final tr in child.findAllElements('tr', namespace: _wNs)) {
-          final cells = tr.findAllElements('tc', namespace: _wNs).map(_cellText).toList();
-          if (cells.isNotEmpty) pendingRows.add(cells);
+    void scanTable(XmlElement tbl) {
+      for (final tr in tbl.findAllElements('tr', namespace: _wNs)) {
+        final cells = tr.findAllElements('tc', namespace: _wNs).map(_cellText).toList();
+        if (cells.isEmpty) continue;
+        final rowText = cells.join(' ');
+        final detected = shatrFromText(rowText);
+        if (detected != null) {
+          currentShatr = detected;
+          continue; // صف معلومات ("المقر") وليس صف مادة فعلي - لا يُضاف كبيانات
         }
-      } else if (child.name.local == 'p') {
-        final sectPr = child.getElement('pPr', namespace: _wNs)?.getElement('sectPr', namespace: _wNs);
-        if (sectPr != null) flush(shatrFromSectPr(sectPr));
-      } else if (child.name.local == 'sectPr') {
-        flush(shatrFromSectPr(child));
+        rows.add(cells);
+        rowShatr.add(currentShatr);
       }
     }
-    flush(null); // أي صفوف متبقية بلا حد قسم صريح (نادر) تبقى بلا شطر محدَّد
+
+    void walk(XmlElement el) {
+      for (final child in el.childElements) {
+        if (child.name.local == 'tbl') {
+          scanTable(child);
+        } else if (child.name.local == 'p') {
+          scanParagraph(child);
+        } else {
+          walk(child); // بعض أدوات التحويل تُغلِّف المحتوى بعناصر وسيطة (مثل sdt)
+        }
+      }
+    }
+
+    walk(body);
 
     const colTo = 5, colFrom = 6, colDay = 7, colRegistered = 8, colMaxCapacity = 9;
     const colSequence = 10, colActivity = 11;
