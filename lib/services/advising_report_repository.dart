@@ -94,7 +94,13 @@ class AdvisingReportRepository {
       final chunkData = {'records': chunk.map((r) => r.toJson()).toList()};
       writeOps.add((b) => b.set(chunksRef.doc(chunkDocId), chunkData));
     }
-    await _commitInGroups(writeOps, 20);
+    // كانت 20 قطعة/دفعة (حتى ~3-4 ميجابايت نظريًا) لكنها اقتربت فعليًا من حد
+    // Firestore الأقصى للطلب الواحد (~10 ميجابايت) وفشلت بخطأ "Transaction
+    // too big" مع ملف "كل الكليات" الفعلي (سليمان 2026-08-18، رغم نفس
+    // الحماية التي أصلحت خطأ مطابقًا في 2026-08-14) - قطع القيم الفعلية أكبر
+    // من التقدير الأصلي (375 بايت/سجل تقريبًا). خُفِّضت لـ6 قطع/دفعة لهامش
+    // أمان أوسع بكثير (~1 ميجابايت كحد أقصى للدفعة) بغض النظر عن حجم أي حقل.
+    await _commitInGroups(writeOps, 6);
   }
 
   static Future<List<AdvisingCaseRecord>> load(Shatr shatr, {AdvisingReportKind kind = AdvisingReportKind.base}) async {
