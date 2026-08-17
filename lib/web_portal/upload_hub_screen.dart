@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../data/course_catalog.dart';
-import '../models/course_schedule_change.dart';
+import '../models/course_section_record.dart';
 import '../services/advising_report_repository.dart';
 import '../services/advising_schedule_repository.dart';
 import '../services/course_schedule_change_repository.dart';
@@ -21,26 +21,25 @@ import 'upload_flows.dart';
 
 /// صفحة مركزية واحدة لكل الملفات التي مصدرها المنظومة الداخلية للجامعة
 /// حصرًا (وليس Microsoft Forms أو الموقع نفسه) - بطلب سليمان صراحةً
-/// (2026-08-17) بعد أن لاحظ أن أزرار الرفع المتناثرة داخل صفحات بيانات
-/// كثيفة أصلاً (تسكين المقررات، حالات الإرشاد، مواعيد الإرشاد) تُشعر
-/// المستخدم بالازدحام. كل صفحة أصلية تبقي فقط ملاحظة "آخر رفع: تاريخ" بلا
-/// زر - الرفع الفعلي انتقل هنا بالكامل.
+/// (2026-08-17). صفحة **رفع فقط** بلا أي إحصائيات/تحليلات/تقارير (ستكون
+/// بصفحة مستقلة لاحقًا) - سليمان صراحةً: "الصفحة تكون مخصصة للرفع فقط".
 ///
-/// الأربعة تعمل هنا برفع فعلي كامل - لا مجرد اختصار/تنقّل لصفحة أخرى. منطق
-/// الثلاثة الأكثر تعقيدًا (كل الكليات/ذوي الإعاقة/مواعيد الإرشاد - مطابقة
-/// أسماء، كشف تعارضات، تتبّع حركات مرشدين) مُستخرَج بالكامل في
-/// `upload_flows.dart` كدوال مشتركة، تُستدعى من هنا **وأيضًا** من صفحاتها
-/// الأصلية (بقيت أزرارها هناك كما هي بلا حذف) - مصدر منطق واحد فقط، فلا خطر
-/// تباعد بين نسختين لنفس المنطق (طلب سليمان صراحةً 2026-08-17: "نقل كامل
-/// بدون مخاطرة، يبقى كما هو بنفس الصفحة الأساسية وينقل إلى صفحة رفع الملفات").
+/// **المقررات الدراسية**: خانة رفع واحدة فقط (لا فصل طلاب/طالبات) - يستخرج
+/// شطر كل شعبة تلقائيًا من حقل "المقر" داخل الملف نفسه
+/// ([DocxScheduleParserService.parseSectionsWithShatr]) بدل الاعتماد على
+/// ملفين منفصلين مسبقًا. الثلاثة الأخرى (كل الكليات/ذوو الإعاقة/مواعيد
+/// الإرشاد) كانت أصلاً بخانة واحدة تفرز داخليًا حسب الشطر - منطقها مُستخرَج
+/// بالكامل في `upload_flows.dart` (مصدر واحد يخدم هذه الصفحة وصفحاتها
+/// الأصلية معًا).
 ///
-/// **التصميم**: بطاقات ذهبية الحدود على خلفية بيضاء بهوية الوحدة البصرية،
-/// برأس مصرَّف داكن مذيَّل بخط ذهبي وشارة ماسية - نفس تصميم مرجعي اعتمده
-/// سليمان صراحةً (2026-08-17) بدل التصميم الأولي البدائي.
+/// **التصميم**: بطاقات بيضاء بحواف دائرية وحدود ذهبية فاتحة، شبكة 2×2 على
+/// الحاسوب (عمود واحد على الجوال) بحيث تظهر الأربع دفعة واحدة بلا تمرير
+/// طويل، منطقة رفع واضحة بالضغط لاختيار الملف، وتاريخ "آخر رفع" فقط بصيغة
+/// عربية واضحة - بلا اسم/نوع/امتداد ملف أو أي تفاصيل تقنية - سليمان صراحةً
+/// (2026-08-17).
 ///
 /// **صلاحية الوصول حاليًا**: حساب المدير العام (super_admin) فقط، بنفس
-/// تقييد "خدمات أكاديمية"/"المنسوبين" المجاورين لها بالشريط. خطة مستقبلية
-/// (لم تُنفَّذ بعد): منح نفس الصلاحية لمنسّق الوحدة للشؤون الإدارية أيضًا.
+/// تقييد "خدمات أكاديمية"/"المنسوبين" المجاورين لها بالشريط.
 class UploadHubScreen extends StatefulWidget {
   const UploadHubScreen({super.key});
 
@@ -51,8 +50,7 @@ class UploadHubScreen extends StatefulWidget {
 class _UploadHubScreenState extends State<UploadHubScreen> {
   DateTime? _maleExportDate;
   DateTime? _femaleExportDate;
-  bool _uploadingMale = false;
-  bool _uploadingFemale = false;
+  bool _uploadingCourses = false;
 
   DateTime? _allCollegesMaleDate;
   DateTime? _allCollegesFemaleDate;
@@ -98,123 +96,12 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     }
   }
 
-  /// رفع موحَّد لملف المقررات الدراسية الشامل لشطر واحد - يستخرج منه دفعة
-  /// واحدة كلا العنصرين معًا: (أ) جدول شعب كليتنا الخاصة (شعب "المستفيد"
-  /// منها كلية إدارة الأعمال وكودها ليس ضمن قائمة "مواد خارج الكلية")، و(ب)
-  /// قائمة "مواد خارج الكلية" المعتمَدة لهذا الفصل (شرطها: كودها بقائمة
-  /// الخطة + شعبة فعلية مستفيدها كليتنا).
-  Future<void> _uploadCourses(Shatr shatr) async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['docx'],
-      withData: true,
-    );
-    if (result == null || result.files.single.bytes == null) return;
-    final Uint8List bytes = result.files.single.bytes!;
-
-    setState(() {
-      if (shatr == Shatr.male) {
-        _uploadingMale = true;
-      } else {
-        _uploadingFemale = true;
-      }
-    });
-
-    try {
-      final sections = DocxScheduleParserService.parseSections(bytes);
-      if (sections.isEmpty) {
-        throw Exception('لم يتم العثور على أي شعبة في الملف - تأكد من أنه ملف المقررات الدراسية الشامل الصحيح بصيغة Word (.docx).');
-      }
-
-      final ourSections = sections.where((s) => s.beneficiary.contains('كلية إدارة الأعمال')).toList();
-      final outsideCodes = CourseCatalog.outsideCollegeCourses.map(CourseCatalog.outsideCourseCode).toSet();
-
-      final ownRecords = ourSections.where((s) => !outsideCodes.contains(s.record.courseCode)).map((s) => s.record).toList();
-      final outsideSections = ourSections.where((s) => outsideCodes.contains(s.record.courseCode)).toList();
-      final offeredOutsideCodes = outsideSections.map((s) => s.record.courseCode).toSet();
-      final outsideOptions = CourseCatalog.filterOutsideCoursesByOfferedCodes(offeredOutsideCodes);
-      final outsideRecords = outsideSections.map((s) => s.record).toList()
-        ..sort((a, b) {
-          final c = a.courseCode.compareTo(b.courseCode);
-          return c != 0 ? c : a.sequence.compareTo(b.sequence);
-        });
-
-      if (ownRecords.isEmpty) {
-        throw Exception(
-          'لم يُعثر على أي شعبة "المستفيد" منها كلية إدارة الأعمال ضمن ${sections.length} سطر بالملف. '
-          'تأكد أن الملف يحوي عمود "المستفيد" فعليًا وأن نص الكلية مطابق.',
-        );
-      }
-
-      final exportDate = DocxScheduleParserService.extractExportDate(bytes);
-      final currentExportDate = await CourseScheduleRepository.currentExportDate(shatr);
-      if (exportDate != null && currentExportDate != null && !exportDate.isAfter(currentExportDate)) {
-        final fmt = DateFormat('yyyy/MM/dd');
-        throw Exception(
-          'تاريخ سحب بيانات هذا الملف (${fmt.format(exportDate)}) ليس أحدث من تاريخ آخر نسخة معتمدة '
-          '(${fmt.format(currentExportDate)}). تأكد من رفع أحدث ملف من المنظومة الداخلية.',
-        );
-      }
-
-      // مقارنة النسخة الحالية المخزَّنة بالنسخة الجديدة **قبل** استبدالها -
-      // تُبنى منها إضافات/حذوفات الشعب وتغييرات عضو هيئة التدريس، وتُحفَظ
-      // كسجل تراكمي دائم (لا يُستبدَل أبدًا) لتقرير "التغييرات" - بطلب
-      // سليمان صراحةً (2026-08-17). عدد الطلاب المسجَّلين لا يُقارَن أبدًا.
-      final previousRecords = await CourseScheduleRepository.loadSchedule(shatr);
-      final changes = CourseScheduleDiffService.diff(shatrLabel: shatr.label, previous: previousRecords, current: ownRecords);
-
-      if (!mounted) return;
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('تأكيد الاعتماد'),
-          content: Text(
-            'من إجمالي ${sections.length} سطر بالملف لـ ${shatr.label}'
-            '${exportDate != null ? ' (تاريخ السحب: ${DateFormat('yyyy/MM/dd').format(exportDate)})' : ''}:\n\n'
-            '• ${ownRecords.length} شعبة لجدول كليتنا الخاص.\n'
-            '• ${outsideOptions.length} مادة من قائمة "خارج الكلية" (من أصل ${CourseCatalog.outsideCollegeCourses.length}).\n'
-            '${previousRecords.isNotEmpty ? '• ${changes.length} تغيير مكتشَف عن النسخة السابقة (إضافة/حذف شعب أو تغيير محاضر).\n' : ''}\n'
-            'سيستبدل هذا آخر نسخة معتمدة لكليهما لهذا الشطر بالكامل. هل تريد الاعتماد؟',
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('اعتماد')),
-          ],
-        ),
-      );
-      if (confirmed != true) return;
-
-      await CourseScheduleRepository.saveSchedule(shatr, ownRecords, exportDate: exportDate);
-      await OutsideCourseRepository.save(shatr, outsideOptions, outsideRecords);
-      if (previousRecords.isNotEmpty) await CourseScheduleChangeRepository.appendChanges(changes);
-      await _loadDates();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'تم اعتماد جدول ${shatr.label} (${ownRecords.length} شعبة) ومواد خارج الكلية (${outsideOptions.length} مادة) بنجاح'
-            '${previousRecords.isNotEmpty ? ' - ${changes.length} تغيير سُجِّل بالتقرير' : ''}.',
-          ),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      showUploadErrorDialog(context, 'تعذّر قراءة الملف', '$e');
-    } finally {
-      if (mounted) {
-        setState(() {
-          _uploadingMale = false;
-          _uploadingFemale = false;
-        });
-      }
-    }
-  }
-
-  /// زر تجريبي حصرًا (بلا حفظ أي بيانات) لاختبار دقة التصنيف التلقائي
-  /// لشطر كل شعبة من حقل "المقر" في ملف Word شامل للشطرين معًا (محوَّل من
-  /// ملف PDF واحد) - بطلب سليمان صراحةً (2026-08-17) قبل حذف صندوقَي رفع
-  /// المقررات المنفصلين لكل شطر واستبدالهما بخانة رفع واحدة إن نجحت القراءة.
-  Future<void> _uploadCoursesTrial() async {
+  /// رفع المقررات الدراسية بملف واحد يحوي الشطرين معًا - يحدَّد شطر كل شعبة
+  /// تلقائيًا من حقل "المقر" ([DocxScheduleParserService.parseSectionsWithShatr])
+  /// بدل الاعتماد على ملفين منفصلين مسبقًا، ثم يُحفَظ كل شطر بشكل مستقل تمامًا
+  /// كما كان سابقًا (بلا أي تغيير بمنطق الحفظ/المقارنة نفسه) - سليمان صراحةً
+  /// (2026-08-17) بعد تحقّق فعلي من دقة القراءة (0 فرق عن الرفع المنفصل).
+  Future<void> _uploadCoursesCombined() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['docx'],
@@ -223,9 +110,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     if (result == null || result.files.single.bytes == null) return;
     final Uint8List bytes = result.files.single.bytes!;
     // ملف .docx الحقيقي هو أرشيف ZIP يبدأ دائمًا بالتوقيع "PK" - إن لم يكن
-    // كذلك فهو على الأغلب حُفظ فعليًا بصيغة .doc القديمة أو تالف، فتظهر رسالة
-    // مفهومة بدل خطأ ZipDecoder التقني (سليمان صراحةً بعد رسالة "Could not
-    // find End of Central Directory Record" غير المفهومة 2026-08-17).
+    // كذلك فهو على الأغلب حُفظ فعليًا بصيغة .doc القديمة أو تالف.
     if (bytes.length < 2 || bytes[0] != 0x50 || bytes[1] != 0x4B) {
       if (!mounted) return;
       showUploadErrorDialog(
@@ -237,61 +122,107 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
       return;
     }
 
+    setState(() => _uploadingCourses = true);
     try {
-      final debugMarkers = <String>[];
-      final sections = DocxScheduleParserService.parseSectionsWithShatr(bytes, debugMarkers: debugMarkers);
+      final sections = DocxScheduleParserService.parseSectionsWithShatr(bytes);
       if (sections.isEmpty) {
-        throw Exception('لم يتم العثور على أي شعبة في الملف - تأكد من أنه ملف الحويّة الشامل الصحيح بصيغة Word (.docx).');
+        throw Exception('لم يتم العثور على أي شعبة في الملف - تأكد من أنه ملف المقررات الدراسية الشامل الصحيح بصيغة Word (.docx).');
       }
-      // "ourSections" هنا لا يزال يشمل مواد "خارج الكلية" (مقررات مستفيدها
-      // كليتنا لكنها تُدرَّس فعليًا بكليات أخرى، مثل المهارات العامة) - يجب
-      // استبعادها من تقرير التغييرات كما يفعل الرفع الحقيقي تمامًا (سليمان
-      // صراحةً 2026-08-17: التغييرات تخص مواد كليتنا فقط لا مواد خارج الكلية).
+
       final ourSections = sections.where((s) => s.beneficiary.contains('كلية إدارة الأعمال')).toList();
       final outsideCodes = CourseCatalog.outsideCollegeCourses.map(CourseCatalog.outsideCourseCode).toSet();
-      final ownSections = ourSections.where((s) => !outsideCodes.contains(s.record.courseCode)).toList();
-      final maleRecords = ownSections.where((s) => s.shatr == Shatr.male).map((s) => s.record).toList();
-      final femaleRecords = ownSections.where((s) => s.shatr == Shatr.female).map((s) => s.record).toList();
-      final unknownCount = ownSections.where((s) => s.shatr == null).length;
 
-      // مقارنة فعلية بالتقرير الحقيقي (CourseScheduleDiffService) ضد النسخة
-      // المحفوظة حاليًا لكل شطر - بلا حفظ أي شيء، فقط لعرض التغييرات الفعلية
-      // بين لحظة سحب الملفين المختلفة (سليمان صراحةً 2026-08-17: ملفا
-      // الشطرين المنفصلَين سُحبا 10 صباحًا، والملف المجمَّع سُحب 2 ظهرًا).
+      ({
+        List<CourseSectionRecord> ownRecords,
+        List<String> outsideOptions,
+        List<CourseSectionRecord> outsideRecords,
+      }) buildForShatr(Shatr shatr) {
+        final shatrSections = ourSections.where((s) => s.shatr == shatr).toList();
+        final ownRecords =
+            shatrSections.where((s) => !outsideCodes.contains(s.record.courseCode)).map((s) => s.record).toList();
+        final outsideSections = shatrSections.where((s) => outsideCodes.contains(s.record.courseCode)).toList();
+        final offeredOutsideCodes = outsideSections.map((s) => s.record.courseCode).toSet();
+        final outsideOptions = CourseCatalog.filterOutsideCoursesByOfferedCodes(offeredOutsideCodes);
+        final outsideRecords = outsideSections.map((s) => s.record).toList()
+          ..sort((a, b) {
+            final c = a.courseCode.compareTo(b.courseCode);
+            return c != 0 ? c : a.sequence.compareTo(b.sequence);
+          });
+        return (ownRecords: ownRecords, outsideOptions: outsideOptions, outsideRecords: outsideRecords);
+      }
+
+      final male = buildForShatr(Shatr.male);
+      final female = buildForShatr(Shatr.female);
+
+      if (male.ownRecords.isEmpty && female.ownRecords.isEmpty) {
+        throw Exception(
+          'لم يُعثر على أي شعبة "المستفيد" منها كلية إدارة الأعمال ضمن ${sections.length} سطر بالملف. '
+          'تأكد أن الملف يحوي عمود "المستفيد" فعليًا وأن نص الكلية مطابق.',
+        );
+      }
+
       final previousMale = await CourseScheduleRepository.loadSchedule(Shatr.male);
       final previousFemale = await CourseScheduleRepository.loadSchedule(Shatr.female);
-      final maleChanges = CourseScheduleDiffService.diff(shatrLabel: Shatr.male.label, previous: previousMale, current: maleRecords);
-      final femaleChanges =
-          CourseScheduleDiffService.diff(shatrLabel: Shatr.female.label, previous: previousFemale, current: femaleRecords);
-      final allChanges = [...maleChanges, ...femaleChanges];
+      final changesMale = CourseScheduleDiffService.diff(
+        shatrLabel: Shatr.male.label,
+        previous: previousMale,
+        current: male.ownRecords,
+      );
+      final changesFemale = CourseScheduleDiffService.diff(
+        shatrLabel: Shatr.female.label,
+        previous: previousFemale,
+        current: female.ownRecords,
+      );
 
       if (!mounted) return;
-      await showDialog<void>(
+      final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: Text('نتيجة التجربة - ${allChanges.length} تغيير مكتشَف (بلا حفظ)'),
-          content: SizedBox(
-            width: 560,
-            child: SingleChildScrollView(
-              child: SelectableText(
-                'من إجمالي ${sections.length} سطر بالملف، ${ourSections.length} شعبة "المستفيد" منها كلية إدارة الأعمال:\n\n'
-                '• ${maleRecords.length} شعبة صُنِّفت شطر طلاب (المحفوظ حاليًا: ${previousMale.length}).\n'
-                '• ${femaleRecords.length} شعبة صُنِّفت شطر طالبات (المحفوظ حاليًا: ${previousFemale.length}).\n'
-                '${unknownCount > 0 ? '• $unknownCount شعبة تعذّر تحديد شطرها.\n' : ''}\n'
-                '— التغييرات المكتشَفة عن النسخة المحفوظة حاليًا (${allChanges.length}) —\n'
-                '${allChanges.isEmpty ? '(لا توجد أي تغييرات - الملفان متطابقان فعليًا)' : allChanges.map((c) => '• ${c.shatr}: ${c.note}').join('\n')}',
-              ),
-            ),
+          title: const Text('تأكيد الاعتماد'),
+          content: Text(
+            'من إجمالي ${sections.length} سطر بالملف:\n\n'
+            '• ${male.ownRecords.length} شعبة لشطر الطلاب (${male.outsideOptions.length} مادة خارج الكلية).\n'
+            '• ${female.ownRecords.length} شعبة لشطر الطالبات (${female.outsideOptions.length} مادة خارج الكلية).\n'
+            'سيستبدل هذا آخر نسخة معتمدة للشطرين بالكامل. هل تريد الاعتماد؟',
           ),
-          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق'))],
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('اعتماد')),
+          ],
         ),
       );
+      if (confirmed != true) return;
+
+      await CourseScheduleRepository.saveSchedule(Shatr.male, male.ownRecords);
+      await CourseScheduleRepository.saveSchedule(Shatr.female, female.ownRecords);
+      await OutsideCourseRepository.save(Shatr.male, male.outsideOptions, male.outsideRecords);
+      await OutsideCourseRepository.save(Shatr.female, female.outsideOptions, female.outsideRecords);
+      if (previousMale.isNotEmpty) await CourseScheduleChangeRepository.appendChanges(changesMale);
+      if (previousFemale.isNotEmpty) await CourseScheduleChangeRepository.appendChanges(changesFemale);
+      await _loadDates();
+      if (!mounted) return;
+      _showSuccessSnackBar('تم رفع الملف بنجاح');
     } catch (e) {
       if (!mounted) return;
-      // طول البايتات المستلَمة فعليًا يُضاف للرسالة - لتشخيص احتمال قطع
-      // المتصفح لقراءة الملف قبل اكتمالها (خصوصًا الملفات الكبيرة) رغم أن
-      // الملف صحيح 100% عند فتحه مباشرة من القرص (سليمان صراحةً 2026-08-17).
-      showUploadErrorDialog(context, 'تعذّر قراءة الملف', '$e\n\nحجم البيانات المستلَمة من المتصفح: ${bytes.length} بايت.');
+      showUploadErrorDialog(context, 'تعذّر قراءة الملف', '$e');
+    } finally {
+      if (mounted) setState(() => _uploadingCourses = false);
+    }
+  }
+
+  Future<void> _clearCourses() async {
+    if (!await _confirmClear('جدول المقررات الدراسية (الشطرين)')) return;
+    try {
+      await CourseScheduleRepository.clear(Shatr.male);
+      await CourseScheduleRepository.clear(Shatr.female);
+      await OutsideCourseRepository.clear(Shatr.male);
+      await OutsideCourseRepository.clear(Shatr.female);
+      await _loadDates();
+      if (!mounted) return;
+      _showSuccessSnackBar('تم تفريغ جدول المقررات بنجاح');
+    } catch (e) {
+      if (!mounted) return;
+      showUploadErrorDialog(context, 'تعذّر التفريغ', '$e');
     }
   }
 
@@ -302,9 +233,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
       await AdvisingReportRepository.clear(Shatr.female, kind: kind);
       await _loadDates();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تم تفريغ $label بنجاح.')),
-      );
+      _showSuccessSnackBar('تم تفريغ $label بنجاح');
     } catch (e) {
       if (!mounted) return;
       showUploadErrorDialog(context, 'تعذّر التفريغ', '$e');
@@ -317,89 +246,11 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
       await AdvisingScheduleRepository.clearAll();
       await _loadDates();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم تفريغ جدول مواعيد الإرشاد بنجاح.')),
-      );
+      _showSuccessSnackBar('تم تفريغ جدول مواعيد الإرشاد بنجاح');
     } catch (e) {
       if (!mounted) return;
       showUploadErrorDialog(context, 'تعذّر التفريغ', '$e');
     }
-  }
-
-  /// تقرير التغييرات التراكمي (كل رفعات المقررات الدراسية) - إضافة/حذف
-  /// شعب وتغييرات عضو هيئة التدريس فقط، مرتَّبة الأحدث أولًا.
-  Future<void> _showChangesReport() async {
-    final changes = await CourseScheduleChangeRepository.loadAll();
-    if (!mounted) return;
-    final fmt = DateFormat('yyyy/MM/dd HH:mm');
-    showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('تقرير التغييرات (${changes.length})'),
-        content: SizedBox(
-          width: 620,
-          child: changes.isEmpty
-              ? const Text('لا توجد تغييرات مسجَّلة بعد - تُضاف تلقائيًا بعد أول رفعة ثانية لنفس الشطر.')
-              : SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (final c in changes)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Icon(
-                                switch (c.type) {
-                                  CourseScheduleChangeType.added => Icons.add_circle_outline,
-                                  CourseScheduleChangeType.removed => Icons.remove_circle_outline,
-                                  CourseScheduleChangeType.instructorChanged => Icons.person_outline,
-                                },
-                                size: 18,
-                                color: switch (c.type) {
-                                  CourseScheduleChangeType.added => Colors.green.shade700,
-                                  CourseScheduleChangeType.removed => Colors.red.shade700,
-                                  CourseScheduleChangeType.instructorChanged => Colors.orange.shade800,
-                                },
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(c.note, style: const TextStyle(fontSize: 12.5)),
-                                    Text(
-                                      '${c.shatr}${c.detectedAt != null ? ' - ${fmt.format(c.detectedAt!)}' : ''}',
-                                      style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-        ),
-        actions: [
-          if (changes.isNotEmpty)
-            TextButton.icon(
-              onPressed: () async {
-                if (!await _confirmClear('تقرير التغييرات')) return;
-                await CourseScheduleChangeRepository.clear();
-                if (!context.mounted) return;
-                Navigator.pop(context);
-              },
-              icon: Icon(Icons.delete_sweep_outlined, color: Colors.red.shade700, size: 18),
-              label: Text('تفريغ التقرير', style: TextStyle(color: Colors.red.shade700)),
-            ),
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق')),
-        ],
-      ),
-    );
   }
 
   Future<bool> _confirmClear(String label) async {
@@ -407,7 +258,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text('تفريغ $label'),
-        content: const Text('سيُحذَف كل ما هو مخزَّن حاليًا لهذا العنصر (لتسهيل إعادة اختبار الرفع). هل تريد المتابعة؟'),
+        content: const Text('سيُحذَف كل ما هو مخزَّن حاليًا لهذا العنصر. هل تريد المتابعة؟'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
           FilledButton(
@@ -421,9 +272,26 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     return confirmed == true;
   }
 
+  /// رسالة نجاح مؤقتة تختفي تلقائيًا - بلا خانة حالة دائمة بالواجهة.
+  void _showSuccessSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 3),
+        backgroundColor: AppColors.green,
+        behavior: SnackBarBehavior.floating,
+        content: Row(
+          children: [
+            const Icon(Icons.check_circle, color: Colors.white, size: 20),
+            const SizedBox(width: 10),
+            Text(message, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final fmt = DateFormat('yyyy/MM/dd');
     return PortalScaffold(
       title: 'رفع ملفات المنظومة الداخلية',
       navItems: buildAdminNavItems(context, current: 'upload-hub'),
@@ -432,155 +300,128 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
           : SingleChildScrollView(
               child: Center(
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1500),
+                  constraints: const BoxConstraints(maxWidth: 1400),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       _headerBanner(),
                       Padding(
                         padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _cardShell(
-                              icon: Icons.menu_book_outlined,
-                              title: 'المقررات الدراسية',
-                              subtitle: 'يستخرج تلقائيًا جدول شعب كليتنا + قائمة مواد خارج الكلية معًا من نفس الملف.',
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  LayoutBuilder(builder: (context, constraints) {
-                                    final narrow = constraints.maxWidth < 560;
-                                    final maleBox = _uploadSlotBox(
-                                      icon: Icons.man_outlined,
-                                      title: 'رفع المقررات الدراسية - طلاب',
-                                      uploading: _uploadingMale,
-                                      dates: [(label: 'آخر رفع', date: _maleExportDate)],
-                                      fmt: fmt,
-                                      onPressed: () => _uploadCourses(Shatr.male),
-                                      onClear: () async {
-                                        if (!await _confirmClear('جدول الطلاب ومواد خارج الكلية - طلاب')) return;
-                                        await CourseScheduleRepository.clear(Shatr.male);
-                                        await OutsideCourseRepository.clear(Shatr.male);
-                                        await _loadDates();
-                                      },
-                                    );
-                                    final femaleBox = _uploadSlotBox(
-                                      icon: Icons.woman_outlined,
-                                      title: 'رفع المقررات الدراسية - طالبات',
-                                      uploading: _uploadingFemale,
-                                      dates: [(label: 'آخر رفع', date: _femaleExportDate)],
-                                      fmt: fmt,
-                                      onPressed: () => _uploadCourses(Shatr.female),
-                                      onClear: () async {
-                                        if (!await _confirmClear('جدول الطالبات ومواد خارج الكلية - طالبات')) return;
-                                        await CourseScheduleRepository.clear(Shatr.female);
-                                        await OutsideCourseRepository.clear(Shatr.female);
-                                        await _loadDates();
-                                      },
-                                    );
-                                    // الطلاب دائمًا قبل الطالبات (بطلب سليمان صراحةً) - في صف RTL
-                                    // العنصر الأول بترتيب الأبناء يظهر يمينًا (أول ما يُقرأ)، فيجب
-                                    // أن يكون صندوق الطلاب أول عنصر بالقائمة ليظهر يمينًا فعليًا.
-                                    if (narrow) {
-                                      return Column(children: [maleBox, const SizedBox(height: 12), femaleBox]);
-                                    }
-                                    return Row(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Expanded(child: maleBox),
-                                        const SizedBox(width: 14),
-                                        Expanded(child: femaleBox),
-                                      ],
-                                    );
-                                  }),
-                                  const SizedBox(height: 14),
-                                  _fullWidthOutlinedButton(
-                                    icon: Icons.science_outlined,
-                                    label: 'رفع المقررات الدراسية (للتجربة)',
-                                    onPressed: _uploadCoursesTrial,
-                                  ),
-                                  const SizedBox(height: 14),
-                                  _fullWidthOutlinedButton(
-                                    icon: Icons.fact_check_outlined,
-                                    label: 'عرض تقرير التغييرات (إضافة/حذف شعب، تغيير محاضرين)',
-                                    onPressed: _showChangesReport,
-                                  ),
-                                ],
-                              ),
+                        child: LayoutBuilder(builder: (context, constraints) {
+                          final wide = constraints.maxWidth >= 780;
+                          final coursesCard = _uploadCard(
+                            icon: Icons.menu_book_outlined,
+                            title: 'المقررات الدراسية',
+                            subtitle: 'لاستخراج شعب المقررات الدراسية.',
+                            uploading: _uploadingCourses,
+                            dates: [
+                              (label: 'آخر رفع - شطر الطلاب', date: _maleExportDate),
+                              (label: 'آخر رفع - شطر الطالبات', date: _femaleExportDate),
+                            ],
+                            onPressed: _uploadCoursesCombined,
+                            onClear: (_maleExportDate != null || _femaleExportDate != null) ? _clearCourses : null,
+                          );
+                          final casesCard = _uploadCard(
+                            icon: Icons.groups_outlined,
+                            title: 'حالات الإرشاد',
+                            subtitle: 'رفع ملف حالات الإرشاد.',
+                            uploading: _uploadingAllColleges,
+                            dates: [
+                              (label: 'آخر رفع - شطر الطلاب', date: _allCollegesMaleDate),
+                              (label: 'آخر رفع - شطر الطالبات', date: _allCollegesFemaleDate),
+                            ],
+                            onPressed: () => runUploadAllColleges(
+                              context: context,
+                              setUploading: (v) => setState(() => _uploadingAllColleges = v),
+                              onSuccess: () async {
+                                await _loadDates();
+                                if (mounted) _showSuccessSnackBar('تم رفع الملف بنجاح');
+                              },
                             ),
-                            const SizedBox(height: 12),
-                            _cardShell(
-                              icon: Icons.groups_outlined,
-                              title: 'حالات الإرشاد',
-                              subtitle: 'تقرير "طلاب على غير مرشدهم" الرسمي لكل الجامعة.',
-                              child: _uploadSlotBox(
-                                icon: Icons.groups_outlined,
-                                title: 'رفع حالات الإرشاد',
-                                buttonLabel: 'رفع ملف "كل الكليات"',
-                                uploading: _uploadingAllColleges,
-                                dates: [
-                                  (label: 'آخر رفع - شطر الطلاب', date: _allCollegesMaleDate),
-                                  (label: 'آخر رفع - شطر الطالبات', date: _allCollegesFemaleDate),
-                                ],
-                                fmt: fmt,
-                                onPressed: () => runUploadAllColleges(
-                                  context: context,
-                                  setUploading: (v) => setState(() => _uploadingAllColleges = v),
-                                  onSuccess: _loadDates,
+                            onClear: (_allCollegesMaleDate != null || _allCollegesFemaleDate != null)
+                                ? () => _clearKindBoth(AdvisingReportKind.allColleges, 'حالات الإرشاد')
+                                : null,
+                          );
+                          final disabilityCard = _uploadCard(
+                            icon: Icons.accessible_outlined,
+                            title: 'طلبة ذوو الإعاقة',
+                            subtitle: 'رفع الملف المعتمد لطلبة ذوي الإعاقة.',
+                            uploading: _uploadingHealth,
+                            dates: [
+                              (label: 'آخر رفع - شطر الطلاب', date: _healthMaleDate),
+                              (label: 'آخر رفع - شطر الطالبات', date: _healthFemaleDate),
+                            ],
+                            onPressed: () => runUploadHealth(
+                              context: context,
+                              setUploading: (v) => setState(() => _uploadingHealth = v),
+                              onSuccess: () async {
+                                await _loadDates();
+                                if (mounted) _showSuccessSnackBar('تم رفع الملف بنجاح');
+                              },
+                            ),
+                            onClear: (_healthMaleDate != null || _healthFemaleDate != null)
+                                ? () => _clearKindBoth(AdvisingReportKind.health, 'طلبة ذوو الإعاقة')
+                                : null,
+                          );
+                          final scheduleCard = _uploadCard(
+                            icon: Icons.event_available_outlined,
+                            title: 'جداول مواعيد الإرشاد',
+                            subtitle: 'رفع جداول مواعيد الإرشاد (حتى 10 ملفات).',
+                            uploading: _uploadingSchedule,
+                            dates: [(label: 'آخر رفع', date: _scheduleLatestDate)],
+                            buttonLabel: 'رفع الملفات',
+                            dropzoneHint: 'اسحب الملفات هنا أو اضغط للاختيار',
+                            onPressed: () => runUploadAdvisingSchedule(
+                              context: context,
+                              setUploading: (v) => setState(() => _uploadingSchedule = v),
+                              onSuccess: () async {
+                                await _loadDates();
+                                if (mounted) _showSuccessSnackBar('تم رفع الملفات بنجاح');
+                              },
+                            ),
+                            onClear: _scheduleLatestDate != null ? _clearSchedule : null,
+                          );
+
+                          // شبكة 2×2: أعلى اليمين=المقررات، أعلى اليسار=حالات
+                          // الإرشاد، أسفل اليمين=ذوو الإعاقة، أسفل اليسار=مواعيد
+                          // الإرشاد - في RTL أول عنصر بالصف يظهر يمينًا.
+                          if (!wide) {
+                            return Column(children: [
+                              coursesCard,
+                              const SizedBox(height: 12),
+                              casesCard,
+                              const SizedBox(height: 12),
+                              disabilityCard,
+                              const SizedBox(height: 12),
+                              scheduleCard,
+                            ]);
+                          }
+                          return Column(
+                            children: [
+                              IntrinsicHeight(
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    Expanded(child: coursesCard),
+                                    const SizedBox(width: 14),
+                                    Expanded(child: casesCard),
+                                  ],
                                 ),
-                                onClear: (_allCollegesMaleDate != null || _allCollegesFemaleDate != null)
-                                    ? () => _clearKindBoth(AdvisingReportKind.allColleges, 'رفع حالات الإرشاد')
-                                    : null,
                               ),
-                            ),
-                            const SizedBox(height: 12),
-                            _cardShell(
-                              icon: Icons.accessible_outlined,
-                              title: 'طلبة ذوو الإعاقة',
-                              subtitle: 'ملف حالات ذوي الإعاقة الرسمي.',
-                              child: _uploadSlotBox(
-                                icon: Icons.accessible_outlined,
-                                title: 'رفع طلبة ذوي الإعاقة',
-                                buttonLabel: 'رفع طلبة ذوي الإعاقة',
-                                uploading: _uploadingHealth,
-                                dates: [
-                                  (label: 'آخر رفع - شطر الطلاب', date: _healthMaleDate),
-                                  (label: 'آخر رفع - شطر الطالبات', date: _healthFemaleDate),
-                                ],
-                                fmt: fmt,
-                                onPressed: () => runUploadHealth(
-                                  context: context,
-                                  setUploading: (v) => setState(() => _uploadingHealth = v),
-                                  onSuccess: _loadDates,
+                              const SizedBox(height: 14),
+                              IntrinsicHeight(
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    Expanded(child: disabilityCard),
+                                    const SizedBox(width: 14),
+                                    Expanded(child: scheduleCard),
+                                  ],
                                 ),
-                                onClear: (_healthMaleDate != null || _healthFemaleDate != null)
-                                    ? () => _clearKindBoth(AdvisingReportKind.health, 'رفع طلبة ذوي الإعاقة')
-                                    : null,
                               ),
-                            ),
-                            const SizedBox(height: 12),
-                            _cardShell(
-                              icon: Icons.event_available_outlined,
-                              title: 'جدول مواعيد الإرشاد لكل مرشد',
-                              subtitle: 'حتى 10 ملفات دفعة واحدة، كل ملف يحدَّد قسمه/شطره من محتواه.',
-                              child: _uploadSlotBox(
-                                icon: Icons.event_available_outlined,
-                                title: 'رفع جدول مواعيد الإرشاد',
-                                buttonLabel: 'رفع جدول مواعيد الإرشاد',
-                                uploading: _uploadingSchedule,
-                                dates: [(label: 'آخر رفع (أي قسم/شطر)', date: _scheduleLatestDate)],
-                                fmt: fmt,
-                                onPressed: () => runUploadAdvisingSchedule(
-                                  context: context,
-                                  setUploading: (v) => setState(() => _uploadingSchedule = v),
-                                  onSuccess: _loadDates,
-                                ),
-                                onClear: _scheduleLatestDate != null ? _clearSchedule : null,
-                              ),
-                            ),
-                          ],
-                        ),
+                            ],
+                          );
+                        }),
                       ),
                     ],
                   ),
@@ -592,8 +433,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
 
   // ==================== عناصر التصميم ====================
 
-  /// رأس مصرَّف داكن بخط ذهبي وشارة ماسية - نفس التصميم المرجعي الذي اعتمده
-  /// سليمان صراحةً بدل العنوان النصي البسيط الأولي.
+  /// رأس مصرَّف داكن بخط ذهبي وشارة ماسية، مع زخرفة أقواس ذهبية بزوايا الرأس.
   Widget _headerBanner() {
     return ClipRRect(
       borderRadius: BorderRadius.circular(4),
@@ -601,7 +441,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
         children: [
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
+            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.centerRight,
@@ -614,32 +454,18 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
             ),
             child: Column(
               children: [
-                Text(
+                const Text(
                   'رفع ملفات الإرشاد الأكاديمي',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.bold),
+                  style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
                 ),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SizedBox(width: 90, child: Divider(color: AppColors.gold.withValues(alpha: 0.6), thickness: 1)),
-                    const SizedBox(width: 10),
-                    Icon(Icons.circle, size: 5, color: AppColors.gold),
-                    const SizedBox(width: 10),
-                    Text(
-                      'إدارة رفع ملفات التقارير والبيانات الرسمية',
-                      style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 14),
-                    ),
-                  ],
+                const SizedBox(height: 6),
+                Text(
+                  'إدارة ملفات الرفع المعتمدة',
+                  style: TextStyle(color: AppColors.goldLight, fontSize: 13),
                 ),
               ],
             ),
-          ),
-          Positioned(
-            top: 0,
-            right: 0,
-            child: Icon(Icons.diamond_outlined, color: AppColors.gold, size: 14),
           ),
           Positioned(top: -70, left: -70, child: _cornerArc()),
           Positioned(top: -70, right: -70, child: _cornerArc(flip: true)),
@@ -648,8 +474,6 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     );
   }
 
-  /// زخرفة القوس الذهبي بزوايا الرأس - نفس الشكل المرجعي الذي اعتمده سليمان
-  /// صراحةً (منحنيات ذهبية متداخلة أعلى يمين ويسار الرأس).
   Widget _cornerArc({bool flip = false}) {
     final ring = Container(
       width: 160,
@@ -677,35 +501,42 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     );
   }
 
-  Widget _goldIconBadge(IconData icon, {double size = 48}) {
+  Widget _goldIconBadge(IconData icon, {double size = 46}) {
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: AppColors.gold.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.gold.withValues(alpha: 0.5)),
+        color: const Color(0xFFFFFDF6),
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(color: AppColors.goldLight),
       ),
       alignment: Alignment.center,
-      child: Icon(icon, color: AppColors.greenDark, size: size * 0.5),
+      child: Icon(icon, color: AppColors.green, size: size * 0.46),
     );
   }
 
-  /// بطاقة قسم موحَّدة (حدود ذهبية، خلفية بيضاء، ظل خفيف) - رأسها شارة أيقونة
-  /// ذهبية + عنوان/وصف، ومحتواها المُمرَّر بعدها.
-  Widget _cardShell({
+  /// بطاقة رفع موحَّدة لكل البطاقات الأربع: رأس (شارة+عنوان+وصف مختصر)،
+  /// منطقة رفع بالضغط لاختيار الملف، ثم "آخر رفع" فقط + أزرار الرفع/التفريغ.
+  /// بلا اسم/نوع/امتداد ملف أو أي خانة حالة تقنية - سليمان صراحةً 2026-08-17.
+  Widget _uploadCard({
     required IconData icon,
     required String title,
     required String subtitle,
-    required Widget child,
+    required bool uploading,
+    required List<({String label, DateTime? date})> dates,
+    required VoidCallback onPressed,
+    required VoidCallback? onClear,
+    String buttonLabel = 'رفع الملف',
+    String dropzoneHint = 'اسحب الملف هنا أو اضغط للاختيار',
   }) {
+    final fmt = DateFormat('d MMMM yyyy، h:mm a', 'ar');
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.gold.withValues(alpha: 0.5)),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, 3))],
+        borderRadius: BorderRadius.circular(17),
+        border: Border.all(color: AppColors.goldLight),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 14, offset: const Offset(0, 5))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -713,10 +544,6 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // الشارة أولًا (أقصى اليمين في RTL) ثم العنوان ملتصقًا بها مباشرة
-              // - كانت Expanded تسحب العنوان لعرض الصف كاملاً فتبتعد الشارة
-              // لأقصى اليسار بفراغ كبير بينهما (سليمان صراحةً: دائرة برتقالية
-              // حول الشارة المنعزلة).
               _goldIconBadge(icon),
               const SizedBox(width: 12),
               Expanded(
@@ -724,142 +551,136 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17, color: AppColors.greenDark)),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 3),
                     Text(subtitle, style: TextStyle(color: Colors.grey.shade600, fontSize: 12.5)),
                   ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          child,
-        ],
-      ),
-    );
-  }
-
-  /// صندوق رفع موحَّد - نفس الشكل والألوان لكل بطاقات الرفع الأربعة بلا
-  /// استثناء (شارة أيقونة، عنوان، زر اختيار ملف، فاصل، صفوف تواريخ) - كان
-  /// لدى بطاقات "كل الكليات/ذوو الإعاقة/مواعيد الإرشاد" شكل مختلف تمامًا
-  /// (صف ممدود بفراغ كبير) عن صندوقَي "طلاب/طالبات" فبدت الصفحة غير موحَّدة
-  /// الهوية - سليمان صراحةً (2026-08-17): "لم تلتزم بنفس التصميم والطريقة".
-  Widget _uploadSlotBox({
-    required IconData icon,
-    required String title,
-    required bool uploading,
-    required List<({String label, DateTime? date})> dates,
-    required DateFormat fmt,
-    required VoidCallback onPressed,
-    required VoidCallback? onClear,
-    String buttonLabel = 'اختر ملفًا للرفع',
-  }) {
-    final hasAnyDate = dates.any((d) => d.date != null);
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.gold.withValues(alpha: 0.3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
+          const SizedBox(height: 12),
+          _dropzone(uploading: uploading, hint: dropzoneHint, onTap: uploading ? null : onPressed),
+          const SizedBox(height: 12),
           Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // ترتيب القراءة الصحيح: الأيقونة أولًا (أقصى اليمين)، ثم النص
-              // مباشرة بعدها - نفس التصميم المرجعي حيث زر التفريغ يظهر بجانب
-              // زر الرفع بالأسفل وليس بجانب العنوان (سليمان صراحةً 2026-08-17
-              // بعد مراجعة صورة التصميم المرجعي مباشرة).
-              _goldIconBadge(icon, size: 36),
-              const SizedBox(width: 10),
-              Flexible(
-                child: Text(
-                  title,
-                  textAlign: TextAlign.right,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              // قاعدة ثابتة بكل الموقع: زر التفريغ دائمًا يسار المستطيل (الزر
-              // الرئيسي) - لذا الزر الرئيسي أولاً (يمينًا بـ RTL) وزر التفريغ
-              // بعده (يسار الزر مباشرة) - سليمان صراحةً 2026-08-17.
-              //
-              // عرض ثابت (لا يمتد بعرض الصفحة) = نفس عرض شارة شعار الموقع
-              // أعلى يمين الصفحة (764×148px بارتفاع عرض 40 = ~206px + حشوة
-              // 20px ≈ 226px) - سليمان صراحةً 2026-08-17 بعد مقارنة صريحة.
-              // الارتفاع يبقى كما هو (42px) بلا تغيير.
               SizedBox(
-                width: 226,
                 height: 42,
                 child: FilledButton.icon(
                   onPressed: uploading ? null : onPressed,
                   icon: uploading
                       ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                       : const Icon(Icons.upload_file, size: 18),
-                  label: Text(buttonLabel, overflow: TextOverflow.ellipsis),
+                  label: Text(buttonLabel),
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.greenDark,
                     side: BorderSide(color: AppColors.gold, width: 1.2),
+                    padding: const EdgeInsets.symmetric(horizontal: 18),
                   ),
                 ),
               ),
-              if (hasAnyDate && onClear != null)
+              if (onClear != null)
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: IconButton(
-                    tooltip: 'تفريغ البيانات (للاختبار)',
+                    tooltip: 'تفريغ',
                     onPressed: onClear,
                     icon: Icon(Icons.delete_sweep_outlined, color: Colors.red.shade700, size: 20),
                     visualDensity: VisualDensity.compact,
                   ),
                 ),
+              const Spacer(),
+              Expanded(
+                flex: 2,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final d in dates)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 2),
+                        child: RichText(
+                          textAlign: TextAlign.end,
+                          text: TextSpan(
+                            style: TextStyle(color: Colors.grey.shade600, fontSize: 11.5),
+                            children: [
+                              TextSpan(text: '${dates.length > 1 ? d.label : 'آخر رفع'}: '),
+                              TextSpan(
+                                text: d.date != null ? fmt.format(d.date!) : 'لا يوجد رفع سابق',
+                                style: TextStyle(color: Colors.grey.shade800, fontWeight: FontWeight.w600),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 8),
-          const Divider(height: 1),
-          const SizedBox(height: 6),
-          // العناصر متلاصقة كتلة واحدة يمينًا (بلا Spacer يمدّها لعرض الصندوق
-          // كاملاً) - كانت تُنتج فراغًا أفقيًا كبيرًا جدًا بالصناديق الممتدة
-          // عرض البطاقة كاملة (سليمان صراحةً 2026-08-17: "شاهد التشتت الكبير").
-          for (final d in dates)
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Icon(Icons.access_time, size: 14, color: Colors.grey.shade500),
-                  const SizedBox(width: 6),
-                  Text('${d.label}: ', style: TextStyle(color: Colors.grey.shade600, fontSize: 11.5)),
-                  Text(
-                    d.date != null ? fmt.format(d.date!) : 'لم يُرفع بعد',
-                    style: TextStyle(color: Colors.grey.shade800, fontSize: 11.5, fontWeight: FontWeight.w600),
-                  ),
-                ],
-              ),
-            ),
         ],
       ),
     );
   }
 
-  Widget _fullWidthOutlinedButton({required IconData icon, required String label, required VoidCallback onPressed}) {
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton.icon(
-        onPressed: onPressed,
-        icon: Icon(icon, size: 16),
-        label: Text(label),
-        style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.greenDark,
-          side: BorderSide(color: AppColors.gold),
-          padding: const EdgeInsets.symmetric(vertical: 12),
+  /// منطقة رفع بحدود متقطّعة تُضغَط لاختيار الملف - بلا سحب/إفلات حقيقي حاليًا
+  /// (يحتاج مكتبة إضافية غير موجودة بالمشروع)، لكن بنفس الشكل البصري المطلوب.
+  Widget _dropzone({required bool uploading, required String hint, required VoidCallback? onTap}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(13),
+      child: CustomPaint(
+        painter: _DashedBorderPainter(color: const Color(0xFFAAB6B0)),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFBFCFB),
+            borderRadius: BorderRadius.circular(13),
+          ),
+          child: Column(
+            children: [
+              uploading
+                  ? const SizedBox(width: 30, height: 30, child: CircularProgressIndicator(strokeWidth: 2.5))
+                  : Icon(Icons.cloud_upload_outlined, size: 32, color: AppColors.green),
+              const SizedBox(height: 6),
+              Text(
+                uploading ? 'جارٍ الرفع...' : hint,
+                style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF52615C), fontSize: 13.5),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
+}
+
+/// رسم حدّ متقطّع (Flutter لا يدعم BorderStyle.dashed مباشرة).
+class _DashedBorderPainter extends CustomPainter {
+  final Color color;
+  const _DashedBorderPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 1.4
+      ..style = PaintingStyle.stroke;
+    final rrect = RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(13));
+    final path = Path()..addRRect(rrect);
+    const dashWidth = 6.0;
+    const dashSpace = 4.0;
+    for (final metric in path.computeMetrics()) {
+      var distance = 0.0;
+      while (distance < metric.length) {
+        final next = distance + dashWidth;
+        canvas.drawPath(metric.extractPath(distance, next.clamp(0, metric.length)), paint);
+        distance = next + dashSpace;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashedBorderPainter oldDelegate) => oldDelegate.color != color;
 }
