@@ -699,16 +699,9 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
           const SizedBox(height: 10),
           Row(
             children: [
-              if (hasAnyDate && onClear != null)
-                Padding(
-                  padding: const EdgeInsets.only(left: 8),
-                  child: IconButton(
-                    tooltip: 'تفريغ البيانات (للاختبار)',
-                    onPressed: onClear,
-                    icon: Icon(Icons.delete_sweep_outlined, color: Colors.red.shade700, size: 20),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ),
+              // قاعدة ثابتة بكل الموقع: زر التفريغ دائمًا يسار المستطيل (الزر
+              // الرئيسي) - لذا الزر الرئيسي Expanded أولًا (يمينًا بـ RTL)
+              // وزر التفريغ بعده (يسار الزر مباشرة) - سليمان صراحةً 2026-08-17.
               Expanded(
                 child: FilledButton.icon(
                   onPressed: uploading ? null : onPressed,
@@ -719,6 +712,16 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                   style: FilledButton.styleFrom(backgroundColor: AppColors.greenDark, minimumSize: const Size.fromHeight(42)),
                 ),
               ),
+              if (hasAnyDate && onClear != null)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: IconButton(
+                    tooltip: 'تفريغ البيانات (للاختبار)',
+                    onPressed: onClear,
+                    icon: Icon(Icons.delete_sweep_outlined, color: Colors.red.shade700, size: 20),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 8),
