@@ -244,38 +244,37 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
         throw Exception('لم يتم العثور على أي شعبة في الملف - تأكد من أنه ملف الحويّة الشامل الصحيح بصيغة Word (.docx).');
       }
       final ourSections = sections.where((s) => s.beneficiary.contains('كلية إدارة الأعمال')).toList();
-      final maleCount = ourSections.where((s) => s.shatr == Shatr.male).length;
-      final femaleCount = ourSections.where((s) => s.shatr == Shatr.female).length;
+      final maleRecords = ourSections.where((s) => s.shatr == Shatr.male).map((s) => s.record).toList();
+      final femaleRecords = ourSections.where((s) => s.shatr == Shatr.female).map((s) => s.record).toList();
       final unknownCount = ourSections.where((s) => s.shatr == null).length;
 
-      // إحصاء تشخيصي بكل الكليات (لا كليتنا فقط) - يكشف هل الشطر "طالبات"
-      // اكتُشف بأي مكان بالملف إطلاقًا، بمعزل عن فلترة "المستفيد" - بطلب
-      // ضمني بعد ظهور 0 شعبة طالبات بأول تجربتين (سليمان 2026-08-17).
-      final allMale = sections.where((s) => s.shatr == Shatr.male).length;
-      final allFemale = sections.where((s) => s.shatr == Shatr.female).length;
-      final allUnknown = sections.where((s) => s.shatr == null).length;
-      final sampleBeneficiaries = sections.map((s) => s.beneficiary).toSet().take(6).join(' | ');
+      // مقارنة فعلية بالتقرير الحقيقي (CourseScheduleDiffService) ضد النسخة
+      // المحفوظة حاليًا لكل شطر - بلا حفظ أي شيء، فقط لعرض التغييرات الفعلية
+      // بين لحظة سحب الملفين المختلفة (سليمان صراحةً 2026-08-17: ملفا
+      // الشطرين المنفصلَين سُحبا 10 صباحًا، والملف المجمَّع سُحب 2 ظهرًا).
+      final previousMale = await CourseScheduleRepository.loadSchedule(Shatr.male);
+      final previousFemale = await CourseScheduleRepository.loadSchedule(Shatr.female);
+      final maleChanges = CourseScheduleDiffService.diff(shatrLabel: Shatr.male.label, previous: previousMale, current: maleRecords);
+      final femaleChanges =
+          CourseScheduleDiffService.diff(shatrLabel: Shatr.female.label, previous: previousFemale, current: femaleRecords);
+      final allChanges = [...maleChanges, ...femaleChanges];
 
       if (!mounted) return;
       await showDialog<void>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('نتيجة التجربة (بلا حفظ)'),
-          content: SingleChildScrollView(
-            child: SelectableText(
-              'من إجمالي ${sections.length} سطر بالملف، ${ourSections.length} شعبة "المستفيد" منها كلية إدارة الأعمال:\n\n'
-              '• $maleCount شعبة صُنِّفت شطر طلاب.\n'
-              '• $femaleCount شعبة صُنِّفت شطر طالبات.\n'
-              '${unknownCount > 0 ? '• $unknownCount شعبة تعذّر تحديد شطرها.\n' : ''}\n'
-              '${unknownCount == 0 && maleCount > 0 && femaleCount > 0 ? 'القراءة تبدو سليمة ✓' : 'راجع النتيجة قبل الاعتماد على هذا المسار.'}\n\n'
-              '— تشخيص إضافي (كل الكليات وليس كليتنا فقط) —\n'
-              'إجمالي كل الشعب بالملف: ${sections.length}\n'
-              '• $allMale شطر طلاب.\n'
-              '• $allFemale شطر طالبات.\n'
-              '• $allUnknown غير محدَّد.\n\n'
-              'عيّنة من نصوص "المستفيد" الفعلية بالملف:\n$sampleBeneficiaries\n\n'
-              '— نص حقل "المقر" الخام كما استُخرج من الملف (${debugMarkers.length} عيّنة) —\n'
-              '${debugMarkers.isEmpty ? "(لم يُعثر على أي نص يحوي كلمة المقر إطلاقًا بالملف)" : debugMarkers.map((m) => '"$m"').join('\n')}',
+          title: Text('نتيجة التجربة - ${allChanges.length} تغيير مكتشَف (بلا حفظ)'),
+          content: SizedBox(
+            width: 560,
+            child: SingleChildScrollView(
+              child: SelectableText(
+                'من إجمالي ${sections.length} سطر بالملف، ${ourSections.length} شعبة "المستفيد" منها كلية إدارة الأعمال:\n\n'
+                '• ${maleRecords.length} شعبة صُنِّفت شطر طلاب (المحفوظ حاليًا: ${previousMale.length}).\n'
+                '• ${femaleRecords.length} شعبة صُنِّفت شطر طالبات (المحفوظ حاليًا: ${previousFemale.length}).\n'
+                '${unknownCount > 0 ? '• $unknownCount شعبة تعذّر تحديد شطرها.\n' : ''}\n'
+                '— التغييرات المكتشَفة عن النسخة المحفوظة حاليًا (${allChanges.length}) —\n'
+                '${allChanges.isEmpty ? '(لا توجد أي تغييرات - الملفان متطابقان فعليًا)' : allChanges.map((c) => '• ${c.shatr}: ${c.note}').join('\n')}',
+              ),
             ),
           ),
           actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق'))],
