@@ -633,6 +633,15 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
         children: [
           Row(
             children: [
+              // ترتيب القراءة الصحيح: الأيقونة أولًا (أقصى اليمين)، ثم النص
+              // مباشرة بعدها - كانت الأيقونة معزولة أقصى اليسار بعيدًا عن
+              // النص (سليمان صراحةً 2026-08-17: "المفترض الأيقونة أولًا بعدين
+              // الكلام"). زر التفريغ يبقى وحده أقصى اليسار كإجراء ثانوي منفصل.
+              _goldIconBadge(icon),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(title, textAlign: TextAlign.right, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+              ),
               if (hasAnyDate && onClear != null)
                 IconButton(
                   tooltip: 'تفريغ البيانات (للاختبار)',
@@ -640,11 +649,6 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                   icon: Icon(Icons.delete_sweep_outlined, color: Colors.red.shade700, size: 20),
                   visualDensity: VisualDensity.compact,
                 ),
-              Expanded(
-                child: Text(title, textAlign: TextAlign.end, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
-              ),
-              const SizedBox(width: 8),
-              _goldIconBadge(icon),
             ],
           ),
           const SizedBox(height: 12),
