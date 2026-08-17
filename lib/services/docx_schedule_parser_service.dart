@@ -370,7 +370,13 @@ class DocxScheduleParserService {
     final Map<String, _RawActivityRow> theoryByKey = {};
     final Map<String, _RawActivityRow> practicalByKey = {};
     for (final row in activityRows) {
-      final key = '${row.courseCode}|${row.sequence}|${row.shatr}';
+      // "المستفيد" جزء من المفتاح - وإلا فقد تتصادم شعبة كليتنا مع شعبة كلية
+      // أخرى (أو فرع جامعي آخر كـ"الكلية الجامعية برنية") تشارك بالمصادفة نفس
+      // كود المقرر ونفس رقم التسلسل ضمن نفس الملف الشامل لكل الجامعة، فتُكتَب
+      // شعبتنا فوقها بالخطأ وتختفي قبل حتى فلترة "المستفيد" (دليل فعلي وجده
+      // سليمان 2026-08-17: مقرر "تطبيقات الحاسب" 603205 تسلسل 1 ظهر مرتين
+      // بنفس المفتاح - مرة لكليتنا ومرة لكلية برنية، فمُحيت شعبتنا).
+      final key = '${row.courseCode}|${row.sequence}|${row.shatr}|${row.beneficiary}';
       if (row.activity == 'نظري') {
         theoryByKey[key] = row;
       } else if (row.activity == 'عملي') {
