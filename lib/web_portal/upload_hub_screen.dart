@@ -663,15 +663,18 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
           const SizedBox(height: 10),
           const Divider(height: 1),
           const SizedBox(height: 8),
+          // العناصر متلاصقة كتلة واحدة يمينًا (بلا Spacer يمدّها لعرض الصندوق
+          // كاملاً) - كانت تُنتج فراغًا أفقيًا كبيرًا جدًا بالصناديق الممتدة
+          // عرض البطاقة كاملة (سليمان صراحةً 2026-08-17: "شاهد التشتت الكبير").
           for (final d in dates)
             Padding(
               padding: const EdgeInsets.only(top: 2),
               child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   Icon(Icons.access_time, size: 14, color: Colors.grey.shade500),
                   const SizedBox(width: 6),
-                  Text('${d.label}:', style: TextStyle(color: Colors.grey.shade600, fontSize: 11.5)),
-                  const Spacer(),
+                  Text('${d.label}: ', style: TextStyle(color: Colors.grey.shade600, fontSize: 11.5)),
                   Text(
                     d.date != null ? fmt.format(d.date!) : 'لم يُرفع بعد',
                     style: TextStyle(color: Colors.grey.shade800, fontSize: 11.5, fontWeight: FontWeight.w600),
