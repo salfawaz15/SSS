@@ -399,15 +399,18 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                                         await _loadDates();
                                       },
                                     );
+                                    // الطلاب دائمًا قبل الطالبات (بطلب سليمان صراحةً) - في صف RTL
+                                    // العنصر الأول بترتيب الأبناء يظهر يمينًا (أول ما يُقرأ)، فيجب
+                                    // أن يكون صندوق الطلاب أول عنصر بالقائمة ليظهر يمينًا فعليًا.
                                     if (narrow) {
-                                      return Column(children: [femaleBox, const SizedBox(height: 12), maleBox]);
+                                      return Column(children: [maleBox, const SizedBox(height: 12), femaleBox]);
                                     }
                                     return Row(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Expanded(child: femaleBox),
-                                        const SizedBox(width: 14),
                                         Expanded(child: maleBox),
+                                        const SizedBox(width: 14),
+                                        Expanded(child: femaleBox),
                                       ],
                                     );
                                   }),
