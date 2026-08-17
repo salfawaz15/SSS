@@ -8,6 +8,9 @@ import 'course_schedule_repository.dart' show Shatr;
 
 const String _wNs = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 
+/// "المقر" بلا "ر" بعدها مباشرة - يستثني تطابقها الزائف داخل كلمة "المقرر".
+final RegExp _mmaqarPattern = RegExp('المقر(?!ر)');
+
 /// يقرأ جدول "الحويّة" بعد تحويله من PDF إلى Word (.docx) - بديل موثوق تمامًا
 /// لملف الإكسل (.xls) الذي يفقد بيانات حقيقية أحيانًا بسبب طريقة تصديره من
 /// منظومة الجامعة الداخلية. تحويل PDF إلى Word (عبر برنامج Word نفسه) يحافظ
@@ -255,7 +258,11 @@ class DocxScheduleParserService {
     final body = bodies.first;
 
     Shatr? shatrFromText(String text) {
-      if (!text.contains('المقر')) return null;
+      // "المقر" بلا الحرف "ر" بعدها مباشرة - وإلا فهي جزء من "المقرر" (عمود
+      // "اسم المقرر" برأس كل جدول مواد بكل صفحة)، وهو تطابق زائف كان يُعيد
+      // تصنيف الشطر خطأً لـ"طلاب" فور كل صف رأس جدول، فيمحو تصنيف "طالبات"
+      // الصحيح المكتشَف للتو (دليل فعلي من نص خام أرسله سليمان 2026-08-17).
+      if (!_mmaqarPattern.hasMatch(text)) return null;
       if (debugMarkers != null && debugMarkers.length < 20 && !debugMarkers.contains(text)) {
         debugMarkers.add(text);
       }
