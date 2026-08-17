@@ -257,16 +257,25 @@ class DocxScheduleParserService {
     if (bodies.isEmpty) return const [];
     final body = bodies.first;
 
-    Shatr? shatrFromText(String text) {
+    // isMarker=false يعني "هذا النص ليس حقل مقر إطلاقًا" (لا تغيّر الشطر
+    // الحالي). isMarker=true مع shatr=null يعني "حقل مقر لفرع آخر غير الحرم
+    // الرئيسي" (كالخرمة/تربة/رنية) - يجب أن يُصفَّر الشطر الحالي فعليًا حتى
+    // لا تُنسَب شعب ذلك الفرع خطأً لآخر شطر معروف بالحرم الرئيسي - سليمان
+    // صراحةً 2026-08-17: "الفروع فلا يجب أن تظهر".
+    ({bool isMarker, Shatr? shatr}) shatrFromText(String text) {
       // "المقر" بلا الحرف "ر" بعدها مباشرة - وإلا فهي جزء من "المقرر" (عمود
       // "اسم المقرر" برأس كل جدول مواد بكل صفحة)، وهو تطابق زائف كان يُعيد
       // تصنيف الشطر خطأً لـ"طلاب" فور كل صف رأس جدول، فيمحو تصنيف "طالبات"
       // الصحيح المكتشَف للتو (دليل فعلي من نص خام أرسله سليمان 2026-08-17).
-      if (!_mmaqarPattern.hasMatch(text)) return null;
+      if (!_mmaqarPattern.hasMatch(text)) return (isMarker: false, shatr: null);
       if (debugMarkers != null && debugMarkers.length < 20 && !debugMarkers.contains(text)) {
         debugMarkers.add(text);
       }
-      return text.contains('طالبات') ? Shatr.female : Shatr.male;
+      // فقط مقر "حويّة" (الحرم الرئيسي) يُحتسَب - فروع أخرى تُستبعَد بالكامل.
+      if (!text.contains('حويّة') && !text.contains('حوية')) {
+        return (isMarker: true, shatr: null);
+      }
+      return (isMarker: true, shatr: text.contains('طالبات') ? Shatr.female : Shatr.male);
     }
 
     final rows = <List<String>>[];
@@ -276,7 +285,7 @@ class DocxScheduleParserService {
     void scanParagraph(XmlElement p) {
       final text = p.findAllElements('t', namespace: _wNs).map((t) => t.innerText).join();
       final detected = shatrFromText(text);
-      if (detected != null) currentShatr = detected;
+      if (detected.isMarker) currentShatr = detected.shatr;
     }
 
     void scanTable(XmlElement tbl) {
@@ -285,8 +294,8 @@ class DocxScheduleParserService {
         if (cells.isEmpty) continue;
         final rowText = cells.join(' ');
         final detected = shatrFromText(rowText);
-        if (detected != null) {
-          currentShatr = detected;
+        if (detected.isMarker) {
+          currentShatr = detected.shatr;
           continue; // صف معلومات ("المقر") وليس صف مادة فعلي - لا يُضاف كبيانات
         }
         rows.add(cells);
