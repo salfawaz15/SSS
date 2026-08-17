@@ -352,16 +352,17 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
           : SingleChildScrollView(
               child: Center(
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 980),
+                  constraints: const BoxConstraints(maxWidth: 1500),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       _headerBanner(),
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+                        padding: const EdgeInsets.fromLTRB(28, 28, 28, 36),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
+                            const SizedBox(height: 4),
                             _cardShell(
                               icon: Icons.menu_book_outlined,
                               title: 'المقررات الدراسية',
@@ -423,14 +424,13 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                                 ],
                               ),
                             ),
-                            const SizedBox(height: 18),
+                            const SizedBox(height: 24),
                             _cardShell(
                               icon: Icons.groups_outlined,
                               title: 'حالات الإرشاد',
                               subtitle: 'تقرير "طلاب على غير مرشدهم" الرسمي لكل الجامعة.',
-                              child: _uploadSlotBox(
-                                icon: Icons.groups_outlined,
-                                title: 'رفع حالات الإرشاد',
+                              child: _flatUploadRow(
+                                buttonLabel: 'رفع ملف "كل الكليات"',
                                 uploading: _uploadingAllColleges,
                                 dates: [
                                   (label: 'شطر الطلاب', date: _allCollegesMaleDate),
@@ -447,14 +447,13 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                                     : null,
                               ),
                             ),
-                            const SizedBox(height: 18),
+                            const SizedBox(height: 24),
                             _cardShell(
                               icon: Icons.accessible_outlined,
                               title: 'طلبة ذوو الإعاقة',
                               subtitle: 'ملف حالات ذوي الإعاقة الرسمي.',
-                              child: _uploadSlotBox(
-                                icon: Icons.accessible_outlined,
-                                title: 'رفع طلبة ذوي الإعاقة',
+                              child: _flatUploadRow(
+                                buttonLabel: 'رفع طلبة ذوي الإعاقة',
                                 uploading: _uploadingHealth,
                                 dates: [
                                   (label: 'شطر الطلاب', date: _healthMaleDate),
@@ -471,14 +470,13 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                                     : null,
                               ),
                             ),
-                            const SizedBox(height: 18),
+                            const SizedBox(height: 24),
                             _cardShell(
                               icon: Icons.event_available_outlined,
                               title: 'جدول مواعيد الإرشاد لكل مرشد',
                               subtitle: 'حتى 10 ملفات دفعة واحدة، كل ملف يحدَّد قسمه/شطره من محتواه.',
-                              child: _uploadSlotBox(
-                                icon: Icons.event_available_outlined,
-                                title: 'رفع جدول مواعيد الإرشاد',
+                              child: _flatUploadRow(
+                                buttonLabel: 'رفع جدول مواعيد الإرشاد',
                                 uploading: _uploadingSchedule,
                                 dates: [(label: 'أي قسم/شطر', date: _scheduleLatestDate)],
                                 fmt: fmt,
@@ -506,59 +504,99 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   /// رأس مصرَّف داكن بخط ذهبي وشارة ماسية - نفس التصميم المرجعي الذي اعتمده
   /// سليمان صراحةً بدل العنوان النصي البسيط الأولي.
   Widget _headerBanner() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 26, horizontal: 20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.centerRight,
-          end: Alignment.centerLeft,
-          colors: [AppColors.greenDark, AppColors.green],
-        ),
-        border: Border(
-          top: BorderSide(color: AppColors.gold, width: 4),
-          bottom: BorderSide(color: AppColors.gold, width: 2),
-        ),
-      ),
-      child: Column(
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(4),
+      child: Stack(
         children: [
-          Icon(Icons.diamond_outlined, color: AppColors.gold, size: 18),
-          const SizedBox(height: 8),
-          Text(
-            'رفع ملفات الإرشاد الأكاديمي',
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.circle, size: 5, color: AppColors.gold),
-              const SizedBox(width: 8),
-              Text(
-                'إدارة رفع ملفات التقارير والبيانات الرسمية',
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 13.5),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 46, horizontal: 20),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.centerRight,
+                end: Alignment.centerLeft,
+                colors: [AppColors.greenDark, AppColors.green],
               ),
-              const SizedBox(width: 8),
-              Icon(Icons.circle, size: 5, color: AppColors.gold),
-            ],
+              border: const Border(
+                bottom: BorderSide(color: AppColors.gold, width: 3),
+              ),
+            ),
+            child: Column(
+              children: [
+                Text(
+                  'رفع ملفات الإرشاد الأكاديمي',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white, fontSize: 34, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(width: 90, child: Divider(color: AppColors.gold.withValues(alpha: 0.6), thickness: 1)),
+                    const SizedBox(width: 10),
+                    Icon(Icons.circle, size: 5, color: AppColors.gold),
+                    const SizedBox(width: 10),
+                    Text(
+                      'إدارة رفع ملفات التقارير والبيانات الرسمية',
+                      style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 14),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
+          Positioned(
+            top: 0,
+            right: 0,
+            child: Icon(Icons.diamond_outlined, color: AppColors.gold, size: 14),
+          ),
+          Positioned(top: -70, left: -70, child: _cornerArc()),
+          Positioned(top: -70, right: -70, child: _cornerArc(flip: true)),
         ],
       ),
     );
   }
 
-  Widget _goldIconBadge(IconData icon) {
+  /// زخرفة القوس الذهبي بزوايا الرأس - نفس الشكل المرجعي الذي اعتمده سليمان
+  /// صراحةً (منحنيات ذهبية متداخلة أعلى يمين ويسار الرأس).
+  Widget _cornerArc({bool flip = false}) {
+    final ring = Container(
+      width: 160,
+      height: 160,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: AppColors.gold.withValues(alpha: 0.55), width: 2),
+      ),
+    );
+    final ring2 = Container(
+      width: 130,
+      height: 130,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: AppColors.goldLight.withValues(alpha: 0.35), width: 1),
+      ),
+    );
+    return Transform.scale(
+      scaleX: flip ? -1 : 1,
+      child: SizedBox(
+        width: 160,
+        height: 160,
+        child: Stack(alignment: Alignment.center, children: [ring, ring2]),
+      ),
+    );
+  }
+
+  Widget _goldIconBadge(IconData icon, {double size = 48}) {
     return Container(
-      width: 40,
-      height: 40,
+      width: size,
+      height: size,
       decoration: BoxDecoration(
         color: AppColors.gold.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppColors.gold.withValues(alpha: 0.5)),
       ),
       alignment: Alignment.center,
-      child: Icon(icon, color: AppColors.greenDark, size: 20),
+      child: Icon(icon, color: AppColors.greenDark, size: size * 0.5),
     );
   }
 
@@ -637,7 +675,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
               // مباشرة بعدها - كانت الأيقونة معزولة أقصى اليسار بعيدًا عن
               // النص (سليمان صراحةً 2026-08-17: "المفترض الأيقونة أولًا بعدين
               // الكلام"). زر التفريغ يبقى وحده أقصى اليسار كإجراء ثانوي منفصل.
-              _goldIconBadge(icon),
+              _goldIconBadge(icon, size: 36),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(title, textAlign: TextAlign.right, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
@@ -684,6 +722,83 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
             ),
         ],
       ),
+    );
+  }
+
+  /// صف رفع مسطّح بعمودين (بلا صندوق داخلي) - زر الرفع وزر التفريغ على
+  /// اليمين، والتواريخ في عمود منفصل على اليسار يفصلهما خط رأسي رفيع - نفس
+  /// التصميم المرجعي المسطّح الذي اعتمده سليمان صراحةً لبطاقات "حالات
+  /// الإرشاد/ذوو الإعاقة/مواعيد الإرشاد" (بخلاف صندوق طلاب/طالبات المقررات).
+  Widget _flatUploadRow({
+    required bool uploading,
+    required List<({String label, DateTime? date})> dates,
+    required DateFormat fmt,
+    required VoidCallback onPressed,
+    required VoidCallback? onClear,
+    required String buttonLabel,
+  }) {
+    final hasAnyDate = dates.any((d) => d.date != null);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          flex: 3,
+          child: Row(
+            children: [
+              if (hasAnyDate && onClear != null)
+                Padding(
+                  padding: const EdgeInsets.only(left: 10),
+                  child: IconButton(
+                    tooltip: 'تفريغ البيانات (للاختبار)',
+                    onPressed: onClear,
+                    icon: Icon(Icons.delete_sweep_outlined, color: Colors.red.shade700, size: 20),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: uploading ? null : onPressed,
+                  icon: uploading
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.upload_file, size: 18),
+                  label: Text(buttonLabel),
+                  style: FilledButton.styleFrom(backgroundColor: AppColors.greenDark, minimumSize: const Size.fromHeight(46)),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Container(
+          width: 1,
+          height: (dates.length * 24) + 12,
+          margin: const EdgeInsets.symmetric(horizontal: 20),
+          color: AppColors.gold.withValues(alpha: 0.25),
+        ),
+        Expanded(
+          flex: 2,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final d in dates)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    children: [
+                      Icon(Icons.calendar_month_outlined, size: 15, color: Colors.grey.shade500),
+                      const SizedBox(width: 6),
+                      Text('${d.label}: ', style: TextStyle(color: Colors.grey.shade600, fontSize: 12.5)),
+                      Text(
+                        d.date != null ? fmt.format(d.date!) : 'لم يُرفع بعد',
+                        style: TextStyle(color: Colors.grey.shade800, fontSize: 12.5, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
