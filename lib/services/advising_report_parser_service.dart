@@ -69,7 +69,20 @@ class AdvisingReportParserService {
     return -1;
   }
 
-  static String _cell(List<String> row, int index) => (index < 0 || index >= row.length) ? '' : row[index];
+  /// حد أقصى دفاعي لطول أي خلية مفردة - لا قيمة حقيقية (اسم، قسم، حالة
+  /// صحية...) تقترب من هذا الطول أبدًا؛ يحمي من انهيار الحفظ بخطأ Firestore
+  /// "Transaction too big" لو استخرج [PdfTableRowsExtractor] خليةً فاسدة
+  /// تدمج نص صف كامل (أو أكثر) بالخطأ بسبب تخطيط جدول غير متوقَّع في بعض
+  /// ملفات PDF (حدث فعليًا مع ملف "كل الكليات" - سليمان 2026-08-18: فشل
+  /// الحفظ بنفس الخطأ حتى بعد تصغير حجم كل دفعة كتابة لسجل واحد فقط، ما يدل
+  /// على أن السجل نفسه ضخم بشكل غير طبيعي لا أن تجميع الدفعات هو المشكلة).
+  static const int _maxCellLength = 300;
+
+  static String _cell(List<String> row, int index) {
+    if (index < 0 || index >= row.length) return '';
+    final v = row[index];
+    return v.length > _maxCellLength ? '${v.substring(0, _maxCellLength)}…' : v;
+  }
 
   /// يحاول فصل نص خلية "الاسم+التخصص" المندمجة إلى (الاسم الفعلي، نص
   /// التخصص) - انظر التعليق عند نقطة الاستدعاء لسبب حدوث هذا الاندماج. يجرّب
