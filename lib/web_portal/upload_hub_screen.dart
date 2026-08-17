@@ -214,7 +214,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   }
 
   Future<void> _clearCourses() async {
-    if (!await _confirmClear('جدول المقررات الدراسية (الشطرين)')) return;
+    if (!await _confirmClear('ملف المقررات الدراسية')) return;
     try {
       await CourseScheduleRepository.clear(Shatr.male);
       await CourseScheduleRepository.clear(Shatr.female);
@@ -222,10 +222,10 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
       await OutsideCourseRepository.clear(Shatr.female);
       await _loadDates();
       if (!mounted) return;
-      _showSuccessSnackBar('تم تفريغ جدول المقررات بنجاح');
+      _showSuccessSnackBar('تم مسح البيانات بنجاح');
     } catch (e) {
       if (!mounted) return;
-      showUploadErrorDialog(context, 'تعذّر التفريغ', '$e');
+      showUploadErrorDialog(context, 'تعذّر مسح البيانات', '$e');
     }
   }
 
@@ -236,38 +236,45 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
       await AdvisingReportRepository.clear(Shatr.female, kind: kind);
       await _loadDates();
       if (!mounted) return;
-      _showSuccessSnackBar('تم تفريغ $label بنجاح');
+      _showSuccessSnackBar('تم مسح البيانات بنجاح');
     } catch (e) {
       if (!mounted) return;
-      showUploadErrorDialog(context, 'تعذّر التفريغ', '$e');
+      showUploadErrorDialog(context, 'تعذّر مسح البيانات', '$e');
     }
   }
 
   Future<void> _clearSchedule() async {
-    if (!await _confirmClear('جدول مواعيد الإرشاد')) return;
+    if (!await _confirmClear('جداول مواعيد الإرشاد')) return;
     try {
       await AdvisingScheduleRepository.clearAll();
       await _loadDates();
       if (!mounted) return;
-      _showSuccessSnackBar('تم تفريغ جدول مواعيد الإرشاد بنجاح');
+      _showSuccessSnackBar('تم مسح البيانات بنجاح');
     } catch (e) {
       if (!mounted) return;
-      showUploadErrorDialog(context, 'تعذّر التفريغ', '$e');
+      showUploadErrorDialog(context, 'تعذّر مسح البيانات', '$e');
     }
   }
 
+  /// حذف حقيقي للبيانات المستخرجة من قاعدة البيانات (لا مجرد "ملف") - إجراء
+  /// خطير لا يُنفَّذ إلا بتأكيد صريح - سليمان صراحةً 2026-08-17: "الإجراء
+  /// الأحمر لا يمثل حذف ملف فقط... حذف جميع البيانات المستخرجة من الملف
+  /// الحالي والمخزَّنة داخل النظام".
   Future<bool> _confirmClear(String label) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('تفريغ $label'),
-        content: const Text('سيُحذَف كل ما هو مخزَّن حاليًا لهذا العنصر. هل تريد المتابعة؟'),
+        title: const Text('مسح البيانات الحالية؟'),
+        content: Text(
+          'سيؤدي هذا الإجراء إلى حذف جميع البيانات المستخرجة من $label الحالي من النظام. '
+          'لا يمكن التراجع عن هذه العملية.',
+        ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
             style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
-            child: const Text('تفريغ'),
+            child: const Text('نعم، مسح البيانات'),
           ),
         ],
       ),
@@ -328,7 +335,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                             subtitle: 'لاستخراج شعب المقررات الدراسية.',
                             uploading: _uploadingCourses,
                             date: coursesDate,
-                            buttonLabel: coursesDate != null ? 'استبدال الملف' : 'رفع الملف',
+                            clearLabel: 'مسح البيانات الحالية',
                             onPressed: _uploadCoursesCombined,
                             onClear: coursesDate != null ? _clearCourses : null,
                           );
@@ -339,7 +346,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                             subtitle: 'رفع ملف حالات الإرشاد.',
                             uploading: _uploadingAllColleges,
                             date: casesDate,
-                            buttonLabel: casesDate != null ? 'استبدال الملف' : 'رفع الملف',
+                            clearLabel: 'مسح البيانات الحالية',
                             onPressed: () => runUploadAllColleges(
                               context: context,
                               setUploading: (v) => setState(() => _uploadingAllColleges = v),
@@ -348,7 +355,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                                 if (mounted) _showSuccessSnackBar('تم رفع الملف بنجاح');
                               },
                             ),
-                            onClear: casesDate != null ? () => _clearKindBoth(AdvisingReportKind.allColleges, 'حالات الإرشاد') : null,
+                            onClear: casesDate != null ? () => _clearKindBoth(AdvisingReportKind.allColleges, 'ملف حالات الإرشاد') : null,
                           );
                           final disabilityDate = _latestOf(_healthMaleDate, _healthFemaleDate);
                           final disabilityCard = _uploadCard(
@@ -357,7 +364,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                             subtitle: 'رفع الملف المعتمد لطلبة ذوي الإعاقة.',
                             uploading: _uploadingHealth,
                             date: disabilityDate,
-                            buttonLabel: disabilityDate != null ? 'استبدال الملف' : 'رفع الملف',
+                            clearLabel: 'مسح البيانات الحالية',
                             onPressed: () => runUploadHealth(
                               context: context,
                               setUploading: (v) => setState(() => _uploadingHealth = v),
@@ -366,25 +373,29 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                                 if (mounted) _showSuccessSnackBar('تم رفع الملف بنجاح');
                               },
                             ),
-                            onClear: disabilityDate != null ? () => _clearKindBoth(AdvisingReportKind.health, 'طلبة ذوو الإعاقة') : null,
+                            onClear: disabilityDate != null ? () => _clearKindBoth(AdvisingReportKind.health, 'ملف طلبة ذوي الإعاقة') : null,
                           );
+                          final scheduleMaxed = _scheduleUploadedCount >= 10;
                           final scheduleCard = _uploadCard(
                             icon: Icons.event_available_outlined,
                             title: 'جداول مواعيد الإرشاد',
                             subtitle: 'رفع جداول مواعيد الإرشاد (حتى 10 ملفات).',
                             uploading: _uploadingSchedule,
+                            disabled: scheduleMaxed,
                             date: _scheduleLatestDate,
                             fileCounterText: '$_scheduleUploadedCount / 10 ملفات',
-                            buttonLabel: _scheduleUploadedCount > 0 ? 'إضافة ملفات' : 'رفع الملفات',
-                            dropzoneHint: 'اسحب الملفات هنا أو اضغط للاختيار',
-                            onPressed: () => runUploadAdvisingSchedule(
-                              context: context,
-                              setUploading: (v) => setState(() => _uploadingSchedule = v),
-                              onSuccess: () async {
-                                await _loadDates();
-                                if (mounted) _showSuccessSnackBar('تم رفع الملفات بنجاح');
-                              },
-                            ),
+                            isMultiple: true,
+                            clearLabel: 'مسح بيانات المواعيد',
+                            onPressed: scheduleMaxed
+                                ? null
+                                : () => runUploadAdvisingSchedule(
+                                      context: context,
+                                      setUploading: (v) => setState(() => _uploadingSchedule = v),
+                                      onSuccess: () async {
+                                        await _loadDates();
+                                        if (mounted) _showSuccessSnackBar('تم رفع الملفات بنجاح');
+                                      },
+                                    ),
                             onClear: _scheduleLatestDate != null ? _clearSchedule : null,
                           );
 
@@ -522,22 +533,32 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   }
 
   /// بطاقة رفع موحَّدة لكل البطاقات الأربع: رأس (شارة+عنوان+وصف مختصر)،
-  /// منطقة رفع بالضغط لاختيار الملف، ثم "آخر رفع" فقط + أزرار الرفع/التفريغ.
-  /// بلا اسم/نوع/امتداد ملف أو أي خانة حالة تقنية - سليمان صراحةً 2026-08-17.
+  /// منطقة الرفع نفسها هي وسيلة الرفع الوحيدة (بلا زر منفصل مكرِّر لنفس
+  /// الوظيفة) - نصّها يتغيّر حسب وجود بيانات سابقة من عدمه، ثم "آخر رفع"
+  /// وزر أحمر واحد "مسح البيانات الحالية" (حذف حقيقي من قاعدة البيانات، لا
+  /// مجرد إزالة اسم ملف) - سليمان صراحةً 2026-08-17.
   Widget _uploadCard({
     required IconData icon,
     required String title,
     required String subtitle,
     required bool uploading,
     required DateTime? date,
-    required VoidCallback onPressed,
+    required VoidCallback? onPressed,
     required VoidCallback? onClear,
-    String buttonLabel = 'رفع الملف',
-    String dropzoneHint = 'اسحب الملف هنا أو اضغط للاختيار',
+    required String clearLabel,
+    bool isMultiple = false,
     String? fileCounterText,
+    bool disabled = false,
   }) {
     final dateFmt = DateFormat('d MMMM yyyy', 'ar');
     final timeFmt = DateFormat('h:mm a', 'ar');
+    final hasData = date != null;
+    final mainText = disabled
+        ? 'اكتمل الحد الأعلى (10 ملفات)'
+        : isMultiple
+            ? (hasData ? 'اضغط هنا لإضافة ملفات' : 'اضغط هنا لرفع الملفات')
+            : (hasData ? 'اضغط هنا لرفع ملف بديل' : 'اضغط هنا لرفع الملف');
+    final subText = isMultiple ? 'أو اسحب الملفات إلى هذه المنطقة' : 'أو اسحب الملف إلى هذه المنطقة';
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -567,7 +588,13 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          _dropzone(uploading: uploading, hint: dropzoneHint, onTap: uploading ? null : onPressed),
+          _dropzone(
+            uploading: uploading,
+            disabled: disabled,
+            mainText: mainText,
+            subText: subText,
+            onTap: (uploading || disabled) ? null : onPressed,
+          ),
           if (fileCounterText != null) ...[
             const SizedBox(height: 8),
             Center(
@@ -582,52 +609,29 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
               ),
             ),
           ],
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              SizedBox(
-                height: 42,
-                child: FilledButton.icon(
-                  onPressed: uploading ? null : onPressed,
-                  icon: uploading
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : const Icon(Icons.upload_file, size: 18),
-                  label: Text(buttonLabel),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.greenDark,
-                    side: BorderSide(color: AppColors.gold, width: 1.2),
-                    padding: const EdgeInsets.symmetric(horizontal: 18),
-                  ),
-                ),
-              ),
-              if (onClear != null)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: IconButton(
-                    tooltip: 'تفريغ',
-                    onPressed: onClear,
-                    icon: Icon(Icons.delete_sweep_outlined, color: Colors.red.shade700, size: 20),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ),
-              const Spacer(),
               Expanded(
-                flex: 2,
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text('آخر رفع', style: TextStyle(color: Colors.grey.shade500, fontSize: 11)),
                     const SizedBox(height: 1),
                     Text(
-                      date != null ? '${dateFmt.format(date)}، ${timeFmt.format(date)}' : 'لا يوجد رفع سابق',
-                      textAlign: TextAlign.end,
+                      // عزل اتجاهي (Unicode Isolate) حول التاريخ/الوقت - يمنع
+                      // أي انعكاس/تداخل بصري عند اختلاط أرقام لاتينية وحروف
+                      // عربية داخل سياق RTL (سليمان صراحةً 2026-08-17، مطابق
+                      // لأثر unicode-bidi:isolate بالويب).
+                      hasData ? '\u2068${dateFmt.format(date)}، ${timeFmt.format(date)}\u2069' : 'لا توجد بيانات مرفوعة',
                       style: TextStyle(color: Colors.grey.shade800, fontWeight: FontWeight.w700, fontSize: 12.5),
                     ),
                   ],
                 ),
               ),
+              if (onClear != null) _clearDataButton(label: clearLabel, onPressed: onClear),
             ],
           ),
         ],
@@ -635,32 +639,104 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     );
   }
 
-  /// منطقة رفع بحدود متقطّعة تُضغَط لاختيار الملف - بلا سحب/إفلات حقيقي حاليًا
-  /// (يحتاج مكتبة إضافية غير موجودة بالمشروع)، لكن بنفس الشكل البصري المطلوب.
-  Widget _dropzone({required bool uploading, required String hint, required VoidCallback? onTap}) {
+  /// منطقة رفع بحدود متقطّعة كاملة قابلة للضغط - هي وسيلة الرفع الوحيدة
+  /// (بلا زر منفصل مكرِّر) - بلا سحب/إفلات حقيقي حاليًا (يحتاج مكتبة إضافية
+  /// وتعديل منطق مشترك تخدم صفحات أخرى - سليمان صراحةً 2026-08-17 وافق على
+  /// تأجيله لطلب منفصل)، لكن بنفس الشكل البصري المطلوب.
+  Widget _dropzone({
+    required bool uploading,
+    required bool disabled,
+    required String mainText,
+    required String subText,
+    required VoidCallback? onTap,
+  }) {
+    final borderColor = disabled ? Colors.grey.shade300 : const Color(0xFFAAB6B0);
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(13),
       child: CustomPaint(
-        painter: _DashedBorderPainter(color: const Color(0xFFAAB6B0)),
+        painter: _DashedBorderPainter(color: borderColor),
         child: Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 20),
           decoration: BoxDecoration(
-            color: const Color(0xFFFBFCFB),
+            color: disabled ? const Color(0xFFF3F4F2) : const Color(0xFFFBFCFB),
             borderRadius: BorderRadius.circular(13),
           ),
           child: Column(
             children: [
               uploading
                   ? const SizedBox(width: 30, height: 30, child: CircularProgressIndicator(strokeWidth: 2.5))
-                  : Icon(Icons.cloud_upload_outlined, size: 32, color: AppColors.green),
+                  : Icon(Icons.cloud_upload_outlined, size: 32, color: disabled ? Colors.grey.shade400 : AppColors.green),
               const SizedBox(height: 6),
               Text(
-                uploading ? 'جارٍ الرفع...' : hint,
-                style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF52615C), fontSize: 13.5),
+                uploading ? 'جارٍ الرفع...' : mainText,
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: disabled ? Colors.grey.shade500 : const Color(0xFF52615C),
+                  fontSize: 14,
+                ),
               ),
+              if (!uploading && !disabled) ...[
+                const SizedBox(height: 3),
+                Text(subText, style: TextStyle(color: Colors.grey.shade500, fontSize: 11.5)),
+              ],
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// زر "مسح البيانات الحالية" - خلفية حمراء فاتحة جدًا، حدّ أحمر خفيف، نص
+  /// وأيقونة، يعكس لونه بالكامل عند Hover - سليمان صراحةً 2026-08-17: هذا
+  /// الإجراء يحذف البيانات المستخرجة الفعلية من قاعدة البيانات، لا مجرد ملف.
+  Widget _clearDataButton({required String label, required VoidCallback onPressed}) {
+    return _HoverableClearButton(label: label, onPressed: onPressed);
+  }
+}
+
+class _HoverableClearButton extends StatefulWidget {
+  final String label;
+  final VoidCallback onPressed;
+  const _HoverableClearButton({required this.label, required this.onPressed});
+
+  @override
+  State<_HoverableClearButton> createState() => _HoverableClearButtonState();
+}
+
+class _HoverableClearButtonState extends State<_HoverableClearButton> {
+  bool _hovering = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: Material(
+        color: _hovering ? Colors.red.shade700 : Colors.red.shade50,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: widget.onPressed,
+          child: Container(
+            height: 42,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: _hovering ? Colors.red.shade700 : Colors.red.shade200),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.delete_sweep_outlined, color: _hovering ? Colors.white : Colors.red.shade700, size: 18),
+                const SizedBox(width: 6),
+                Text(
+                  widget.label,
+                  style: TextStyle(color: _hovering ? Colors.white : Colors.red.shade700, fontWeight: FontWeight.bold, fontSize: 12.5),
+                ),
+              ],
+            ),
           ),
         ),
       ),
