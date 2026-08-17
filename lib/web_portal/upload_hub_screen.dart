@@ -283,7 +283,10 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      showUploadErrorDialog(context, 'تعذّر قراءة الملف', '$e');
+      // طول البايتات المستلَمة فعليًا يُضاف للرسالة - لتشخيص احتمال قطع
+      // المتصفح لقراءة الملف قبل اكتمالها (خصوصًا الملفات الكبيرة) رغم أن
+      // الملف صحيح 100% عند فتحه مباشرة من القرص (سليمان صراحةً 2026-08-17).
+      showUploadErrorDialog(context, 'تعذّر قراءة الملف', '$e\n\nحجم البيانات المستلَمة من المتصفح: ${bytes.length} بايت.');
     }
   }
 
