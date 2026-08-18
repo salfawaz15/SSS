@@ -51,25 +51,6 @@ class AdvisingReportRepository {
   /// تحت مستند كل شطر بدل حقل مصفوفة واحد بالمستند نفسه.
   static const int _chunkSize = 150;
 
-  /// يُنفِّذ [ops] على دفعات Firestore متتالية (لا دفعة واحدة ضخمة) - حد
-  /// Firestore الأقصى 500 عملية للدفعة الواحدة، بالإضافة لحد حجم إجمالي
-  /// للطلب (~10 ميجابايت) - ملف "كل الكليات" (الجامعة كاملة، آلاف السجلات)
-  /// قد يتجاوز أحد الحدين أو كليهما لو جُمِّعت كل العمليات بدفعة واحدة، وهذا
-  /// بالضبط ما فشل به الحفظ فعليًا عند سليمان (2026-08-14) فور الضغط على
-  /// "اعتماد" لملف الجامعة الكامل. **لم تعد العملية ذرية بالكامل** (تجزئة
-  /// عبر عدة دفعات لا تضمن كل-أو-لا-شيء لو انقطعت الشبكة منتصف الحفظ) - تنازل
-  /// مقبول إذ لا بديل أوسع بلا Cloud Function مخصَّصة.
-  static Future<void> _commitInGroups(List<void Function(WriteBatch)> ops, int perBatch) async {
-    for (var i = 0; i < ops.length; i += perBatch) {
-      final batch = FirebaseFirestore.instance.batch();
-      final end = (i + perBatch < ops.length) ? i + perBatch : ops.length;
-      for (var j = i; j < end; j++) {
-        ops[j](batch);
-      }
-      await batch.commit();
-    }
-  }
-
   /// يُغلِّف كل خطوة كتابة برسالة خطأ غنية بموقع الفشل وحجمه الفعلي بالبايت -
   /// أُضيف بعد أن استمر فشل الحفظ بخطأ "Transaction too big" رغم ثلاثة
   /// إصلاحات متتالية مختلفة تمامًا (تصغير حجم القطعة، عزل كل قطعة بطلب
@@ -98,15 +79,20 @@ class AdvisingReportRepository {
     final chunksRef = docRef.collection('chunks');
     final oldChunks = await chunksRef.get();
 
-    // حذف القطع القديمة: عملية خفيفة الحجم لكل قطعة (لا بيانات، فقط مرجع) -
-    // تتحمّل دفعات أكبر نسبيًا (قريبة من حد الـ500 عملية).
-    try {
-      await _commitInGroups(
-        [for (final d in oldChunks.docs) (WriteBatch b) => b.delete(d.reference)],
-        450,
-      );
-    } catch (e) {
-      throw Exception('فشل حذف ${oldChunks.docs.length} قطعة قديمة لـ${kind.name}/${shatr.docId}: $e');
+    // حذف القطع القديمة: **حذف مباشر لكل قطعة على حدة (لا دفعة Firestore
+    // مجمَّعة إطلاقًا)**. كانت مجمَّعة بدفعات من 450 حذفًا (ثم جُرِّب تخفيضها)
+    // بافتراض أن الحذف عملية خفيفة الحجم دومًا (لا بيانات، فقط مرجع) - لكن
+    // التشخيص الفعلي أثبت العكس (سليمان 2026-08-18): فشل حذف 114 قطعة فقط
+    // بخطأ "Transaction too big" لـallCollegesPrevious/male، رغم أن كل
+    // إصلاحات الكتابة السابقة (تصغير القطعة، عزلها، حد أقصى للخلية) لم تُختبَر
+    // فعليًا بعد لأن هذه خطوة حذف سابقة لها بالتسلسل. الحذف الفردي المباشر
+    // (بلا batch) يزيل أي افتراض خاطئ عن حجم عملية الحذف نفسها.
+    for (final d in oldChunks.docs) {
+      try {
+        await d.reference.delete();
+      } catch (e) {
+        throw Exception('فشل حذف القطعة القديمة ${d.id} (من أصل ${oldChunks.docs.length}) لـ${kind.name}/${shatr.docId}: $e');
+      }
     }
 
     final docData = {
@@ -163,24 +149,21 @@ class AdvisingReportRepository {
     return ts?.toDate();
   }
 
-  /// تفريغ كامل لتقرير معيّن لشطر واحد - لتسهيل إعادة الاختبار. كانت تحذف كل
-  /// القطع بدفعة واحدة (فشلت فعليًا بخطأ "Transaction too big" مع ملف "كل
-  /// الكليات" الضخم - سليمان 2026-08-14)، نفس مشكلة [save] بالضبط قبل
-  /// إصلاحها - أُصلحت بنفس التقسيم لدفعات صغيرة عبر [_commitInGroups].
+  /// تفريغ كامل لتقرير معيّن لشطر واحد - لتسهيل إعادة الاختبار. حذف فردي
+  /// مباشر لكل قطعة (لا دفعة Firestore مجمَّعة) - نفس أسلوب حذف القطع القديمة
+  /// بـ[save]، بعد أن ثبت فعليًا (سليمان 2026-08-18) أن تجميع الحذف بدفعات
+  /// (حتى الصغيرة نسبيًا، 100 أو أقل) قد يفشل أيضًا بخطأ "Transaction too big".
   static Future<void> clear(Shatr shatr, {AdvisingReportKind kind = AdvisingReportKind.base}) async {
     final docRef = _col(kind).doc(shatr.docId);
     final chunksSnap = await docRef.collection('chunks').get();
-    try {
-      await _commitInGroups(
-        [
-          for (final d in chunksSnap.docs) (WriteBatch b) => b.delete(d.reference),
-          (WriteBatch b) => b.delete(docRef),
-        ],
-        100,
-      );
-    } catch (e) {
-      throw Exception('فشل حذف ${chunksSnap.docs.length} قطعة (chunks) لـ${kind.name}/${shatr.docId}: $e');
+    for (final d in chunksSnap.docs) {
+      try {
+        await d.reference.delete();
+      } catch (e) {
+        throw Exception('فشل حذف القطعة ${d.id} (من أصل ${chunksSnap.docs.length}) لـ${kind.name}/${shatr.docId}: $e');
+      }
     }
+    await docRef.delete();
   }
 
   /// يُستدعى قبل استبدال تقرير "بيانات الطلبة" (القاعدة) مباشرة: ينقل النسخة
