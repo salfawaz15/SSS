@@ -1,3 +1,5 @@
+import 'dart:convert' show jsonEncode, utf8;
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/advising_case_record.dart';
@@ -68,6 +70,29 @@ class AdvisingReportRepository {
     }
   }
 
+  /// يُغلِّف كل خطوة كتابة برسالة خطأ غنية بموقع الفشل وحجمه الفعلي بالبايت -
+  /// أُضيف بعد أن استمر فشل الحفظ بخطأ "Transaction too big" رغم ثلاثة
+  /// إصلاحات متتالية مختلفة تمامًا (تصغير حجم القطعة، عزل كل قطعة بطلب
+  /// مستقل، حد أقصى لطول أي خلية) - سليمان 2026-08-18. بدل الاستمرار بالتخمين
+  /// الأعمى، الرسالة التالية للخطأ ستكشف فعليًا أي خطوة تحديدًا تفشل وبأي حجم
+  /// حقيقي، فإما تؤكد نظرية الحجم (وتحدد أين بالضبط) أو تنفيها تمامًا فيتضح
+  /// أن السبب غير حجم البيانات إطلاقًا (مثال: قاعدة أمان Firestore، أو نوع
+  /// حقل غير مدعوم كـ`NaN`/`Infinity`).
+  static Future<void> _writeWithDiagnostics(String label, Map<String, dynamic> data, Future<void> Function() write) async {
+    try {
+      await write();
+    } catch (e) {
+      // data قد تحوي FieldValue.serverTimestamp() (لا يقبل jsonEncode) -
+      // نتجاهل فشل حساب الحجم بدل أن يطغى على رسالة الخطأ الأصلية.
+      String sizeInfo = 'غير معروف';
+      try {
+        final bytes = utf8.encode(jsonEncode(data)).length;
+        sizeInfo = '${(bytes / 1024).toStringAsFixed(0)} كيلوبايت';
+      } catch (_) {}
+      throw Exception('فشل الحفظ عند: $label (الحجم الفعلي: $sizeInfo) - الخطأ الأصلي: $e');
+    }
+  }
+
   static Future<void> save(Shatr shatr, List<AdvisingCaseRecord> records, {AdvisingReportKind kind = AdvisingReportKind.base}) async {
     final docRef = _col(kind).doc(shatr.docId);
     final chunksRef = docRef.collection('chunks');
@@ -75,15 +100,20 @@ class AdvisingReportRepository {
 
     // حذف القطع القديمة: عملية خفيفة الحجم لكل قطعة (لا بيانات، فقط مرجع) -
     // تتحمّل دفعات أكبر نسبيًا (قريبة من حد الـ500 عملية).
-    await _commitInGroups(
-      [for (final d in oldChunks.docs) (WriteBatch b) => b.delete(d.reference)],
-      450,
-    );
+    try {
+      await _commitInGroups(
+        [for (final d in oldChunks.docs) (WriteBatch b) => b.delete(d.reference)],
+        450,
+      );
+    } catch (e) {
+      throw Exception('فشل حذف ${oldChunks.docs.length} قطعة قديمة لـ${kind.name}/${shatr.docId}: $e');
+    }
 
-    await docRef.set({
+    final docData = {
       'uploadedAt': FieldValue.serverTimestamp(),
       'studentsCount': records.length,
-    });
+    };
+    await _writeWithDiagnostics('مستند ${kind.name}/${shatr.docId} الرئيسي', docData, () => docRef.set(docData));
 
     // كتابة القطع الجديدة: **دفعة Firestore مستقلة لكل قطعة على حدة** (لا
     // تجميع عدة قطع بدفعة واحدة). خُفِّض حجم القطعة نفسها إلى 150 سجلًا (كانت
@@ -97,7 +127,11 @@ class AdvisingReportRepository {
       final chunk = records.sublist(i, i + _chunkSize > records.length ? records.length : i + _chunkSize);
       final chunkDocId = i.toString();
       final chunkData = {'records': chunk.map((r) => r.toJson()).toList()};
-      await chunksRef.doc(chunkDocId).set(chunkData);
+      await _writeWithDiagnostics(
+        'قطعة $chunkDocId (${kind.name}/${shatr.docId}, سجلات $i-${i + chunk.length - 1} من ${records.length})',
+        chunkData,
+        () => chunksRef.doc(chunkDocId).set(chunkData),
+      );
     }
   }
 

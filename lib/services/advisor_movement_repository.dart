@@ -62,7 +62,11 @@ class AdvisorMovementRepository {
       for (var j = i; j < end; j++) {
         batch.set(_col.doc(), movements[j].toJson());
       }
-      await batch.commit();
+      try {
+        await batch.commit();
+      } catch (e) {
+        throw Exception('فشل حفظ حركات الإرشاد $i-${end - 1} من ${movements.length} حركة: $e');
+      }
     }
   }
 
