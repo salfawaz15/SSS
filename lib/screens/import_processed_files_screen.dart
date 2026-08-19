@@ -36,7 +36,12 @@ class _ImportProcessedFilesScreenState
     );
 
     if (result == null || result.files.isEmpty) {
-      setState(() => _isProcessing = false);
+      // كان يعود بصمت بلا أي رسالة - يبدو للمستخدم وكأن الضغط لم يفعل شيئًا
+      // (سليمان 2026-08-20).
+      setState(() {
+        _isProcessing = false;
+        _errorMessage = 'لم يتم اختيار أي ملف - حاول مرة أخرى.';
+      });
       return;
     }
 

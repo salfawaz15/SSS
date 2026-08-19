@@ -127,7 +127,12 @@ class _CollegeCoordinatorBodyState extends State<_CollegeCoordinatorBody> {
     );
 
     if (result == null || result.files.isEmpty) {
-      setState(() => _isUploading = false);
+      // كان يعود بصمت بلا أي رسالة - يبدو للمستخدم وكأن الضغط لم يفعل شيئًا
+      // (سليمان 2026-08-20).
+      setState(() {
+        _isUploading = false;
+        _errorMessage = 'لم يتم اختيار أي ملف - حاول مرة أخرى.';
+      });
       return;
     }
 

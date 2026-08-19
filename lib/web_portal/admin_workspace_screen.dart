@@ -222,7 +222,16 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
       allowMultiple: true,
       withData: true,
     );
-    if (result == null || result.files.isEmpty) return;
+    if (result == null || result.files.isEmpty) {
+      // كان يعود بصمت بلا أي رسالة - يبدو للمستخدم وكأن الضغط لم يفعل شيئًا
+      // (سليمان 2026-08-20).
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('لم يتم اختيار أي ملف - حاول مرة أخرى.')),
+        );
+      }
+      return;
+    }
 
     setState(() => _downloadingKeys.add(key));
     try {

@@ -414,7 +414,12 @@ class _CoordinatorBodyState extends State<_CoordinatorBody> {
     );
 
     if (result == null || result.files.isEmpty) {
-      setState(() => _isUploading = false);
+      // كان يعود بصمت بلا أي رسالة - يبدو للمستخدم وكأن الضغط لم يفعل شيئًا
+      // (سليمان 2026-08-20: "لا يعطي أي رسالة أو أي شيء أنه تم الرفع").
+      setState(() {
+        _isUploading = false;
+        _errorMessage = 'لم يتم اختيار أي ملف - حاول مرة أخرى.';
+      });
       return;
     }
 
