@@ -13,11 +13,18 @@ import '../theme/app_theme.dart';
 /// كتنبيه منفصل بصريًا عن بطاقات الإنجاز، لا كرقم إنجاز. تصميم هذه اللوحة
 /// معتمَد من سليمان بعد مراجعة Mockup مصمَّم بهوية التقارير الرسمية (رأس
 /// متدرّج أخضر داكن + شارات ذهبية دائرية + عناوين أقسام بشريط أخضر متدرّج).
-class TicketActionStatsPanel extends StatelessWidget {
+class TicketActionStatsPanel extends StatefulWidget {
   final List<Map<String, dynamic>> tickets;
-  final ReportData reportData;
 
-  const TicketActionStatsPanel({super.key, required this.tickets, required this.reportData});
+  const TicketActionStatsPanel({super.key, required this.tickets});
+
+  @override
+  State<TicketActionStatsPanel> createState() => _TicketActionStatsPanelState();
+}
+
+class _TicketActionStatsPanelState extends State<TicketActionStatsPanel> {
+  String? _shatr;
+  String? _department;
 
   static const _actionColors = {
     'إضافة': Color(0xFF2E7D32),
@@ -33,10 +40,16 @@ class TicketActionStatsPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (tickets.isEmpty) return const SizedBox.shrink();
+    if (widget.tickets.isEmpty) return const SizedBox.shrink();
 
+    final tickets = widget.tickets.where((t) {
+      if (_shatr != null && (t['shatr'] ?? '') != _shatr) return false;
+      if (_department != null && (t['department'] ?? '') != _department) return false;
+      return true;
+    }).toList();
+
+    final reportData = ReportDataService.build(tickets);
     final stats = TicketActionStatsService.build(tickets);
-    if (stats.totalActions == 0) return const SizedBox.shrink();
 
     final advisorStats = TicketActionStatsService.buildAdvisorCaseStats(tickets);
     final bestAdvisors = [...advisorStats]
@@ -64,13 +77,43 @@ class TicketActionStatsPanel extends StatelessWidget {
             children: [
               const Icon(Icons.bar_chart_rounded, color: AppColors.greenDark),
               const SizedBox(width: 8),
-              const Text(
-                'إحصائيات طلبات الحذف والإضافة',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.greenDark),
+              const Expanded(
+                child: Text(
+                  'إحصائيات طلبات الحذف والإضافة',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.greenDark),
+                ),
+              ),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  DropdownMenu<String?>(
+                    label: const Text('الشطر'),
+                    initialSelection: _shatr,
+                    dropdownMenuEntries: [
+                      const DropdownMenuEntry(value: null, label: 'كل الشطور'),
+                      ...[ExcelParserService.shatrMale, ExcelParserService.shatrFemale]
+                          .map((s) => DropdownMenuEntry(value: s, label: s)),
+                    ],
+                    onSelected: (v) => setState(() => _shatr = v),
+                  ),
+                  DropdownMenu<String?>(
+                    label: const Text('القسم'),
+                    initialSelection: _department,
+                    dropdownMenuEntries: [
+                      const DropdownMenuEntry(value: null, label: 'كل الأقسام'),
+                      ...ExcelParserService.departments.map((d) => DropdownMenuEntry(value: d, label: d)),
+                    ],
+                    onSelected: (v) => setState(() => _department = v),
+                  ),
+                ],
               ),
             ],
           ),
           const SizedBox(height: 16),
+          if (stats.totalActions == 0)
+            Text('لا توجد حالات لهذا الاختيار', style: TextStyle(fontSize: 12, color: Colors.grey.shade600))
+          else ...[
 
           // صف بطاقات KPI الدائرية
           LayoutBuilder(
@@ -222,6 +265,7 @@ class TicketActionStatsPanel extends StatelessWidget {
                 ],
               ),
             ),
+          ],
           ],
         ],
       ),

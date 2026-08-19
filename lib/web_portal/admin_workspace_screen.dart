@@ -30,7 +30,6 @@ import 'admin_nav.dart';
 import 'admin_reports_screen.dart';
 import 'advisor_roster_screen.dart';
 import 'coordinators_contacts_screen.dart';
-import 'follow_up_chart.dart';
 import 'portal_accounts.dart';
 import 'portal_cards.dart';
 import 'portal_header.dart';
@@ -562,7 +561,6 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
         stream: FirestoreTicketService.watchAllTickets(),
         builder: (context, snapshot) {
           final tickets = snapshot.data ?? [];
-          final reportData = ReportDataService.build(tickets);
 
           return ListView(
             padding: const EdgeInsets.all(16),
@@ -584,20 +582,7 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
                 ),
               ),
               const SizedBox(height: 20),
-              _buildDashboard(
-                reportData,
-                tickets.length,
-                tickets.map((t) => t['department']).toSet().length,
-              ),
-              const SizedBox(height: 20),
-              FollowUpChart(
-                data: reportData,
-                tickets: tickets,
-                roster: _roster,
-                showShatrFilter: true,
-                showDepartmentFilter: true,
-              ),
-              TicketActionStatsPanel(tickets: tickets, reportData: reportData),
+              TicketActionStatsPanel(tickets: tickets),
             ],
           );
         },
@@ -881,39 +866,6 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
           ),
         );
       },
-    );
-  }
-
-  Widget _buildDashboard(ReportData data, int totalCases, int activeDepartments) {
-    final rate = (data.overall.completionRate * 100).toStringAsFixed(0);
-    final tiles = [
-      (label: 'إجمالي الحالات', value: '$totalCases', icon: Icons.folder_copy_outlined, color: AppColors.greenDark),
-      (label: 'الأقسام النشطة', value: '$activeDepartments', icon: Icons.apartment_rounded, color: AppColors.gold),
-      (label: 'نسبة الإنجاز', value: '$rate%', icon: Icons.trending_up_rounded, color: AppColors.green),
-    ];
-    final isNarrow = MediaQuery.of(context).size.width < 560;
-    if (isNarrow) {
-      return Column(
-        children: [
-          for (var i = 0; i < tiles.length; i++) ...[
-            PortalStatCard(icon: tiles[i].icon, value: tiles[i].value, label: tiles[i].label, accentColor: tiles[i].color),
-            if (i < tiles.length - 1) const SizedBox(height: 12),
-          ],
-        ],
-      );
-    }
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (var i = 0; i < tiles.length; i++) ...[
-            Expanded(
-              child: PortalStatCard(icon: tiles[i].icon, value: tiles[i].value, label: tiles[i].label, accentColor: tiles[i].color),
-            ),
-            if (i < tiles.length - 1) const SizedBox(width: 12),
-          ],
-        ],
-      ),
     );
   }
 
