@@ -124,7 +124,7 @@ class TicketActionStatsPanel extends StatelessWidget {
             style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.greenDark),
           ),
           const SizedBox(height: 10),
-          _AdvisorCaseCountTable(advisors: ReportDataService.rankedAdvisors(reportData)),
+          _AdvisorCaseCountTable(advisors: TicketActionStatsService.buildAdvisorCaseStats(tickets)),
           const SizedBox(height: 24),
           _TeamPerformanceSection(reportData: reportData),
           if (stats.advisorMismatchCount > 0) ...[
@@ -264,7 +264,7 @@ class _DepartmentBreakdownTable extends StatelessWidget {
 /// _TeamPerformanceSection (الذي يبرز نسبة الإنجاز والتقصير) بأنه يركّز على
 /// **العدد الخام** بشكل جدولي قابل للفلترة، وهو ما طلبه سليمان تحديدًا.
 class _AdvisorCaseCountTable extends StatefulWidget {
-  final List<AdvisorProgress> advisors;
+  final List<AdvisorCaseStats> advisors;
 
   const _AdvisorCaseCountTable({required this.advisors});
 
@@ -287,7 +287,7 @@ class _AdvisorCaseCountTableState extends State<_AdvisorCaseCountTable> {
       if (_department != null && a.department != _department) return false;
       return true;
     }).toList()
-      ..sort((a, b) => b.counts.total.compareTo(a.counts.total));
+      ..sort((a, b) => b.total.compareTo(a.total));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -330,7 +330,9 @@ class _AdvisorCaseCountTableState extends State<_AdvisorCaseCountTable> {
                 DataColumn(label: Text('القسم')),
                 DataColumn(label: Text('الشطر')),
                 DataColumn(label: Text('عدد الحالات')),
-                DataColumn(label: Text('نسبة الإنجاز')),
+                DataColumn(label: Text('المنجزة')),
+                DataColumn(label: Text('محوَّلة لمنسّق القسم')),
+                DataColumn(label: Text('لم يُعمَل عليها')),
               ],
               rows: [
                 for (final a in filtered)
@@ -339,8 +341,19 @@ class _AdvisorCaseCountTableState extends State<_AdvisorCaseCountTable> {
                       DataCell(Text(a.advisorName)),
                       DataCell(Text(a.department)),
                       DataCell(Text(a.shatr)),
-                      DataCell(Text('${a.counts.total}')),
-                      DataCell(Text('${(a.counts.completionRate * 100).round()}%')),
+                      DataCell(Text('${a.total}')),
+                      DataCell(Text(
+                        '${a.completed}',
+                        style: const TextStyle(color: Color(0xFF2E7D32), fontWeight: FontWeight.bold),
+                      )),
+                      DataCell(Text(
+                        '${a.escalatedToCoordinator}',
+                        style: const TextStyle(color: AppColors.gold, fontWeight: FontWeight.bold),
+                      )),
+                      DataCell(Text(
+                        '${a.notStarted}',
+                        style: const TextStyle(color: AppColors.errorRed, fontWeight: FontWeight.bold),
+                      )),
                     ],
                   ),
               ],

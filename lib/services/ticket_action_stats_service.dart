@@ -33,7 +33,57 @@ class TicketActionStats {
   });
 }
 
+/// عدّادات مرشد واحد (بطلب سليمان: عدد الحالات، المنجزة، المحوَّلة لمنسّق
+/// القسم، ولم يُعمَل عليها إطلاقًا) - أدق من [AdvisorReport] بـ
+/// report_data_service.dart (الذي يقيس فقط "اشتغل/لم يشتغل" على عمود حالة
+/// المرشد وحده)، لأن هذا يميّز أيضًا هل صُعِّدت الحالة لمنسّق القسم أم لا.
+class AdvisorCaseStats {
+  final String advisorName;
+  final String department;
+  final String shatr;
+  int total = 0;
+  int completed = 0;
+  int escalatedToCoordinator = 0;
+  int notStarted = 0;
+
+  AdvisorCaseStats({required this.advisorName, required this.department, required this.shatr});
+}
+
 class TicketActionStatsService {
+  static List<AdvisorCaseStats> buildAdvisorCaseStats(List<Map<String, dynamic>> tickets) {
+    final byAdvisor = <String, AdvisorCaseStats>{};
+
+    for (final ticket in tickets) {
+      final advisorName = (ticket['advisor'] ?? '').toString().trim();
+      if (advisorName.isEmpty) continue;
+      final department = (ticket['department'] ?? '').toString();
+      final shatr = (ticket['shatr'] ?? '').toString();
+      final actions = (ticket['actions'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
+
+      final stats = byAdvisor.putIfAbsent(
+        advisorName,
+        () => AdvisorCaseStats(advisorName: advisorName, department: department, shatr: shatr),
+      );
+
+      for (final action in actions) {
+        stats.total++;
+        final advisorStatus = (action['advisor_status'] ?? '').toString().trim();
+        final coordinatorStatus = (action['coordinator_status'] ?? '').toString().trim();
+        final collegeStatus = (action['college_status'] ?? '').toString().trim();
+
+        if (effectiveStatus(action) == 'تم الإنجاز') {
+          stats.completed++;
+        } else if (coordinatorStatus.isNotEmpty || collegeStatus.isNotEmpty) {
+          stats.escalatedToCoordinator++;
+        } else if (advisorStatus.isEmpty) {
+          stats.notStarted++;
+        }
+      }
+    }
+
+    return byAdvisor.values.toList()..sort((a, b) => b.total.compareTo(a.total));
+  }
+
   static TicketActionStats build(List<Map<String, dynamic>> tickets) {
     final byActionType = <String, ActionTypeStats>{};
     final byDepartmentShatr = <String, Map<String, int>>{};

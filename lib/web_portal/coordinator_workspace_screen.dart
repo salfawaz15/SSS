@@ -26,6 +26,7 @@ import 'follow_up_chart.dart';
 import 'portal_cards.dart';
 import 'portal_header.dart';
 import 'stage_progress_chart.dart';
+import 'ticket_action_stats_panel.dart';
 
 /// شاشة المنسّق في بوابة الويب: تعرض فقط حالات قسمه/شطره (Firestore rules
 /// تمنع أي وصول لغير ذلك بنيويًا)، مع زر تنزيل وزر رفع ملف معالج، وتقرير
@@ -518,6 +519,7 @@ class _CoordinatorBodyState extends State<_CoordinatorBody> {
           data: reportData,
           showCollegePerformance: false,
         ),
+        TicketActionStatsPanel(tickets: tickets, reportData: reportData),
       ],
     );
   }
