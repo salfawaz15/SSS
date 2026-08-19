@@ -5,10 +5,12 @@ import '../services/ticket_action_stats_service.dart';
 import '../theme/app_theme.dart';
 import 'portal_cards.dart';
 
-/// لوحة إحصائيات طلبات الحذف/الإضافة/تعديل الشعب - مختلفة تمامًا عن
-/// [FollowUpChart] (المخصَّص لمتابعة إنجاز الإرشاد): هذه تُجيب عن "كم طلب من
-/// كل نوع؟ في أي قسم؟ وكم حالة كان المرشد المختار فيها خطأً؟" لا عن حالة
-/// إنجاز المرشدين. تظهر تلقائيًا أسفل لوحة متابعة الإنجاز بلوحة الإدارة.
+/// لوحة إحصائيات طلبات الحذف/الإضافة/تعديل الشعب - "الإنجاز" الحقيقي الذي
+/// نقيسه هنا هو معالجة المرشد (ثم منسّق القسم فمنسّق الكلية) لهذه الطلبات
+/// نفسها، فهو عمل المرشد الإرشادي بحق. أما تسكين الطالب على مرشده الصحيح
+/// (`advisor_corrected`) فهو شرط صحة بيانات أساسي لا مؤشر تقدّم - يُعرض هنا
+/// كتنبيه منفصل بصريًا عن بطاقات الإنجاز، لا كرقم إنجاز. تظهر تلقائيًا أسفل
+/// لوحة متابعة الإنجاز بلوحة الإدارة.
 class TicketActionStatsPanel extends StatelessWidget {
   final List<Map<String, dynamic>> tickets;
 
@@ -69,12 +71,6 @@ class TicketActionStatsPanel extends StatelessWidget {
                       accentColor: _actionColors[type]!,
                     ),
                 PortalStatCard(
-                  icon: Icons.warning_amber_rounded,
-                  value: '${stats.advisorMismatchCount}',
-                  label: 'مرشد مختار خطأً (صُحِّح تلقائيًا)',
-                  accentColor: AppColors.errorRed,
-                ),
-                PortalStatCard(
                   icon: Icons.priority_high_rounded,
                   value: '${stats.priorityPendingCount}',
                   label: 'خريجون/ذوو إعاقة لهم طلبات معلَّقة',
@@ -99,13 +95,107 @@ class TicketActionStatsPanel extends StatelessWidget {
           ),
           const SizedBox(height: 20),
           const Text(
+            'حالة إنجاز معالجة الطلبات (لكل نوع إجراء)',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.greenDark),
+          ),
+          const SizedBox(height: 10),
+          for (final type in ['إضافة', 'حذف', 'تعديل'])
+            if (stats.byActionType.containsKey(type))
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _ActionProgressBar(
+                  label: type,
+                  color: _actionColors[type]!,
+                  stats: stats.byActionType[type]!,
+                ),
+              ),
+          const SizedBox(height: 16),
+          const Text(
             'توزيع الطلبات حسب القسم والشطر',
             style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.greenDark),
           ),
           const SizedBox(height: 10),
           _DepartmentBreakdownTable(stats: stats),
+          if (stats.advisorMismatchCount > 0) ...[
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.errorRed.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.errorRed.withValues(alpha: 0.25)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.warning_amber_rounded, color: AppColors.errorRed, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'تنبيه صحة بيانات (ليس مؤشر إنجاز): ${stats.advisorMismatchCount} '
+                      'حالة اختار فيها الطالب مرشدًا غير مرشده الفعلي بالنموذج - '
+                      'صُحِّحت تلقائيًا واعتُمد المرشد الصحيح لتوجيه الطلب.',
+                      style: const TextStyle(fontSize: 12.5, color: AppColors.errorRed),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
+    );
+  }
+}
+
+/// شريط تقدّم واحد لنوع إجراء واحد: نسبة (لم يبدأ/قيد التنفيذ/مكتمل) - هذا
+/// هو "الإنجاز" الفعلي (معالجة المرشد/منسّق القسم/منسّق الكلية للطلب).
+class _ActionProgressBar extends StatelessWidget {
+  final String label;
+  final Color color;
+  final ActionTypeStats stats;
+
+  const _ActionProgressBar({required this.label, required this.color, required this.stats});
+
+  @override
+  Widget build(BuildContext context) {
+    final counts = stats.statusCounts;
+    final total = counts.total == 0 ? 1 : counts.total;
+    final completed = counts.completed;
+    final partial = counts.partial;
+    final notStarted = counts.notDone + counts.blank;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(width: 10, height: 10, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+            const SizedBox(width: 8),
+            Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+            const Spacer(),
+            Text(
+              'مكتمل $completed / قيد التنفيذ $partial / لم يبدأ $notStarted',
+              style: TextStyle(fontSize: 11.5, color: Colors.grey.shade700),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: SizedBox(
+            height: 10,
+            child: Row(
+              children: [
+                Expanded(flex: completed, child: Container(color: const Color(0xFF2E7D32))),
+                Expanded(flex: partial, child: Container(color: AppColors.gold)),
+                Expanded(flex: notStarted, child: Container(color: Colors.grey.shade300)),
+                if (completed == 0 && partial == 0 && notStarted == 0)
+                  Expanded(flex: total, child: Container(color: Colors.grey.shade200)),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
