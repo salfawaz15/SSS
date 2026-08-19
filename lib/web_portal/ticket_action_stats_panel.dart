@@ -119,6 +119,13 @@ class TicketActionStatsPanel extends StatelessWidget {
           const SizedBox(height: 10),
           _DepartmentBreakdownTable(stats: stats),
           const SizedBox(height: 24),
+          const Text(
+            'عدد الحالات لدى كل مرشد',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.greenDark),
+          ),
+          const SizedBox(height: 10),
+          _AdvisorCaseCountTable(advisors: ReportDataService.rankedAdvisors(reportData)),
+          const SizedBox(height: 24),
           _TeamPerformanceSection(reportData: reportData),
           if (stats.advisorMismatchCount > 0) ...[
             const SizedBox(height: 20),
@@ -249,6 +256,97 @@ class _DepartmentBreakdownTable extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+/// جدول "عدد الحالات لدى كل مرشد" مع فلترة بالشطر/القسم - مختلف عن
+/// _TeamPerformanceSection (الذي يبرز نسبة الإنجاز والتقصير) بأنه يركّز على
+/// **العدد الخام** بشكل جدولي قابل للفلترة، وهو ما طلبه سليمان تحديدًا.
+class _AdvisorCaseCountTable extends StatefulWidget {
+  final List<AdvisorProgress> advisors;
+
+  const _AdvisorCaseCountTable({required this.advisors});
+
+  @override
+  State<_AdvisorCaseCountTable> createState() => _AdvisorCaseCountTableState();
+}
+
+class _AdvisorCaseCountTableState extends State<_AdvisorCaseCountTable> {
+  String? _shatr;
+  String? _department;
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.advisors.isEmpty) {
+      return Text('لا توجد بيانات كافية', style: TextStyle(fontSize: 12, color: Colors.grey.shade600));
+    }
+
+    final filtered = widget.advisors.where((a) {
+      if (_shatr != null && a.shatr != _shatr) return false;
+      if (_department != null && a.department != _department) return false;
+      return true;
+    }).toList()
+      ..sort((a, b) => b.counts.total.compareTo(a.counts.total));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            DropdownMenu<String?>(
+              label: const Text('الشطر'),
+              initialSelection: _shatr,
+              dropdownMenuEntries: [
+                const DropdownMenuEntry(value: null, label: 'كل الشطور'),
+                ...[ExcelParserService.shatrMale, ExcelParserService.shatrFemale]
+                    .map((s) => DropdownMenuEntry(value: s, label: s)),
+              ],
+              onSelected: (v) => setState(() => _shatr = v),
+            ),
+            DropdownMenu<String?>(
+              label: const Text('القسم'),
+              initialSelection: _department,
+              dropdownMenuEntries: [
+                const DropdownMenuEntry(value: null, label: 'كل الأقسام'),
+                ...ExcelParserService.departments.map((d) => DropdownMenuEntry(value: d, label: d)),
+              ],
+              onSelected: (v) => setState(() => _department = v),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (filtered.isEmpty)
+          Text('لا توجد حالات لهذا الاختيار', style: TextStyle(fontSize: 12, color: Colors.grey.shade600))
+        else
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: DataTable(
+              headingRowColor: WidgetStateProperty.all(AppColors.background),
+              columns: const [
+                DataColumn(label: Text('المرشد')),
+                DataColumn(label: Text('القسم')),
+                DataColumn(label: Text('الشطر')),
+                DataColumn(label: Text('عدد الحالات')),
+                DataColumn(label: Text('نسبة الإنجاز')),
+              ],
+              rows: [
+                for (final a in filtered)
+                  DataRow(
+                    cells: [
+                      DataCell(Text(a.advisorName)),
+                      DataCell(Text(a.department)),
+                      DataCell(Text(a.shatr)),
+                      DataCell(Text('${a.counts.total}')),
+                      DataCell(Text('${(a.counts.completionRate * 100).round()}%')),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }
