@@ -8,10 +8,13 @@ import '../data/course_catalog.dart';
 import '../models/course_section_record.dart';
 import '../services/advising_report_repository.dart';
 import '../services/advising_schedule_repository.dart';
+import '../services/advisor_correction_service.dart';
 import '../services/course_schedule_change_repository.dart';
 import '../services/course_schedule_diff_service.dart';
 import '../services/course_schedule_repository.dart';
 import '../services/docx_schedule_parser_service.dart';
+import '../services/excel_parser_service.dart';
+import '../services/firestore_ticket_service.dart';
 import '../services/outside_course_repository.dart';
 import '../theme/app_theme.dart';
 import 'admin_nav.dart';
@@ -63,6 +66,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   bool _uploadingAllColleges = false;
   bool _uploadingHealth = false;
   bool _uploadingSchedule = false;
+  bool _uploadingFormsFile = false;
 
   @override
   void initState() {
@@ -213,6 +217,80 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     }
   }
 
+  /// يسأل الأدمن أولًا: هل هذا أول رفع في دورة حذف وإضافة جديدة (يمسح كل
+  /// شيء - بداية نظيفة)، أم رفعة يوم تالٍ من نفس الدورة (الاثنين/الثلاثاء -
+  /// تصدير Microsoft Forms تراكمي، فيُضاف الجديد فقط بلا مسح أي شيء حتى لا
+  /// يُفقَد عمل المرشدين/المنسّقين على حالات الأيام السابقة).
+  Future<bool?> _confirmFormsUploadMode() {
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('اختر نوع الرفع'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('إلغاء'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('رفعة يوم تالٍ (إضافة فقط)'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade700),
+            child: const Text('رفع جديد (بداية دورة - يمسح القديم)'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// رفع ملف طلبات الحذف/الإضافة (مصدره Microsoft Forms، لا المنظومة
+  /// الداخلية - لذا بطاقة مستقلة مميَّزة بصريًا بدل الشبكة 2×2 العلوية).
+  /// نُقل هنا حرفيًا من admin_workspace_screen.dart بلا أي تغيير بالمنطق -
+  /// سليمان صراحةً 2026-08-19.
+  Future<void> _pickAndUploadFormsFile() async {
+    final isNewCycle = await _confirmFormsUploadMode();
+    if (isNewCycle == null) return;
+
+    setState(() => _uploadingFormsFile = true);
+
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['xlsx'],
+      withData: true,
+    );
+
+    if (result == null || result.files.single.bytes == null) {
+      setState(() => _uploadingFormsFile = false);
+      return;
+    }
+
+    final Uint8List bytes = result.files.single.bytes!;
+    final rawTickets = ExcelParserService.parseTickets(bytes);
+
+    final advisingRecords = [
+      ...await AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.allColleges),
+      ...await AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.allColleges),
+    ];
+    final tickets = AdvisorCorrectionService.applyAdvisorCorrection(rawTickets, advisingRecords);
+
+    String message;
+    if (isNewCycle) {
+      await FirestoreTicketService.replaceAllTickets(tickets);
+      message = 'تم رفع ${tickets.length} حالة بنجاح (دورة جديدة)';
+    } else {
+      final addedCount = await FirestoreTicketService.addNewTickets(tickets);
+      message = 'تمت إضافة $addedCount حالة جديدة (من أصل ${tickets.length} في الملف - '
+          'الباقي موجود مسبقًا وتم تجاهله حفاظًا على عمل المرشدين/المنسّقين)';
+    }
+
+    if (!mounted) return;
+    setState(() => _uploadingFormsFile = false);
+    _showSuccessSnackBar(message);
+  }
+
   Future<void> _clearCourses() async {
     if (!await _confirmClear('ملف المقررات الدراسية')) return;
     try {
@@ -328,6 +406,10 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       _headerBanner(),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
+                        child: _formsFileUploadBanner(),
+                      ),
                       Padding(
                         padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
                         child: LayoutBuilder(builder: (context, constraints) {
@@ -455,6 +537,72 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   // ==================== عناصر التصميم ====================
 
   /// رأس مصرَّف داكن بخط ذهبي وشارة ماسية، مع زخرفة أقواس ذهبية بزوايا الرأس.
+  /// بطاقة مميَّزة بصريًا لرفع ملف طلبات الحذف/الإضافة - مصدرها مختلف عمدًا
+  /// عن بقية بطاقات هذه الصفحة (Microsoft Forms لا المنظومة الداخلية)، لذا
+  /// صُمِّمت بهوية مغايرة (تدرّج أخضر داكن + شارة ذهبية) بدل قالب البطاقة
+  /// البيضاء الموحَّد، وبإشارة صريحة لمصدرها تحت العنوان - بطلب سليمان
+  /// 2026-08-19 (نُقلت من لوحة الإدارة إلى هنا).
+  Widget _formsFileUploadBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(colors: [AppColors.greenDark, AppColors.green]),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.gold, width: 1.4),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.12), blurRadius: 14, offset: const Offset(0, 5))],
+      ),
+      child: LayoutBuilder(builder: (context, constraints) {
+        final narrow = constraints.maxWidth < 640;
+        final info = Row(
+          children: [
+            Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(color: AppColors.gold, borderRadius: BorderRadius.circular(12)),
+              child: const Icon(Icons.assignment_outlined, color: AppColors.greenDark, size: 24),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('الملف الأساسي - طلبات الحذف والإضافة', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(Icons.description_outlined, size: 13, color: AppColors.goldLight.withValues(alpha: 0.9)),
+                      const SizedBox(width: 5),
+                      Text('المصدر: نموذج Microsoft Forms', style: TextStyle(color: AppColors.goldLight.withValues(alpha: 0.9), fontSize: 11.5)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+        final button = ElevatedButton.icon(
+          onPressed: _uploadingFormsFile ? null : _pickAndUploadFormsFile,
+          icon: _uploadingFormsFile
+              ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.greenDark))
+              : const Icon(Icons.upload_file, size: 18),
+          label: Text(_uploadingFormsFile ? 'جارٍ الرفع...' : 'رفع الملف'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.gold,
+            foregroundColor: AppColors.greenDark,
+            textStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        );
+        if (narrow) {
+          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [info, const SizedBox(height: 14), button]);
+        }
+        return Row(children: [Expanded(child: info), const SizedBox(width: 16), button]);
+      }),
+    );
+  }
+
   Widget _headerBanner() {
     return ClipRRect(
       borderRadius: BorderRadius.circular(4),

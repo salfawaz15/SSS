@@ -776,7 +776,8 @@ class _AdvisorFullTable extends StatelessWidget {
       child: _CardShell(
         title: 'عدد الحالات لدى كل مرشد',
         icon: Icons.groups_2_outlined,
-        child: SingleChildScrollView(
+        child: Center(
+          child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: DataTable(
             headingRowHeight: 36,
@@ -805,6 +806,7 @@ class _AdvisorFullTable extends StatelessWidget {
                 ]),
             ],
           ),
+        ),
         ),
       ),
     );

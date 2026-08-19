@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -9,12 +8,9 @@ import 'package:printing/printing.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/advisor_roster_entry.dart';
-import '../services/advising_report_repository.dart';
-import '../services/advisor_correction_service.dart';
 import '../services/advisor_roster_service.dart';
 import '../services/advisor_zip_service.dart';
 import '../services/app_update_service.dart';
-import '../services/course_schedule_repository.dart' show Shatr;
 import '../services/disability_file_service.dart';
 import '../services/escalation_file_service.dart';
 import '../services/excel_parser_service.dart';
@@ -52,7 +48,6 @@ class AdminWorkspaceScreen extends StatefulWidget {
 
 class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
   StreamSubscription<List<Map<String, dynamic>>>? _statsSubscription;
-  bool _isUploading = false;
   final Set<String> _downloadingKeys = {};
 
   /// مُحمَّلة مرة واحدة عند فتح اللوحة - تُستخدم في لوحة متابعة الإنجاز حتى
@@ -79,78 +74,8 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
     super.dispose();
   }
 
-  /// يسأل الأدمن أولًا: هل هذا أول رفع في دورة حذف وإضافة جديدة (يمسح كل
-  /// شيء - بداية نظيفة)، أم رفعة يوم تالٍ من نفس الدورة (الاثنين/الثلاثاء -
-  /// تصدير Microsoft Forms تراكمي، فيُضاف الجديد فقط بلا مسح أي شيء حتى لا
-  /// يُفقَد عمل المرشدين/المنسّقين على حالات الأيام السابقة).
-  Future<bool?> _confirmUploadMode() {
-    return showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('اختر نوع الرفع'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('إلغاء'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('رفعة يوم تالٍ (إضافة فقط)'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade700),
-            child: const Text('رفع جديد (بداية دورة - يمسح القديم)'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _pickAndUploadFile() async {
-    final isNewCycle = await _confirmUploadMode();
-    if (isNewCycle == null) return;
-
-    setState(() => _isUploading = true);
-
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['xlsx'],
-      withData: true,
-    );
-
-    if (result == null || result.files.single.bytes == null) {
-      setState(() => _isUploading = false);
-      return;
-    }
-
-    final Uint8List bytes = result.files.single.bytes!;
-    final rawTickets = ExcelParserService.parseTickets(bytes);
-
-    final advisingRecords = [
-      ...await AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.allColleges),
-      ...await AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.allColleges),
-    ];
-    final tickets =
-        AdvisorCorrectionService.applyAdvisorCorrection(rawTickets, advisingRecords);
-
-    String message;
-    if (isNewCycle) {
-      await FirestoreTicketService.replaceAllTickets(tickets);
-      message = 'تم رفع ${tickets.length} حالة بنجاح (دورة جديدة)';
-    } else {
-      final addedCount = await FirestoreTicketService.addNewTickets(tickets);
-      message = 'تمت إضافة $addedCount حالة جديدة (من أصل ${tickets.length} في الملف - '
-          'الباقي موجود مسبقًا وتم تجاهله حفاظًا على عمل المرشدين/المنسّقين)';
-    }
-
-    setState(() => _isUploading = false);
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
-    }
-  }
+  // رفع الملف الأساسي (طلبات الحذف والإضافة) انتقل إلى بطاقة مميَّزة بصفحة
+  // "رفع ملفات" (upload_hub_screen.dart) - بطلب سليمان 2026-08-19.
 
   Future<void> _confirmClearData() async {
     final confirmed = await showDialog<bool>(
@@ -565,23 +490,6 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              ElevatedButton.icon(
-                onPressed: _isUploading ? null : _pickAndUploadFile,
-                icon: _isUploading
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(Icons.upload_file),
-                label: Text(
-                  _isUploading ? 'جارٍ الرفع...' : 'رفع الملف الأساسي (طلبات الحذف والإضافة)',
-                ),
-              ),
-              const SizedBox(height: 20),
               TicketActionStatsPanel(tickets: tickets),
             ],
           );
