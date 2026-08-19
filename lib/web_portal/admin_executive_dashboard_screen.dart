@@ -474,14 +474,18 @@ const _kDepartmentPerf = [
     female: _DeptShatrStats(total: 4, processing: 0, overdue: 0, completed: 4),
   ),
   _DepartmentPerf(
-    name: 'قسم نظم المعلومات الإدارية',
-    male: _DeptShatrStats(total: 8, processing: 1, overdue: 1, completed: 6),
-    female: _DeptShatrStats(total: 6, processing: 1, overdue: 0, completed: 5),
-  ),
-  _DepartmentPerf(
     name: 'قسم الاقتصاد والتمويل',
     male: _DeptShatrStats(total: 4, processing: 1, overdue: 0, completed: 3),
     female: _DeptShatrStats(total: 3, processing: 0, overdue: 0, completed: 3),
+  ),
+  // نظم المعلومات الإدارية آخر القائمة دائمًا (سليمان: "نبدأ بالإدارة
+  // وننتهي بنظم المعلومات") - الترتيب الكامل: الإدارة، المحاسبة، التسويق،
+  // الاقتصاد والتمويل، نظم المعلومات الإدارية. يُستخدَم بنفس الترتيب في كل
+  // مكان يُذكَر فيه أداء الأقسام أو حالاتها (لا فرز حسب الأداء أو الاسم).
+  _DepartmentPerf(
+    name: 'قسم نظم المعلومات الإدارية',
+    male: _DeptShatrStats(total: 8, processing: 1, overdue: 1, completed: 6),
+    female: _DeptShatrStats(total: 6, processing: 1, overdue: 0, completed: 5),
   ),
 ];
 
@@ -1098,7 +1102,13 @@ class _ManagementAttentionSectionState extends State<_ManagementAttentionSection
   /// (عاجلة/متأخرة/مراجعة) بدل نص حر متفرق (سليمان 2026-08-19).
   Widget _buildDepartmentLevel() {
     final cases = _casesInShatr;
-    final departments = cases.map((c) => c.department).toSet().toList();
+    // ترتيب الأقسام العلمية دائمًا حسب ترتيب [_kDepartmentPerf] المعتمد
+    // (الإدارة، المحاسبة، التسويق، الاقتصاد والتمويل، نظم المعلومات
+    // الإدارية) - لا حسب ترتيب ظهورها العرضي بقائمة الحالات (سليمان
+    // 2026-08-19: "نبدأ بالإدارة وننتهي بنظم المعلومات").
+    final canonicalOrder = _kDepartmentPerf.map((d) => d.name).toList();
+    final departments = cases.map((c) => c.department).toSet().toList()
+      ..sort((a, b) => canonicalOrder.indexOf(a).compareTo(canonicalOrder.indexOf(b)));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
