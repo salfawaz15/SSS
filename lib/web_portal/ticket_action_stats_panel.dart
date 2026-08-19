@@ -195,14 +195,24 @@ class _ActionProgressBar extends StatelessWidget {
           borderRadius: BorderRadius.circular(6),
           child: SizedBox(
             height: 10,
-            child: Row(
-              children: [
-                Expanded(flex: completed, child: Container(color: const Color(0xFF2E7D32))),
-                Expanded(flex: partial, child: Container(color: AppColors.gold)),
-                Expanded(flex: notStarted, child: Container(color: Colors.grey.shade300)),
-                if (completed == 0 && partial == 0 && notStarted == 0)
-                  Expanded(flex: total, child: Container(color: Colors.grey.shade200)),
-              ],
+            // نتجنّب Row+Expanded(flex: ...) عمدًا: قيمة flex صفر لأكثر من
+            // شريحة معًا (شائعة هنا لأن أغلب الطلبات لم تُعالَج بعد) قد
+            // تُنتج تخطيطًا فارغًا بصمت. نحسب العرض بالبكسل مباشرة بدل ذلك،
+            // بنفس أسلوب _AdvisorBars المُجرَّب فعليًا بهذا المشروع.
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final w = constraints.maxWidth;
+                final completedW = w * completed / total;
+                final partialW = w * partial / total;
+                final notStartedW = (w - completedW - partialW).clamp(0.0, w);
+                return Row(
+                  children: [
+                    Container(width: completedW, color: const Color(0xFF2E7D32)),
+                    Container(width: partialW, color: AppColors.gold),
+                    Container(width: notStartedW, color: Colors.grey.shade300),
+                  ],
+                );
+              },
             ),
           ),
         ),
