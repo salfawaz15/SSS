@@ -91,7 +91,7 @@ class _TicketActionStatsPanelState extends State<TicketActionStatsPanel> {
                     label: const Text('الشطر'),
                     initialSelection: _shatr,
                     dropdownMenuEntries: [
-                      const DropdownMenuEntry(value: null, label: 'كل الشطور'),
+                      const DropdownMenuEntry(value: null, label: 'الكل'),
                       ...[ExcelParserService.shatrMale, ExcelParserService.shatrFemale]
                           .map((s) => DropdownMenuEntry(value: s, label: s)),
                     ],
@@ -101,7 +101,7 @@ class _TicketActionStatsPanelState extends State<TicketActionStatsPanel> {
                     label: const Text('القسم'),
                     initialSelection: _department,
                     dropdownMenuEntries: [
-                      const DropdownMenuEntry(value: null, label: 'كل الأقسام'),
+                      const DropdownMenuEntry(value: null, label: 'الكل'),
                       ...ExcelParserService.departments.map((d) => DropdownMenuEntry(value: d, label: d)),
                     ],
                     onSelected: (v) => setState(() => _department = v),
@@ -679,7 +679,7 @@ class _AdvisorCaseCountTableState extends State<_AdvisorCaseCountTable> {
               label: const Text('الشطر'),
               initialSelection: _shatr,
               dropdownMenuEntries: [
-                const DropdownMenuEntry(value: null, label: 'كل الشطور'),
+                const DropdownMenuEntry(value: null, label: 'الكل'),
                 ...[ExcelParserService.shatrMale, ExcelParserService.shatrFemale]
                     .map((s) => DropdownMenuEntry(value: s, label: s)),
               ],
@@ -689,7 +689,7 @@ class _AdvisorCaseCountTableState extends State<_AdvisorCaseCountTable> {
               label: const Text('القسم'),
               initialSelection: _department,
               dropdownMenuEntries: [
-                const DropdownMenuEntry(value: null, label: 'كل الأقسام'),
+                const DropdownMenuEntry(value: null, label: 'الكل'),
                 ...ExcelParserService.departments.map((d) => DropdownMenuEntry(value: d, label: d)),
               ],
               onSelected: (v) => setState(() => _department = v),
