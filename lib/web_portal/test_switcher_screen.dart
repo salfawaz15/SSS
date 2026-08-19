@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import 'admin_executive_dashboard_screen.dart';
 import 'admin_workspace_screen.dart';
 import 'college_coordinator_workspace_screen.dart';
 import 'coordinator_workspace_screen.dart';
@@ -83,7 +84,8 @@ class TestSwitcherScreen extends StatelessWidget {
             title: 'الإدارة والعرض',
             icon: Icons.admin_panel_settings_outlined,
             children: [
-              _TestTile(label: 'لوحة الإدارة الكاملة', onTap: () => _open(context, const AdminWorkspaceScreen())),
+              _TestTile(label: 'لوحة الإدارة (تبويب الحذف والإضافة)', onTap: () => _open(context, const AdminWorkspaceScreen())),
+              _TestTile(label: 'لوحة الإدارة الرئيسية', onTap: () => _open(context, const AdminExecutiveDashboardScreen())),
               _TestTile(label: 'عرض فقط (أمين/سكرتير)', onTap: () => _open(context, const ViewerReportsScreen())),
               _TestTile(label: 'منسّق الوحدة للشؤون الإدارية', onTap: () => _open(context, const UnitCoordinatorWorkspaceScreen())),
             ],

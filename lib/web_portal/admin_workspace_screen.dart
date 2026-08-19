@@ -384,9 +384,9 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
         PortalAccounts.isCurrentSessionSuperAdmin;
 
     return PortalScaffold(
-      title: 'لوحة الإدارة',
+      title: 'الحذف والإضافة',
       showBackButton: false,
-      navItems: buildAdminNavItems(context, current: 'dashboard'),
+      navItems: buildAdminNavItems(context, current: 'delete-add'),
       floatingActionButton: _buildAndroidDownloadBadge(),
       actions: [
           PopupMenuButton<VoidCallback>(

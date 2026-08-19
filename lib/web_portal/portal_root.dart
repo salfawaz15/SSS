@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'admin_workspace_screen.dart';
+import 'admin_executive_dashboard_screen.dart';
 import 'college_coordinator_workspace_screen.dart';
 import 'coordinator_workspace_screen.dart';
 import 'inactivity_auto_logout.dart';
@@ -28,7 +28,7 @@ class PortalRoot extends StatelessWidget {
       loginBuilder: (context) => const StaffNumberLoginScreen(),
       builder: (context, resolved) => InactivityAutoLogout(
         child: switch (resolved.role) {
-          PortalRole.superAdmin || PortalRole.admin => const AdminWorkspaceScreen(),
+          PortalRole.superAdmin || PortalRole.admin => const AdminExecutiveDashboardScreen(),
           PortalRole.ameen => const ViewerReportsScreen(),
           PortalRole.unitCoordinator => const UnitCoordinatorWorkspaceScreen(),
           PortalRole.collegeCoordinator => CollegeCoordinatorWorkspaceScreen(uid: resolved.uid),

@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'academic_services_hub_screen.dart';
+import 'admin_workspace_screen.dart';
 import 'advising_hub_screen.dart';
 import 'college_roster_admin_screen.dart';
 import 'portal_accounts.dart';
@@ -49,6 +50,14 @@ List<PortalNavItem> buildAdminNavItems(BuildContext context, {required String cu
       icon: Icons.dashboard_outlined,
       selected: current == 'dashboard',
       onTap: () => Navigator.of(context).popUntil((r) => r.settings.name == kPortalRootRouteName),
+    ),
+    PortalNavItem(
+      label: 'الحذف والإضافة',
+      icon: Icons.assignment_outlined,
+      selected: current == 'delete-add',
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const AdminWorkspaceScreen()),
+      ),
     ),
     PortalNavItem(
       label: 'تقارير',
