@@ -20,7 +20,9 @@ class ExcelParserService {
     'قسم نظم المعلومات الادارية',
   ];
 
-  static const int _maxActions = 5;
+  static const int _maxAddActions = 3;
+  static const int _maxDeleteActions = 2;
+  static const int _maxChangeActions = 2;
 
   // البريد الجامعي بصيغة s<الرقم الجامعي>@student.tu.edu.sa (لا نتقيّد بالنطاق
   // بدقة تحسبًا لاختلافات طفيفة فيه - المهم هو استخراج الرقم بعد حرف s).
@@ -52,21 +54,22 @@ class ExcelParserService {
     return -1;
   }
 
-  /// يبحث عن أعمدة حقل يتكرر لكل إجراء (1 بلا لاحقة، ثم 2-5)، فيرجّع خريطة
-  /// من رقم الإجراء (1-5) إلى فهرس العمود، متضمّنة فقط الأعمدة الموجودة
-  /// فعليًا في هذا الملف بالذات.
-  static Map<int, int> _findActionColumns(
+  /// يبحث عن كل الأعمدة التي تحقق [test] ضمن نطاق فهارس [start, end) فقط،
+  /// بترتيب ظهورها. ضروري لأن النموذج الجديد يكرّر نفس عنوان السؤال حرفيًا
+  /// بين أقسام مختلفة (مثل "المقرر الأول ورقم الشعبة" في كل من قسمي الإضافة
+  /// والحذف)، فلا يمكن تمييزها إلا بموقعها ضمن نطاق قسمها (محصور بين عمودي
+  /// بوابة "هل لديك طلب ...؟" الفريدين قبله وبعده).
+  static List<int> _findColumnsInRange(
     List<String> normalizedHeaders,
-    String normalizedBase,
+    int start,
+    int end,
+    bool Function(String h) test,
   ) {
-    final pattern = RegExp('^${RegExp.escape(normalizedBase)}(\\d?)\$');
-    final result = <int, int>{};
-    for (var i = 0; i < normalizedHeaders.length; i++) {
-      final match = pattern.firstMatch(normalizedHeaders[i]);
-      if (match == null) continue;
-      final suffix = match.group(1);
-      final actionNumber = (suffix == null || suffix.isEmpty) ? 1 : int.parse(suffix);
-      result[actionNumber] = i;
+    final result = <int>[];
+    final safeStart = start < 0 ? 0 : start;
+    final safeEnd = end < 0 || end > normalizedHeaders.length ? normalizedHeaders.length : end;
+    for (var i = safeStart; i < safeEnd; i++) {
+      if (test(normalizedHeaders[i])) result.add(i);
     }
     return result;
   }
@@ -123,21 +126,126 @@ class ExcelParserService {
       (h) => h.contains(_normalize('القسم العلمي')) && h.contains(_normalize('الطالبات')),
     );
 
-    final actionTypeCols = _findActionColumns(normalizedHeaders, _normalize('نوع الاجراء'));
-    final requiredSectionCols =
-        _findActionColumns(normalizedHeaders, _normalize('رقم الشعبة المطلوبة'));
-    final currentEditCols = _findActionColumns(
+    final universityIdTypedCol =
+        _findColumn(normalizedHeaders, (h) => h == _normalize('الرقم الجامعي'));
+
+    // بوابات الأقسام الثلاثة: سؤال "هل لديك طلب إضافة مقرر؟" (بخلاف الحذف
+    // والتعديل) يقع داخل تفريع القسم/الشطر، فيُصدَّر بعشر نسخ شبه متطابقة
+    // (نفس العنوان الحرفي بلاحقة تعداد تُضيفها Excel تلقائيًا: "؟"، "؟  2"،
+    // ... "؟  10") واحدة لكل توليفة (شطر × قسم) تمامًا كأعمدة المرشد العشرة -
+    // القيمة الفعلية تكون في نسخة واحدة فقط منها (فرع الطالب) والباقي فارغ،
+    // فيجب فحص كل النسخ معًا (أي منها "نعم") بدل الاكتفاء بأول عمود مطابق.
+    // الحذف والتعديل يقعان بعد تلاقي كل الفروع فتكفيهما نسخة واحدة، لكن نتعامل
+    // معهما بنفس الأسلوب احتياطًا لو تغيّر تصميم النموذج لاحقًا.
+    final addGateCols = _findColumnsInRange(
       normalizedHeaders,
-      _normalize('رقم الشعبة الحالية (للتعديل)'),
+      0,
+      normalizedHeaders.length,
+      (h) => h.contains(_normalize('طلب إضافة مقرر')),
     );
-    final currentDeleteCols = _findActionColumns(
+    final deleteGateCols = _findColumnsInRange(
       normalizedHeaders,
-      _normalize('رقم الشعبة الحالية (للحذف)'),
+      0,
+      normalizedHeaders.length,
+      (h) => h.contains(_normalize('طلب حذف مقرر')),
     );
-    final courseCols = _findActionColumns(normalizedHeaders, _normalize('المقرر الدراسي'));
-    final reasonCols = _findActionColumns(normalizedHeaders, _normalize('سبب الطلب'));
-    final reasonDetailCols =
-        _findActionColumns(normalizedHeaders, _normalize('يرجى توضيح سبب الطلب'));
+    final changeGateCols = _findColumnsInRange(
+      normalizedHeaders,
+      0,
+      normalizedHeaders.length,
+      (h) => h.contains(_normalize('طلب تعديل شعبة')),
+    );
+
+    // نستخدم أول فهرس من كل مجموعة بوابات فقط لترسيم حدود نطاق القسم (كل
+    // النسخ المكرَّرة متجاورة قبل الحقول النصية الحرة المشتركة أصلاً)، وليس
+    // لقراءة قيمة الإجابة - تلك تُفحص عبر كل النسخ معًا أدناه.
+    final addGateCol = addGateCols.isEmpty ? -1 : addGateCols.first;
+    final deleteGateCol = deleteGateCols.isEmpty ? -1 : deleteGateCols.first;
+    final changeGateCol = changeGateCols.isEmpty ? -1 : changeGateCols.first;
+
+    final addRangeStart = addGateCol >= 0 ? addGateCol + 1 : -1;
+    final addRangeEnd = deleteGateCol >= 0 ? deleteGateCol : normalizedHeaders.length;
+    final deleteRangeStart = deleteGateCol >= 0 ? deleteGateCol + 1 : -1;
+    final deleteRangeEnd = changeGateCol >= 0 ? changeGateCol : normalizedHeaders.length;
+    final changeRangeStart = changeGateCol >= 0 ? changeGateCol + 1 : -1;
+    final changeRangeEnd = normalizedHeaders.length;
+
+    final addCourseCols = addGateCol < 0
+        ? const <int>[]
+        : _findColumnsInRange(
+            normalizedHeaders,
+            addRangeStart,
+            addRangeEnd,
+            (h) => h.contains(_normalize('ورقم الشعبة')),
+          );
+    final addReasonColInRange = addGateCol < 0
+        ? -1
+        : (_findColumnsInRange(
+            normalizedHeaders,
+            addRangeStart,
+            addRangeEnd,
+            (h) => h.contains(_normalize('سبب')),
+          )..sort())
+            .firstOrNull ??
+            -1;
+
+    final deleteCourseCols = deleteGateCol < 0
+        ? const <int>[]
+        : _findColumnsInRange(
+            normalizedHeaders,
+            deleteRangeStart,
+            deleteRangeEnd,
+            (h) => h.contains(_normalize('ورقم الشعبة')),
+          );
+    final deleteReasonColInRange = deleteGateCol < 0
+        ? -1
+        : (_findColumnsInRange(
+            normalizedHeaders,
+            deleteRangeStart,
+            deleteRangeEnd,
+            (h) => h.contains(_normalize('سبب')),
+          )..sort())
+            .firstOrNull ??
+            -1;
+    final deleteDetailColInRange = deleteGateCol < 0
+        ? -1
+        : (_findColumnsInRange(
+            normalizedHeaders,
+            deleteRangeStart,
+            deleteRangeEnd,
+            (h) => h.contains(_normalize('الظروف الخاصة')),
+          )..sort())
+            .firstOrNull ??
+            -1;
+
+    final changeCourseCols = changeGateCol < 0
+        ? const <int>[]
+        : _findColumnsInRange(
+            normalizedHeaders,
+            changeRangeStart,
+            changeRangeEnd,
+            (h) => h.contains(_normalize('الحالية والمطلوبة')),
+          );
+    final changeReasonColInRange = changeGateCol < 0
+        ? -1
+        : (_findColumnsInRange(
+            normalizedHeaders,
+            changeRangeStart,
+            changeRangeEnd,
+            (h) => h.contains(_normalize('سبب')),
+          )..sort())
+            .firstOrNull ??
+            -1;
+    final changeDetailColInRange = changeGateCol < 0
+        ? -1
+        : (_findColumnsInRange(
+            normalizedHeaders,
+            changeRangeStart,
+            changeRangeEnd,
+            (h) => h.contains(_normalize('الظروف الخاصة')),
+          )..sort())
+            .firstOrNull ??
+            -1;
 
     final tickets = <Map<String, dynamic>>[];
 
@@ -155,21 +263,72 @@ class ExcelParserService {
       final department = _cellText(row, isMale ? deptMaleCol : deptFemaleCol).trim();
       final advisorCol = _findAdvisorColumn(normalizedHeaders, department, shatr);
 
-      final actions = _parseActions(
-        row,
-        actionTypeCols: actionTypeCols,
-        requiredSectionCols: requiredSectionCols,
-        currentEditCols: currentEditCols,
-        currentDeleteCols: currentDeleteCols,
-        courseCols: courseCols,
-        reasonCols: reasonCols,
-        reasonDetailCols: reasonDetailCols,
-      );
+      final actions = <Map<String, dynamic>>[];
+
+      final wantsAdd = addGateCols.any((c) => _isYes(_cellText(row, c)));
+      if (wantsAdd) {
+        final reason = _cellText(row, addReasonColInRange).trim();
+        for (var i = 0; i < addCourseCols.length && i < _maxAddActions; i++) {
+          final raw = _cellText(row, addCourseCols[i]).trim();
+          if (raw.isEmpty) continue;
+          final parsed = _parseCourseAndSection(raw);
+          actions.add({
+            'action_type': 'إضافة',
+            'required_section': parsed['section'] ?? '',
+            'current_section': '',
+            'course': _joinCourse(parsed),
+            'reason': reason,
+            'reason_detail': reason,
+          });
+        }
+      }
+
+      final wantsDelete = deleteGateCols.any((c) => _isYes(_cellText(row, c)));
+      if (wantsDelete) {
+        final reason = _cellText(row, deleteReasonColInRange).trim();
+        final detail = _cellText(row, deleteDetailColInRange).trim();
+        for (var i = 0; i < deleteCourseCols.length && i < _maxDeleteActions; i++) {
+          final raw = _cellText(row, deleteCourseCols[i]).trim();
+          if (raw.isEmpty) continue;
+          final parsed = _parseCourseAndSection(raw);
+          actions.add({
+            'action_type': 'حذف',
+            'required_section': '',
+            'current_section': parsed['section'] ?? '',
+            'course': _joinCourse(parsed),
+            'reason': reason,
+            'reason_detail': detail.isNotEmpty ? detail : reason,
+          });
+        }
+      }
+
+      final wantsChange = changeGateCols.any((c) => _isYes(_cellText(row, c)));
+      if (wantsChange) {
+        final reason = _cellText(row, changeReasonColInRange).trim();
+        final detail = _cellText(row, changeDetailColInRange).trim();
+        for (var i = 0; i < changeCourseCols.length && i < _maxChangeActions; i++) {
+          final raw = _cellText(row, changeCourseCols[i]).trim();
+          if (raw.isEmpty) continue;
+          final parsed = _parseSectionChange(raw);
+          actions.add({
+            'action_type': 'تعديل',
+            'required_section': parsed['requestedSection'] ?? '',
+            'current_section': parsed['currentSection'] ?? '',
+            'course': _joinCourse(parsed),
+            'reason': reason,
+            'reason_detail': detail.isNotEmpty ? detail : reason,
+          });
+        }
+      }
+
+      final typedUniversityId =
+          universityIdTypedCol >= 0 ? _cellText(row, universityIdTypedCol).trim() : '';
 
       tickets.add({
         'email': email,
         'name': _cellText(row, nameCol),
         'university_id': _extractUniversityId(email),
+        'typed_university_id': typedUniversityId,
         'phone': _cellText(row, phoneCol),
         'expected_graduate': _isYes(_cellText(row, expectedGradCol)),
         'has_disability': _isYes(_cellText(row, disabilityCol)),
@@ -183,41 +342,79 @@ class ExcelParserService {
     return tickets;
   }
 
-  static List<Map<String, dynamic>> _parseActions(
-    List<Data?> row, {
-    required Map<int, int> actionTypeCols,
-    required Map<int, int> requiredSectionCols,
-    required Map<int, int> currentEditCols,
-    required Map<int, int> currentDeleteCols,
-    required Map<int, int> courseCols,
-    required Map<int, int> reasonCols,
-    required Map<int, int> reasonDetailCols,
-  }) {
-    final actions = <Map<String, dynamic>>[];
+  // نمط "<رمز> - <اسم المقرر> - <رقم الشعبة>" (الحقول الحرة لأقسام الإضافة
+  // والحذف) - نلتقط رقم الشعبة كآخر عدد بنهاية النص بعد فاصل شرطة، والباقي
+  // نص المقرر (رمز + اسم).
+  static final RegExp _trailingSectionPattern = RegExp(r'^(.*?)[-–—]\s*(\d{2,6})\s*$');
+  static final RegExp _courseCodeNamePattern = RegExp(r'^(\d+)\s*[-–—]\s*(.+)$');
+  static final RegExp _currentSectionKeywordPattern =
+      RegExp(r'(?:الحالي(?:ة)?|الشعبةالحالية)\s*[:\-]?\s*(\d{2,6})');
+  static final RegExp _requestedSectionKeywordPattern =
+      RegExp(r'(?:المطلوب(?:ة)?|الشعبةالمطلوبة)\s*[:\-]?\s*(\d{2,6})');
 
-    for (var n = 1; n <= _maxActions; n++) {
-      final typeCol = actionTypeCols[n];
-      if (typeCol == null) continue;
+  static Map<String, String> _parseCourseAndSection(String raw) {
+    final text = raw.trim();
+    if (text.isEmpty) return const {'code': '', 'name': '', 'section': ''};
 
-      final actionType = _cellText(row, typeCol).trim();
-      if (actionType.isEmpty) continue;
-
-      final currentSectionEdit = _cellText(row, currentEditCols[n] ?? -1).trim();
-      final currentSectionDelete = _cellText(row, currentDeleteCols[n] ?? -1).trim();
-
-      actions.add({
-        'action_type': actionType,
-        'required_section': _cellText(row, requiredSectionCols[n] ?? -1).trim(),
-        'current_section': currentSectionEdit.isNotEmpty
-            ? currentSectionEdit
-            : currentSectionDelete,
-        'course': _cellText(row, courseCols[n] ?? -1).trim(),
-        'reason': _cellText(row, reasonCols[n] ?? -1).trim(),
-        'reason_detail': _cellText(row, reasonDetailCols[n] ?? -1).trim(),
-      });
+    var coursePart = text;
+    var section = '';
+    final sectionMatch = _trailingSectionPattern.firstMatch(text);
+    if (sectionMatch != null) {
+      coursePart = sectionMatch.group(1)!.trim();
+      section = sectionMatch.group(2)!.trim();
     }
 
-    return actions;
+    final courseMatch = _courseCodeNamePattern.firstMatch(coursePart);
+    if (courseMatch != null) {
+      return {
+        'code': courseMatch.group(1)!.trim(),
+        'name': courseMatch.group(2)!.trim(),
+        'section': section,
+      };
+    }
+    return {'code': '', 'name': coursePart, 'section': section};
+  }
+
+  /// يحلّل نص "التعديل الأول/الثاني - المقرر والشعبة الحالية والمطلوبة"،
+  /// يبحث عن رقمي الشعبة الحالية والمطلوبة بمرافقة كلماتهما الدالة، والباقي
+  /// بعد حذفهما هو نص المقرر (رمز + اسم).
+  static Map<String, String> _parseSectionChange(String raw) {
+    final text = raw.trim();
+    if (text.isEmpty) {
+      return const {'code': '', 'name': '', 'currentSection': '', 'requestedSection': ''};
+    }
+
+    final compact = _normalize(text);
+    final currentMatch = _currentSectionKeywordPattern.firstMatch(compact);
+    final requestedMatch = _requestedSectionKeywordPattern.firstMatch(compact);
+
+    var courseText = text;
+    if (currentMatch != null || requestedMatch != null) {
+      // نحذف من النص الأصلي كل رقم شعبة التقطناه (بمطابقة الرقم نفسه) حتى لا
+      // يبقى ضمن اسم المقرر المُستخرَج.
+      if (currentMatch != null) {
+        courseText = courseText.replaceAll(currentMatch.group(1)!, '');
+      }
+      if (requestedMatch != null) {
+        courseText = courseText.replaceAll(requestedMatch.group(1)!, '');
+      }
+    }
+
+    final parsed = _parseCourseAndSection(courseText.replaceAll(RegExp(r'[:\-–—]+$'), '').trim());
+    return {
+      'code': parsed['code'] ?? '',
+      'name': parsed['name'] ?? '',
+      'currentSection': currentMatch?.group(1) ?? '',
+      'requestedSection': requestedMatch?.group(1) ?? '',
+    };
+  }
+
+  static String _joinCourse(Map<String, String> parsed) {
+    final code = parsed['code'] ?? '';
+    final name = parsed['name'] ?? '';
+    if (code.isEmpty) return name;
+    if (name.isEmpty) return code;
+    return '$code - $name';
   }
 
   static String _cellText(List<Data?> row, int index) {

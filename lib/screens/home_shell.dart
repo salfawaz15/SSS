@@ -4,7 +4,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../models/coordinator.dart';
+import '../services/advising_report_repository.dart';
+import '../services/advisor_correction_service.dart';
 import '../services/coordinator_service.dart';
+import '../services/course_schedule_repository.dart' show Shatr;
 import '../services/excel_parser_service.dart';
 import '../services/mail_service.dart';
 import '../services/ticket_repository.dart';
@@ -71,7 +74,14 @@ class _HomeShellState extends State<HomeShell> {
     }
 
     final Uint8List bytes = result.files.single.bytes!;
-    final tickets = ExcelParserService.parseTickets(bytes);
+    final rawTickets = ExcelParserService.parseTickets(bytes);
+
+    final advisingRecords = [
+      ...await AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.allColleges),
+      ...await AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.allColleges),
+    ];
+    final tickets =
+        AdvisorCorrectionService.applyAdvisorCorrection(rawTickets, advisingRecords);
     final groups = ExcelParserService.groupByShatrAndDepartment(tickets);
 
     await TicketRepository.saveAll(tickets);

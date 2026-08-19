@@ -9,9 +9,12 @@ import 'package:printing/printing.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/advisor_roster_entry.dart';
+import '../services/advising_report_repository.dart';
+import '../services/advisor_correction_service.dart';
 import '../services/advisor_roster_service.dart';
 import '../services/advisor_zip_service.dart';
 import '../services/app_update_service.dart';
+import '../services/course_schedule_repository.dart' show Shatr;
 import '../services/disability_file_service.dart';
 import '../services/escalation_file_service.dart';
 import '../services/excel_parser_service.dart';
@@ -123,7 +126,14 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
     }
 
     final Uint8List bytes = result.files.single.bytes!;
-    final tickets = ExcelParserService.parseTickets(bytes);
+    final rawTickets = ExcelParserService.parseTickets(bytes);
+
+    final advisingRecords = [
+      ...await AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.allColleges),
+      ...await AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.allColleges),
+    ];
+    final tickets =
+        AdvisorCorrectionService.applyAdvisorCorrection(rawTickets, advisingRecords);
 
     String message;
     if (isNewCycle) {

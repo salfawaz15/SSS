@@ -1,0 +1,55 @@
+name: Deploy Preview Channel
+
+on:
+  push:
+    branches:
+      - "preview/**"
+
+jobs:
+  build-and-deploy-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: master
+
+      - name: Write secrets.dart
+        env:
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
+          RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
+        run: |
+          mkdir -p lib/config
+          KEY=$(printf '%s' "$SENDGRID_API_KEY" | tr -d '\r\n')
+          SENDER=$(printf '%s' "$SENDER_EMAIL" | tr -d '\r\n')
+          RECIPIENT=$(printf '%s' "$RECIPIENT_EMAIL" | tr -d '\r\n')
+          cat > lib/config/secrets.dart <<DARTEOF
+          class Secrets {
+            static const String sendGridApiKey = "$KEY";
+            static const String senderEmail = "$SENDER";
+            static const String recipientEmail = "$RECIPIENT";
+          }
+          DARTEOF
+
+      - name: Generate version files from pubspec.yaml
+        run: |
+          FULL_VERSION=$(grep -m1 '^version:' pubspec.yaml | sed 's/version:[[:space:]]*//')
+          VERSION_NAME=${FULL_VERSION%+*}
+          BUILD_NUMBER=${FULL_VERSION#*+}
+          cat > lib/app_version.dart <<DARTEOF
+          const int kAppBuildNumber = $BUILD_NUMBER;
+          const String kAppVersionName = '$VERSION_NAME';
+          DARTEOF
+          cat > web/version.json <<JSONEOF
+          {"build": $BUILD_NUMBER, "version": "$VERSION_NAME"}
+          JSONEOF
+
+      - run: flutter pub get
+      - run: flutter build web --release --pwa-strategy=none
+
+      - name: Deploy to Firebase Hosting preview channel (لا يمس الموقع الفعلي)
+        run: npx firebase-tools hosting:channel:deploy preview-forms-import-fix --expires 7d --token "$FIREBASE_TOKEN"
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
