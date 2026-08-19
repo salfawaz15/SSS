@@ -519,7 +519,7 @@ class _CoordinatorBodyState extends State<_CoordinatorBody> {
           data: reportData,
           showCollegePerformance: false,
         ),
-        TicketActionStatsPanel(tickets: tickets, reportData: reportData),
+        TicketActionStatsPanel(tickets: tickets),
       ],
     );
   }
