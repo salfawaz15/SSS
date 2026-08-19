@@ -71,7 +71,7 @@ class TestSwitcherScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PortalScaffold(
-      title: 'تجربة الصفحات',
+      title: 'الوصول التشغيلي',
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [

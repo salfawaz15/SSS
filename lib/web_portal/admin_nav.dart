@@ -107,11 +107,14 @@ List<PortalNavItem> buildAdminNavItems(BuildContext context, {required String cu
         ),
       ),
     // حصريًا حساب المدير العام (salfawaz/super_admin) - ليس حساب "الإدارة"
-    // العادي (admin@)، بطلب سليمان صراحةً (2026-08-15).
+    // العادي (admin@)، بطلب سليمان صراحةً (2026-08-15). أُعيدت تسميتها من
+    // "تجربة الصفحات" إلى "الوصول التشغيلي" (سليمان 2026-08-19) لأن وظيفتها
+    // ليست تجربة واجهات بل تمكين صاحب الصلاحية من الدخول لواجهات أدوار أخرى
+    // وتنفيذ أعمالها فعليًا عند غياب منسّق أو عضو.
     if (isSuperAdmin)
       PortalNavItem(
-        label: 'تجربة الصفحات',
-        icon: Icons.science_outlined,
+        label: 'الوصول التشغيلي',
+        icon: Icons.switch_account_outlined,
         selected: current == 'test-switcher',
         onTap: () => Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => const TestSwitcherScreen()),

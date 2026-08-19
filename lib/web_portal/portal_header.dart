@@ -466,8 +466,9 @@ class PortalHeader extends StatelessWidget implements PreferredSizeWidget {
         Container(height: 4, color: AppColors.greenDark),
         Container(
           width: double.infinity,
+          height: 56,
           color: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: LayoutBuilder(
             builder: (context, constraints) {
               final isWide = constraints.maxWidth >= 900;
@@ -477,11 +478,24 @@ class PortalHeader extends StatelessWidget implements PreferredSizeWidget {
                   onPressed: item.onTap,
                   style: TextButton.styleFrom(
                     foregroundColor: item.selected ? AppColors.green : Colors.grey.shade700,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    minimumSize: const Size(0, 40),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    // خط سفلي رفيع بلون الهوية يميّز التبويب النشط بدل الاعتماد
+                    // على وزن الخط وحده - تفريق بصري أوضح بشريط مزدحم (بطلب
+                    // سليمان 2026-08-19: العنصر النشط يجب أن يكون واضحًا).
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      side: BorderSide(
+                        color: item.selected ? AppColors.gold : Colors.transparent,
+                        width: 2,
+                      ),
+                    ),
                   ),
-                  icon: Icon(item.icon, size: 17),
+                  icon: Icon(item.icon, size: 16),
                   label: Text(
                     item.label,
-                    style: TextStyle(fontWeight: item.selected ? FontWeight.w800 : FontWeight.w600, fontSize: 13.5),
+                    style: TextStyle(fontWeight: item.selected ? FontWeight.w800 : FontWeight.w600, fontSize: 13),
                   ),
                 );
               }
@@ -563,7 +577,7 @@ class PortalHeader extends StatelessWidget implements PreferredSizeWidget {
   }
 
   @override
-  Size get preferredSize => const Size.fromHeight(4 + 52);
+  Size get preferredSize => const Size.fromHeight(4 + 56);
 }
 
 /// إطار صفحة موحّد لكل شاشات البوابة الداخلية: `PortalHeader` (شارة الهوية
