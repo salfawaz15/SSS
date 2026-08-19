@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/excel_parser_service.dart';
+import '../services/report_data_service.dart';
 import '../services/ticket_action_stats_service.dart';
 import '../theme/app_theme.dart';
 import 'portal_cards.dart';
@@ -13,8 +14,9 @@ import 'portal_cards.dart';
 /// لوحة متابعة الإنجاز بلوحة الإدارة.
 class TicketActionStatsPanel extends StatelessWidget {
   final List<Map<String, dynamic>> tickets;
+  final ReportData reportData;
 
-  const TicketActionStatsPanel({super.key, required this.tickets});
+  const TicketActionStatsPanel({super.key, required this.tickets, required this.reportData});
 
   static const _actionColors = {
     'إضافة': Color(0xFF2E7D32),
@@ -116,6 +118,8 @@ class TicketActionStatsPanel extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           _DepartmentBreakdownTable(stats: stats),
+          const SizedBox(height: 24),
+          _TeamPerformanceSection(reportData: reportData),
           if (stats.advisorMismatchCount > 0) ...[
             const SizedBox(height: 20),
             Container(
@@ -245,6 +249,158 @@ class _DepartmentBreakdownTable extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+/// أداء الفريق كاملاً: كل مرشد (حسب قسمه وشطره)، كل منسّق قسم، ومنسّقو
+/// الكلية - بلا سقف عدد ولا حاجة لاختيار فلتر مسبقًا (بخلاف _AdvisorBars
+/// بـFollowUpChart المصمَّمة لعرض سريع مختصر). يعتمد على دوال الترتيب
+/// الجاهزة أصلاً بـReportDataService (rankedAdvisors/rankedCoordinators/
+/// rankedCollegeCoordinators) لتفادي إعادة حساب نفس المنطق.
+class _TeamPerformanceSection extends StatelessWidget {
+  final ReportData reportData;
+
+  const _TeamPerformanceSection({required this.reportData});
+
+  @override
+  Widget build(BuildContext context) {
+    final advisors = ReportDataService.rankedAdvisors(reportData);
+    final coordinators = ReportDataService.rankedCoordinators(reportData);
+    final college = ReportDataService.rankedCollegeCoordinators(reportData);
+
+    if (advisors.isEmpty && coordinators.isEmpty && college.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.groups_2_outlined, color: AppColors.greenDark),
+            const SizedBox(width: 8),
+            const Text(
+              'أداء الفريق: المرشدون ومنسّقو الأقسام والكلية',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.greenDark),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'مرتَّب من الأقل إنجازًا للأعلى، ليظهر فورًا من يحتاج متابعة',
+          style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
+        ),
+        const SizedBox(height: 14),
+        if (advisors.isNotEmpty)
+          _TeamGroup(title: 'المرشدون الأكاديميون', icon: Icons.person_outline, rows: advisors),
+        if (coordinators.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          _TeamGroup(title: 'منسّقو الأقسام', icon: Icons.supervisor_account_outlined, rows: coordinators),
+        ],
+        if (college.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          _TeamGroup(title: 'منسّقو الكلية', icon: Icons.apartment_outlined, rows: college),
+        ],
+      ],
+    );
+  }
+}
+
+class _TeamGroup extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final List<AdvisorProgress> rows;
+
+  const _TeamGroup({required this.title, required this.icon, required this.rows});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 16, color: Colors.grey.shade700),
+            const SizedBox(width: 6),
+            Text(
+              '$title (${rows.length})',
+              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Colors.grey.shade800),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey.shade200),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children: [
+              for (var i = 0; i < rows.length; i++)
+                Container(
+                  color: i.isEven ? Colors.white : AppColors.background,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: _TeamRow(row: rows[i]),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TeamRow extends StatelessWidget {
+  final AdvisorProgress row;
+
+  const _TeamRow({required this.row});
+
+  Color get _rateColor {
+    if (row.status == AdvisorProgressStatus.complete) return const Color(0xFF2E7D32);
+    if (row.status == AdvisorProgressStatus.inProgress) return AppColors.gold;
+    return AppColors.errorRed;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final rate = row.counts.completionRate;
+    final label = row.department.isEmpty
+        ? row.advisorName
+        : '${row.advisorName} · ${row.department} · ${row.shatr}';
+
+    return Row(
+      children: [
+        Expanded(
+          flex: 3,
+          child: Text(label, style: const TextStyle(fontSize: 12.5), overflow: TextOverflow.ellipsis),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          flex: 4,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(5),
+            child: SizedBox(
+              height: 8,
+              child: LinearProgressIndicator(
+                value: rate,
+                backgroundColor: Colors.grey.shade200,
+                valueColor: AlwaysStoppedAnimation(_rateColor),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        SizedBox(
+          width: 90,
+          child: Text(
+            '${row.counts.completed}/${row.counts.total} (${(rate * 100).round()}%)',
+            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: _rateColor),
+            textAlign: TextAlign.left,
+          ),
+        ),
+      ],
     );
   }
 }

@@ -597,7 +597,7 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
                 showShatrFilter: true,
                 showDepartmentFilter: true,
               ),
-              TicketActionStatsPanel(tickets: tickets),
+              TicketActionStatsPanel(tickets: tickets, reportData: reportData),
             ],
           );
         },
