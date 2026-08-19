@@ -116,7 +116,14 @@ class ExcelParserService {
       normalizedHeaders,
       (h) => h.contains(_normalize('ذوي الإعاقة')),
     );
-    final shatrCol = _findColumn(normalizedHeaders, (h) => h.contains(_normalize('مقر الدراسة')));
+    // العمود الحقيقي بملف Microsoft Forms اسمه "الشطر" بالضبط (تحقَّقنا من
+    // تصدير حقيقي فعليًا) - "مقر الدراسة" أُبقيَت كبديل احتياطي فقط تحسبًا
+    // لتسمية قديمة مختلفة، لا كالمطابقة الأساسية (كانت هي الوحيدة سابقًا،
+    // فتفشل صامتة مع كل ملف حقيقي وتُفرغ قيمة الشطر لكل الحالات).
+    final shatrCol = _findColumn(
+      normalizedHeaders,
+      (h) => h == _normalize('الشطر') || h.contains(_normalize('مقر الدراسة')),
+    );
     final deptMaleCol = _findColumn(
       normalizedHeaders,
       (h) => h.contains(_normalize('القسم العلمي')) && h.contains(_normalize('الطلاب')),
@@ -257,11 +264,21 @@ class ExcelParserService {
       final email = _cellText(row, emailCol);
       if (email.isEmpty) continue;
 
-      final shatr = _cellText(row, shatrCol).trim();
-      final isMale = shatr == shatrMale;
+      // القيمة الفعلية القادمة من Microsoft Forms هي "شطر طلاب"/"شطر طالبات"
+      // (بلا "ال" التعريف) - مختلفة حرفيًا عن shatrMale/shatrFemale
+      // ('شطر الطلاب'/'شطر الطالبات') المعتمدين بكل الموقع لمقارنات المساواة
+      // التامة بعشرات الملفات (فلاتر، قوائم منسدلة، توجيه صلاحيات...). مقارنة
+      // شرطية بـ.contains('طلاب') تكتشف الجنس بشكل موثوق (لا تلتبس بـ"طالبات"
+      // لأن "طلاب" ليست جزءًا منها حرفيًا)، ثم نخزّن القيمة الكنسية المعتمدة
+      // في التذكرة الناتجة بدل النص الخام - فكل مستهلك حالي بالموقع يستمر
+      // بالعمل بلا أي تعديل عليه. نُبقي [shatrRaw] فقط لمطابقة عمود المرشد
+      // (عناوينه تستخدم "طلاب"/"طالبات" بلا "ال" مطابقةً للنص الخام).
+      final shatrRaw = _cellText(row, shatrCol).trim();
+      final isMale = shatrRaw.contains('طلاب');
+      final shatr = isMale ? shatrMale : shatrFemale;
 
       final department = _cellText(row, isMale ? deptMaleCol : deptFemaleCol).trim();
-      final advisorCol = _findAdvisorColumn(normalizedHeaders, department, shatr);
+      final advisorCol = _findAdvisorColumn(normalizedHeaders, department, shatrRaw);
 
       final actions = <Map<String, dynamic>>[];
 
