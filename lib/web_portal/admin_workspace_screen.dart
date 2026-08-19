@@ -39,6 +39,7 @@ import 'portal_sitemap_screen.dart';
 import 'reset_user_password_screen.dart';
 import 'round_icon_button.dart';
 import 'stage_progress_chart.dart';
+import 'ticket_action_stats_panel.dart';
 
 /// شاشة الإدارة في بوابة الويب (كل الصلاحيات): رفع ملف Microsoft Forms،
 /// لوحة متابعة تعرض حجم الإنجاز، تنزيل ملف أي قسم، والتقرير الشامل
@@ -596,6 +597,7 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
                 showShatrFilter: true,
                 showDepartmentFilter: true,
               ),
+              TicketActionStatsPanel(tickets: tickets),
             ],
           );
         },
