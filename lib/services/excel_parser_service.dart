@@ -271,14 +271,16 @@ class ExcelParserService {
       // شرطية بـ.contains('طلاب') تكتشف الجنس بشكل موثوق (لا تلتبس بـ"طالبات"
       // لأن "طلاب" ليست جزءًا منها حرفيًا)، ثم نخزّن القيمة الكنسية المعتمدة
       // في التذكرة الناتجة بدل النص الخام - فكل مستهلك حالي بالموقع يستمر
-      // بالعمل بلا أي تعديل عليه. نُبقي [shatrRaw] فقط لمطابقة عمود المرشد
-      // (عناوينه تستخدم "طلاب"/"طالبات" بلا "ال" مطابقةً للنص الخام).
+      // بالعمل بلا أي تعديل عليه.
       final shatrRaw = _cellText(row, shatrCol).trim();
       final isMale = shatrRaw.contains('طلاب');
       final shatr = isMale ? shatrMale : shatrFemale;
 
       final department = _cellText(row, isMale ? deptMaleCol : deptFemaleCol).trim();
-      final advisorCol = _findAdvisorColumn(normalizedHeaders, department, shatrRaw);
+      // عناوين أعمدة المرشد ("المرشد الأكاديمي - طلاب - <قسم>") تستخدم
+      // "طلاب"/"طالبات" مجرَّدة بلا كلمة "شطر" قبلها على عكس عمود "الشطر"
+      // نفسه - تمرير shatrRaw كاملاً ('شطر طلاب') لن يطابق أي عمود مرشد أبدًا.
+      final advisorCol = _findAdvisorColumn(normalizedHeaders, department, isMale ? 'طلاب' : 'طالبات');
 
       final actions = <Map<String, dynamic>>[];
 
