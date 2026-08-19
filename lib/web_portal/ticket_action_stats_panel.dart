@@ -428,7 +428,11 @@ class _StatusGaugeCard extends StatelessWidget {
                   ],
                 ),
               ),
-              Text('$completedPct%', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.greenDark)),
+              Text(
+                '$completedPct%',
+                textDirection: TextDirection.ltr,
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.greenDark),
+              ),
             ],
           ),
         ),
