@@ -216,21 +216,41 @@ void _goHome(BuildContext context) {
 class InfoPageScaffold extends StatelessWidget {
   final Widget child;
   final String? current;
+  // بعض الصفحات (تواصل معنا/التقويم الجامعي) لها محتوى متداخل معقّد
+  // (LayoutBuilder متجاوب/جدول بتمرير أفقي) لا يتطابق قياسه الجوهري
+  // (Intrinsic) مع قياسه الفعلي بدقة، فيسبّب هيكل `_PublicPageShell`
+  // (المعتمَد لبقية الصفحات) تراكبًا حقيقيًا بين الفوتر والمحتوى هناك تحديدًا
+  // (سليمان لاحظ صراحةً 2026-08-21). لهذا تُستثنى هاتان الصفحتان فقط
+  // (`fillViewport: false`) وتعودان للتمرير الطبيعي البسيط، بلا مسّ لبقية
+  // الصفحات العاملة فعليًا بالهيكل المشترك.
+  final bool fillViewport;
 
-  const InfoPageScaffold({super.key, required this.child, this.current});
+  const InfoPageScaffold({super.key, required this.child, this.current, this.fillViewport = true});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7F6),
-      body: _PublicPageShell(
-        header: [
-          _TopUtilityBar(onLogin: () => _pushLogin(context)),
-          _NavBar(current: current),
-        ],
-        content: child,
-        footer: const _Footer(),
-      ),
+      body: fillViewport
+          ? _PublicPageShell(
+              header: [
+                _TopUtilityBar(onLogin: () => _pushLogin(context)),
+                _NavBar(current: current),
+              ],
+              content: child,
+              footer: const _Footer(),
+            )
+          : SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _TopUtilityBar(onLogin: () => _pushLogin(context)),
+                  _NavBar(current: current),
+                  child,
+                  const _Footer(),
+                ],
+              ),
+            ),
     );
   }
 }
@@ -321,6 +341,7 @@ class ContactPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return InfoPageScaffold(
       current: 'contact',
+      fillViewport: false,
       child: PageSection(
         eyebrow: 'تواصل معنا',
         title: 'تواصل',
@@ -435,38 +456,38 @@ class _UnitLeaderCard extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         child: Column(
           children: [
             CircleAvatar(
-              radius: 22,
+              radius: 16,
               backgroundColor: Colors.white.withValues(alpha: 0.15),
-              child: Icon(icon, color: AppColors.goldLight, size: 22),
+              child: Icon(icon, color: AppColors.goldLight, size: 16),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(
               role,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 12, color: Colors.white70, fontWeight: FontWeight.w600),
+              style: const TextStyle(fontSize: 11.5, color: Colors.white70, fontWeight: FontWeight.w600),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 3),
             FittedBox(
               fit: BoxFit.scaleDown,
               child: Text(
                 name,
                 maxLines: 1,
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15.5, color: AppColors.goldLight),
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5, color: AppColors.goldLight),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             InkWell(
               onTap: () => openMailto(email),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.email_outlined, size: 14, color: AppColors.goldLight),
-                  const SizedBox(width: 6),
+                  const Icon(Icons.email_outlined, size: 13, color: AppColors.goldLight),
+                  const SizedBox(width: 5),
                   Flexible(
                     child: Text(
                       email,
@@ -639,6 +660,19 @@ class _CalendarEvent {
   const _CalendarEvent(this.order, this.category, this.title, this.start, [this.end]);
 }
 
+/// أسماء أيام الأسبوع بالترتيب - يُستخرَج منها عمود "يوم البداية/النهاية"
+/// من نص التاريخ الحالي (يحتوي اسم اليوم أصلًا ضمنه، بصرف النظر عن موضعه في
+/// الجملة - بعض الصفوف تبدأ بعبارة "نهاية دوام" أو "بداية دوام يوم" قبل اسم
+/// اليوم) - استخراج آمن بلا أي تعديل على بيانات التقويم الرسمية نفسها.
+const _weekdays = <String>['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+
+String _weekdayOf(String dateText) {
+  for (final day in _weekdays) {
+    if (dateText.contains(day)) return day;
+  }
+  return '—';
+}
+
 // التقويم الجامعي المعتمد للفصل الدراسي الأول 1448هـ - نص حر يطابق التقويم
 // الرسمي الصادر عن الجامعة حرفيًا (قابل للتغيير حسب إعلانات الجامعة الرسمية).
 const _academicCalendarEvents = <_CalendarEvent>[
@@ -693,6 +727,7 @@ class AcademicCalendarPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return InfoPageScaffold(
       current: 'calendar',
+      fillViewport: false,
       child: PageSection(
         eyebrow: 'هيكلتنا الزمنية',
         title: 'التقويم الجامعي للفصل الدراسي الأول لعام 1448هـ',
@@ -806,14 +841,16 @@ class _CalendarTable extends StatelessWidget {
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(minWidth: 900),
+          constraints: const BoxConstraints(minWidth: 1160),
           child: Table(
             columnWidths: const {
-              0: FixedColumnWidth(44),
-              1: FlexColumnWidth(1.3),
-              2: FlexColumnWidth(2.2),
-              3: FlexColumnWidth(1.7),
-              4: FlexColumnWidth(1.7),
+              0: FixedColumnWidth(40),
+              1: FlexColumnWidth(1.2),
+              2: FlexColumnWidth(2.1),
+              3: FlexColumnWidth(0.9),
+              4: FlexColumnWidth(1.6),
+              5: FlexColumnWidth(0.9),
+              6: FlexColumnWidth(1.6),
             },
             border: TableBorder(horizontalInside: BorderSide(color: Colors.grey.shade200)),
             children: [
@@ -823,7 +860,9 @@ class _CalendarTable extends StatelessWidget {
                   _CalHeaderCell('م'),
                   _CalHeaderCell('التصنيف'),
                   _CalHeaderCell('الحدث'),
+                  _CalHeaderCell('يوم البداية'),
                   _CalHeaderCell('تاريخ البداية'),
+                  _CalHeaderCell('يوم النهاية'),
                   _CalHeaderCell('تاريخ النهاية'),
                 ],
               ),
@@ -834,7 +873,9 @@ class _CalendarTable extends StatelessWidget {
                     _CalCell(Text(event.order.toString().padLeft(2, '0'), textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12))),
                     _CalCell(_CategoryBadge(category: event.category)),
                     _CalCell(Text(event.title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12.5))),
+                    _CalCell(Text(_weekdayOf(event.start), textAlign: TextAlign.center, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.greenDark))),
                     _CalCell(Text(event.start, style: const TextStyle(fontSize: 11, color: Colors.black54))),
+                    _CalCell(Text(event.end == null ? '—' : _weekdayOf(event.end!), textAlign: TextAlign.center, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.greenDark))),
                     _CalCell(Text(event.end ?? '—', style: const TextStyle(fontSize: 11, color: Colors.black54))),
                   ],
                 ),
