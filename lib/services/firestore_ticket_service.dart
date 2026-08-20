@@ -104,9 +104,16 @@ class FirestoreTicketService {
     return '$universityId|$actionType|$course|$section';
   }
 
+  // خلل حقيقي مُصحَّح (سليمان 2026-08-20): ExcelParserService يكتب
+  // 'required_section': '' صراحةً (نص فارغ لا null) لكل إجراء "حذف" -
+  // عامل `??` لا يتخطى النص الفارغ، يتخطى فقط null، فكانت هذه الدالة تُرجع
+  // '' دائمًا لكل حذف بدل الرجوع لـcurrent_section، فيفشل مفتاح المطابقة
+  // (uid|النوع|المقرر|الشعبة) دائمًا لأي ملف معالجة يعيد قسم "رقم الشعبة"
+  // الفعلي لحالة حذف - أي رفع حقيقي لحالات حذف كان لا يُطابَق أبدًا.
   static String _ticketActionSection(Map<String, dynamic> action) {
-    return (action['required_section'] ?? action['current_section'] ?? '')
-        .toString();
+    final required = (action['required_section'] ?? '').toString();
+    if (required.isNotEmpty) return required;
+    return (action['current_section'] ?? '').toString();
   }
 
   /// يدمج صفوف ملف معالج عائد من المرشدين، مقصورًا على قسم/شطر واحد فقط

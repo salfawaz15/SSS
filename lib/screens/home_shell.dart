@@ -73,29 +73,41 @@ class _HomeShellState extends State<HomeShell> {
       return;
     }
 
-    final Uint8List bytes = result.files.single.bytes!;
-    final rawTickets = ExcelParserService.parseTickets(bytes);
+    // كانت هذه الدالة بلا try/catch - أي خطأ تحليل يوقف التنفيذ بصمت تام
+    // قبل أي رسالة أو استيراد فعلي (سليمان 2026-08-20، نفس خلل رفع ملف
+    // الفورم بالويب upload_hub_screen.dart).
+    try {
+      final Uint8List bytes = result.files.single.bytes!;
+      final rawTickets = ExcelParserService.parseTickets(bytes);
 
-    final advisingRecords = [
-      ...await AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.allColleges),
-      ...await AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.allColleges),
-    ];
-    final tickets =
-        AdvisorCorrectionService.applyAdvisorCorrection(rawTickets, advisingRecords);
-    final groups = ExcelParserService.groupByShatrAndDepartment(tickets);
+      final advisingRecords = [
+        ...await AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.allColleges),
+        ...await AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.allColleges),
+      ];
+      final tickets =
+          AdvisorCorrectionService.applyAdvisorCorrection(rawTickets, advisingRecords);
+      final groups = ExcelParserService.groupByShatrAndDepartment(tickets);
 
-    await TicketRepository.saveAll(tickets);
+      await TicketRepository.saveAll(tickets);
 
-    setState(() {
-      _groups = groups;
-      _sentKeys.clear();
-      _isLoading = false;
-    });
+      setState(() {
+        _groups = groups;
+        _sentKeys.clear();
+        _isLoading = false;
+      });
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تم استيراد ${tickets.length} حالة بنجاح')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تم استيراد ${tickets.length} حالة بنجاح')),
+        );
+      }
+    } catch (e) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تعذّر استيراد الملف: $e')),
+        );
+      }
     }
   }
 

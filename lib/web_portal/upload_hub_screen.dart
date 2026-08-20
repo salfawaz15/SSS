@@ -267,28 +267,39 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
       return;
     }
 
-    final Uint8List bytes = result.files.single.bytes!;
-    final rawTickets = ExcelParserService.parseTickets(bytes);
+    // كانت هذه الدالة بلا try/catch إطلاقًا - أي خطأ أثناء تحليل الملف
+    // (تنسيق غير مدعوم، عمود مفقود...) كان يوقف التنفيذ بصمت تام قبل الوصول
+    // لإنشاء أي حالة بقاعدة البيانات وقبل أي رسالة، فيظهر للمستخدم وكأن شيئًا
+    // لم يحدث بينما لم تُنشَأ أي حالة فعليًا (سليمان 2026-08-20: رفع بلا أي
+    // رسالة، ثم "0 مطابقة" بكل ملفات المعالجة لاحقًا لأن لا حالات أصلاً).
+    try {
+      final Uint8List bytes = result.files.single.bytes!;
+      final rawTickets = ExcelParserService.parseTickets(bytes);
 
-    final advisingRecords = [
-      ...await AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.allColleges),
-      ...await AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.allColleges),
-    ];
-    final tickets = AdvisorCorrectionService.applyAdvisorCorrection(rawTickets, advisingRecords);
+      final advisingRecords = [
+        ...await AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.allColleges),
+        ...await AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.allColleges),
+      ];
+      final tickets = AdvisorCorrectionService.applyAdvisorCorrection(rawTickets, advisingRecords);
 
-    String message;
-    if (isNewCycle) {
-      await FirestoreTicketService.replaceAllTickets(tickets);
-      message = 'تم رفع ${tickets.length} حالة بنجاح (دورة جديدة)';
-    } else {
-      final addedCount = await FirestoreTicketService.addNewTickets(tickets);
-      message = 'تمت إضافة $addedCount حالة جديدة (من أصل ${tickets.length} في الملف - '
-          'الباقي موجود مسبقًا وتم تجاهله حفاظًا على عمل المرشدين/المنسّقين)';
+      String message;
+      if (isNewCycle) {
+        await FirestoreTicketService.replaceAllTickets(tickets);
+        message = 'تم رفع ${tickets.length} حالة بنجاح (دورة جديدة)';
+      } else {
+        final addedCount = await FirestoreTicketService.addNewTickets(tickets);
+        message = 'تمت إضافة $addedCount حالة جديدة (من أصل ${tickets.length} في الملف - '
+            'الباقي موجود مسبقًا وتم تجاهله حفاظًا على عمل المرشدين/المنسّقين)';
+      }
+
+      if (!mounted) return;
+      setState(() => _uploadingFormsFile = false);
+      _showSuccessSnackBar(message);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _uploadingFormsFile = false);
+      showUploadErrorDialog(context, 'تعذّر رفع ملف الفورم', '$e');
     }
-
-    if (!mounted) return;
-    setState(() => _uploadingFormsFile = false);
-    _showSuccessSnackBar(message);
   }
 
   Future<void> _clearCourses() async {
