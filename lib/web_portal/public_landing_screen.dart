@@ -1255,6 +1255,7 @@ class _TopUtilityBarState extends State<_TopUtilityBar> {
         // الأندرويد شريط التحديث (أعلاه) يحمي الشِّق العلوي بالفعل فتُعطَّل
         // هنا لتفادي حشوة مضاعفة.
         Container(
+          width: double.infinity,
           color: AppColors.greenDark,
           constraints: const BoxConstraints(minHeight: 38, maxHeight: 42),
           child: SafeArea(
@@ -1262,37 +1263,30 @@ class _TopUtilityBarState extends State<_TopUtilityBar> {
             top: kIsWeb,
             // مثبَّت لأقصى يسار الشاشة فعليًا (لا حاوية المحتوى 1240) - بطلب
             // سليمان الصريح 2026-08-20: "الموضع الحالي لا يزال بعيدًا للداخل".
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final inset = (constraints.maxWidth * 0.02).clamp(24.0, 40.0);
-                return Stack(
-                  children: [
-                    Positioned(
-                      left: inset,
-                      top: 0,
-                      bottom: 0,
-                      child: Center(
-                        child: TextButton.icon(
-                          onPressed: widget.onLogin,
-                          style: TextButton.styleFrom(
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                            minimumSize: Size.zero,
-                            splashFactory: NoSplash.splashFactory,
-                          ).copyWith(
-                            overlayColor: WidgetStateProperty.all(AppColors.gold.withValues(alpha: 0.12)),
-                          ),
-                          icon: const Icon(Icons.login, size: 15),
-                          label: const Text(
-                            'تسجيل الدخول',
-                            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              },
+            // Align+Padding مباشرة (بدل Stack/LayoutBuilder) لضمان ظهوره دومًا
+            // بلا اعتماد على قياسات وسيطة قد تُصفِّر عرضه (سليمان لاحظ صراحةً
+            // 2026-08-20 أن الزر اختفى تمامًا بالنسخة السابقة).
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 32),
+                child: TextButton.icon(
+                  onPressed: widget.onLogin,
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    minimumSize: Size.zero,
+                    splashFactory: NoSplash.splashFactory,
+                  ).copyWith(
+                    overlayColor: WidgetStateProperty.all(AppColors.gold.withValues(alpha: 0.12)),
+                  ),
+                  icon: const Icon(Icons.login, size: 15),
+                  label: const Text(
+                    'تسجيل الدخول',
+                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
             ),
           ),
         ),
@@ -1359,27 +1353,36 @@ class _NavDropdown extends StatelessWidget {
             ),
           ),
       ],
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: active ? AppColors.gold.withValues(alpha: 0.10) : null,
-          borderRadius: BorderRadius.circular(8),
-          border: active ? const Border(bottom: BorderSide(color: AppColors.gold, width: 2)) : null,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              label,
-              style: TextStyle(
-                color: active ? AppColors.greenDark : AppColors.green,
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-              ),
+      child: Stack(
+        alignment: Alignment.bottomCenter,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: active ? AppColors.gold.withValues(alpha: 0.10) : null,
+              borderRadius: BorderRadius.circular(8),
             ),
-            Icon(Icons.arrow_drop_down, size: 20, color: active ? AppColors.greenDark : AppColors.green),
-          ],
-        ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: active ? AppColors.greenDark : AppColors.green,
+                    fontSize: 14,
+                    fontWeight: active ? FontWeight.w800 : FontWeight.w700,
+                  ),
+                ),
+                Icon(Icons.arrow_drop_down, size: 20, color: active ? AppColors.greenDark : AppColors.green),
+              ],
+            ),
+          ),
+          if (active)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 5),
+              child: Container(width: 18, height: 2, decoration: BoxDecoration(color: AppColors.gold, borderRadius: BorderRadius.circular(2))),
+            ),
+        ],
       ),
     );
   }
@@ -1409,27 +1412,34 @@ class _NavItemButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TextButton(
-      onPressed: onPressed,
-      style: TextButton.styleFrom(
-        foregroundColor: active ? AppColors.greenDark : AppColors.green,
-        textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-          side: active ? const BorderSide(color: AppColors.gold, width: 2) : BorderSide.none,
+    return Stack(
+      alignment: Alignment.bottomCenter,
+      children: [
+        TextButton(
+          onPressed: onPressed,
+          style: TextButton.styleFrom(
+            foregroundColor: active ? AppColors.greenDark : AppColors.green,
+            textStyle: TextStyle(fontWeight: active ? FontWeight.w800 : FontWeight.w700, fontSize: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            backgroundColor: active ? AppColors.gold.withValues(alpha: 0.10) : null,
+          ).copyWith(
+            overlayColor: WidgetStateProperty.all(AppColors.green.withValues(alpha: 0.05)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[Icon(icon, size: 17, color: active ? AppColors.greenDark : AppColors.green), const SizedBox(width: 6)],
+              Text(label),
+            ],
+          ),
         ),
-        backgroundColor: active ? AppColors.gold.withValues(alpha: 0.10) : null,
-      ).copyWith(
-        overlayColor: WidgetStateProperty.all(AppColors.green.withValues(alpha: 0.05)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (icon != null) ...[Icon(icon, size: 17, color: active ? AppColors.greenDark : AppColors.green), const SizedBox(width: 6)],
-          Text(label),
-        ],
-      ),
+        if (active)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 5),
+            child: Container(width: 18, height: 2, decoration: BoxDecoration(color: AppColors.gold, borderRadius: BorderRadius.circular(2))),
+          ),
+      ],
     );
   }
 }
@@ -1641,7 +1651,7 @@ class _HeroSection extends StatelessWidget {
                 child: const Text(
                   'منظومة متكاملة لدعم الطلبة أكاديميًا وتعزيز التواصل المستدام مع خريجي الكلية.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Color(0xFF565D5B), fontWeight: FontWeight.w500, fontSize: 17, height: 1.7),
+                  style: TextStyle(color: Color(0xFF555D5A), fontWeight: FontWeight.w500, fontSize: 17, height: 1.65),
                 ),
               ),
             ],
@@ -1769,18 +1779,18 @@ class _Footer extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
+              Text(
                 'جامعة الطائف — كلية إدارة الأعمال — وحدة الإرشاد الأكاديمي والخريجين',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white70, fontSize: 12.5),
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.78), fontSize: 12.5),
               ),
               const SizedBox(height: 8),
-              Container(height: 1, width: 50, color: Colors.white.withValues(alpha: 0.15)),
+              Container(height: 1, width: 50, color: Colors.white.withValues(alpha: 0.18)),
               const SizedBox(height: 8),
               Text(
                 '© 2026 سليمان الفواز. جميع الحقوق محفوظة.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.64), fontSize: 11),
               ),
             ],
           ),
@@ -2189,7 +2199,7 @@ class _MetricCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       height: 120,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border.all(color: const Color(0xFFE6E8EB)),
@@ -2200,28 +2210,28 @@ class _MetricCard extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: AppColors.gold, size: 20),
-          const SizedBox(height: 4),
+          Icon(icon, color: AppColors.gold, size: 18),
+          const SizedBox(height: 2),
           Text(
             value == null ? '—' : '$value',
             style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.greenDark, height: 1),
           ),
-          const SizedBox(height: 5),
+          const SizedBox(height: 3),
           Text(
             label,
             textAlign: TextAlign.center,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.green, height: 1.35),
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.green, height: 1.2),
           ),
           if (value == null) ...[
-            const SizedBox(height: 3),
+            const SizedBox(height: 2),
             Text(
               'سيتم تحديث المؤشر عند اكتمال ربط البيانات',
               textAlign: TextAlign.center,
-              maxLines: 2,
+              maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 11, height: 1.35, color: Color(0xFF7A817F)),
+              style: const TextStyle(fontSize: 10, height: 1.2, color: Color(0xFF7A817F)),
             ),
           ],
         ],
@@ -2255,7 +2265,6 @@ class _MetricsSection extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const _SectionHeader(
-                eyebrow: 'أرقامنا',
                 title: 'أرقام ومؤشرات الوحدة',
                 icon: Icons.bar_chart_rounded,
               ),
