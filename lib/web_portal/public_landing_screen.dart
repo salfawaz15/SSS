@@ -457,49 +457,61 @@ class _UnitLeaderCard extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        child: Column(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        // أفقي (أيقونة بجانب النص) بدل الرأسي (أيقونة فوق النص) - بطلب
+        // سليمان الصريح 2026-08-21: الأيقونة أقصى يمين كتلة النص لأن الواجهة
+        // RTL، لا فوقها، لتقليص ارتفاع البطاقة 35-45% بلا تصغير الخط.
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: Colors.white.withValues(alpha: 0.15),
-              child: Icon(icon, color: AppColors.goldLight, size: 16),
+            Container(
+              width: 46,
+              height: 46,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), shape: BoxShape.circle),
+              child: Icon(icon, color: AppColors.goldLight, size: 21),
             ),
-            const SizedBox(height: 6),
-            Text(
-              role,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 11.5, color: Colors.white70, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 3),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                name,
-                maxLines: 1,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5, color: AppColors.goldLight),
-              ),
-            ),
-            const SizedBox(height: 6),
-            InkWell(
-              onTap: () => openMailto(email),
-              child: Row(
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.email_outlined, size: 13, color: AppColors.goldLight),
-                  const SizedBox(width: 5),
-                  Flexible(
-                    child: Text(
-                      email,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 12.5,
-                        color: AppColors.goldLight,
-                        decoration: TextDecoration.underline,
-                        decorationColor: AppColors.goldLight,
-                      ),
+                  Text(
+                    role,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 11.5, color: Colors.white70, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5, color: AppColors.goldLight),
+                  ),
+                  const SizedBox(height: 3),
+                  InkWell(
+                    onTap: () => openMailto(email),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.email_outlined, size: 13, color: AppColors.goldLight),
+                        const SizedBox(width: 5),
+                        Flexible(
+                          child: Text(
+                            email,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12.5,
+                              color: AppColors.goldLight,
+                              decoration: TextDecoration.underline,
+                              decorationColor: AppColors.goldLight,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
