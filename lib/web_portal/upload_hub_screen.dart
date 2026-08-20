@@ -723,9 +723,9 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                           return Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Expanded(flex: 4, child: _coursesBanner()),
+                              Expanded(child: _coursesBanner()),
                               const SizedBox(width: 14),
-                              Expanded(flex: 6, child: _advisingSection()),
+                              Expanded(child: _advisingSection()),
                             ],
                           );
                         }),
