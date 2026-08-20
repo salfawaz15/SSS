@@ -461,19 +461,16 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
     return Wrap(
       spacing: 12,
       runSpacing: 10,
-      crossAxisAlignment: WrapCrossAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.end,
       children: [
         SizedBox(
           width: 160,
-          child: DropdownMenu<String>(
-            label: const Text('الشطر'),
-            initialSelection: _shatrFilter,
-            dropdownMenuEntries: [
-              const DropdownMenuEntry(value: _kAllShatr, label: _kAllShatr),
-              DropdownMenuEntry(value: Shatr.male.label, label: Shatr.male.label),
-              DropdownMenuEntry(value: Shatr.female.label, label: Shatr.female.label),
-            ],
-            onSelected: (v) => setState(() {
+          child: _FilterField(
+            label: 'الشطر',
+            value: _shatrFilter == _kAllShatr ? null : _shatrFilter,
+            items: [Shatr.male.label, Shatr.female.label],
+            itemLabel: (v) => v,
+            onChanged: (v) => setState(() {
               _shatrFilter = v ?? _kAllShatr;
               _advisorFilter = _kAllAdvisors;
             }),
@@ -481,14 +478,12 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
         ),
         SizedBox(
           width: 220,
-          child: DropdownMenu<String>(
-            label: const Text('القسم'),
-            initialSelection: _deptFilter,
-            dropdownMenuEntries: [
-              const DropdownMenuEntry(value: _kAllDepartments, label: _kAllDepartments),
-              ..._departments.map((d) => DropdownMenuEntry(value: d, label: d)),
-            ],
-            onSelected: (v) => setState(() {
+          child: _FilterField(
+            label: 'القسم',
+            value: _deptFilter == _kAllDepartments ? null : _deptFilter,
+            items: _departments,
+            itemLabel: (v) => v,
+            onChanged: (v) => setState(() {
               _deptFilter = v ?? _kAllDepartments;
               _advisorFilter = _kAllAdvisors;
             }),
@@ -497,25 +492,31 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
         SizedBox(
           key: ValueKey('$_deptFilter|$_shatrFilter'),
           width: 240,
-          child: DropdownMenu<String>(
-            label: const Text('المرشد'),
-            initialSelection: _advisorFilter,
-            dropdownMenuEntries: [
-              const DropdownMenuEntry(value: _kAllAdvisors, label: _kAllAdvisors),
-              ..._advisorFilterOptions.map((a) => DropdownMenuEntry(value: a, label: displayName(a))),
-            ],
-            onSelected: (v) => setState(() => _advisorFilter = v ?? _kAllAdvisors),
+          child: _FilterField(
+            label: 'المرشد',
+            value: _advisorFilter == _kAllAdvisors ? null : _advisorFilter,
+            items: _advisorFilterOptions,
+            itemLabel: displayName,
+            onChanged: (v) => setState(() => _advisorFilter = v ?? _kAllAdvisors),
           ),
         ),
         SizedBox(
           width: 220,
+          height: 38,
           child: TextField(
             controller: _searchCtrl,
-            decoration: const InputDecoration(
-              labelText: 'بحث باسم/رقم الطالب أو المرشد',
-              prefixIcon: Icon(Icons.search),
-              border: OutlineInputBorder(),
+            style: const TextStyle(fontSize: 12.5, color: _FilterTokens.textPrimary, fontWeight: FontWeight.w500),
+            decoration: InputDecoration(
+              hintText: 'بحث باسم/رقم الطالب أو المرشد',
+              hintStyle: TextStyle(fontSize: 12, color: _FilterTokens.textSecondary),
+              prefixIcon: const Icon(Icons.search, size: 18, color: _FilterTokens.textSecondary),
               isDense: true,
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(9), borderSide: const BorderSide(color: _FilterTokens.border)),
+              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(9), borderSide: const BorderSide(color: _FilterTokens.border)),
+              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(9), borderSide: const BorderSide(color: AppColors.gold, width: 1.4)),
             ),
             onChanged: (_) => setState(() {}),
           ),
@@ -608,7 +609,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       }
     }
     return _buildPanel(
-      title: 'كل الطلاب (بغض النظر عن وضعهم)',
+      title: 'كل الطلاب',
       headers: const ['الاسم', 'الرقم الجامعي', 'القسم', 'الشطر', 'المرشد', 'الوضع'],
       rows: rows,
     );
@@ -1261,6 +1262,70 @@ class _CompactStatTile extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// ألوان مقتبسة حرفيًا من هوية شريط فلاتر "إحصائيات طلبات الحذف والإضافة"
+/// ([ticket_action_stats_panel.dart] - `_Tokens`) - بطلب سليمان الصريح
+/// (2026-08-20): توحيد هوية الفلاتر بين الصفحتين بدل `DropdownMenu` القياسي.
+class _FilterTokens {
+  static const textPrimary = Color(0xFF17352B);
+  static const textSecondary = Color(0xFF66746F);
+  static const border = Color(0xFFE4EAE7);
+}
+
+/// حقل فلترة بتسمية أعلى صندوق أبيض رفيع الحدود - نفس تصميم `_FilterField`
+/// بصفحة "إحصائيات طلبات الحذف والإضافة" حرفيًا، معاد تعريفه هنا محليًا لأن
+/// الأصل خاص (private) بذلك الملف.
+class _FilterField extends StatelessWidget {
+  final String label;
+  final String? value;
+  final List<String> items;
+  final String Function(String) itemLabel;
+  final ValueChanged<String?> onChanged;
+
+  const _FilterField({
+    required this.label,
+    required this.value,
+    required this.items,
+    required this.itemLabel,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 11, color: _FilterTokens.textSecondary, fontWeight: FontWeight.w500)),
+        const SizedBox(height: 5),
+        Container(
+          height: 38,
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border.all(color: _FilterTokens.border),
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String?>(
+              value: value,
+              isDense: true,
+              isExpanded: true,
+              icon: const Icon(Icons.expand_more_rounded, size: 18, color: _FilterTokens.textSecondary),
+              style: const TextStyle(fontSize: 12.5, color: _FilterTokens.textPrimary, fontWeight: FontWeight.w500),
+              borderRadius: BorderRadius.circular(9),
+              items: [
+                const DropdownMenuItem(value: null, child: Padding(padding: EdgeInsets.only(right: 6), child: Text('الكل'))),
+                for (final item in items)
+                  DropdownMenuItem(value: item, child: Padding(padding: const EdgeInsets.only(right: 6), child: Text(itemLabel(item)))),
+              ],
+              onChanged: onChanged,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
