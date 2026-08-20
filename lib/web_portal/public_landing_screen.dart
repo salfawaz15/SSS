@@ -1812,7 +1812,7 @@ class _Footer extends StatelessWidget {
               Text(
                 'جامعة الطائف — كلية إدارة الأعمال — وحدة الإرشاد الأكاديمي والخريجين',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.goldLight.withValues(alpha: 0.95), fontSize: 12.5),
+                style: TextStyle(color: AppColors.gold.withValues(alpha: 0.95), fontSize: 12.5),
               ),
               const SizedBox(height: 8),
               Container(height: 1, width: 48, color: AppColors.gold.withValues(alpha: 0.45)),
@@ -1820,7 +1820,7 @@ class _Footer extends StatelessWidget {
               Text(
                 '© 2026 سليمان الفواز. جميع الحقوق محفوظة.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.goldLight.withValues(alpha: 0.78), fontSize: 11),
+                style: TextStyle(color: AppColors.gold.withValues(alpha: 0.78), fontSize: 11),
               ),
             ],
           ),
@@ -2255,7 +2255,10 @@ extension on _MetricTone {
         _MetricTone.green => AppColors.green,
         _MetricTone.darkGreen => AppColors.greenDark,
         _MetricTone.gold => AppColors.gold,
-        _MetricTone.softGold => AppColors.goldLight,
+        // بديل أغمق وأهدأ من AppColors.goldLight (يميل للأصفر الفاقع
+        // ويخالف الهوية - سليمان لاحظ صراحةً 2026-08-20) - نفس الذهبي
+        // الرسمي ممزوجًا بدرجة من الأخضر الداكن بدل الاعتماد على تدرّج فاتح.
+        _MetricTone.softGold => Color.lerp(AppColors.gold, AppColors.greenDark, 0.18)!,
       };
 }
 
