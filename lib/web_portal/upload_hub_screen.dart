@@ -5,17 +5,23 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../data/course_catalog.dart';
+import '../models/advisor_roster_entry.dart';
 import '../models/course_section_record.dart';
 import '../services/advising_report_repository.dart';
 import '../services/advising_schedule_repository.dart';
 import '../services/advisor_correction_service.dart';
+import '../services/advisor_roster_service.dart';
+import '../services/advisor_zip_service.dart';
 import '../services/course_schedule_change_repository.dart';
 import '../services/course_schedule_diff_service.dart';
 import '../services/course_schedule_repository.dart';
 import '../services/docx_schedule_parser_service.dart';
+import '../services/escalation_file_service.dart';
 import '../services/excel_parser_service.dart';
 import '../services/firestore_ticket_service.dart';
 import '../services/outside_course_repository.dart';
+import '../services/processed_file_parser_service.dart';
+import '../services/web_download.dart';
 import '../theme/app_theme.dart';
 import 'admin_nav.dart';
 import 'portal_header.dart';
@@ -68,10 +74,24 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   bool _uploadingSchedule = false;
   bool _uploadingFormsFile = false;
 
+  // ==================== رفع/تنزيل ملفات مراحل الحذف والإضافة ====================
+  // (بطلب سليمان صراحةً 2026-08-20: توحيد كل رفع/تنزيل ملفات دورة الحذف
+  // والإضافة بصفحة واحدة - "رفع وتنزيل الملفات" - بدل تشتّتها بين لوحة
+  // الإدارة وقوائم "المزيد" المتفرّقة).
+  List<AdvisorRosterEntry> _roster = [];
+  bool _uploadingProcessedAll = false;
+  bool _uploadingCollegeAll = false;
+  DateTime? _processedAllLastUpload;
+  DateTime? _collegeAllLastUpload;
+  final Set<String> _stageKeys = {}; // مفاتيح تحميل تنزيل/رفع لكل قسم-شطر أو شطر
+
   @override
   void initState() {
     super.initState();
     _loadDates();
+    AdvisorRosterService.loadAll().then((r) {
+      if (mounted) setState(() => _roster = r);
+    });
   }
 
   Future<void> _loadDates() async {
@@ -302,6 +322,263 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     }
   }
 
+  /// رفع دفعي (10+ ملفات دفعة واحدة) لملفات معالجة عائدة من أي مرشد/منسّق
+  /// قسم - يطابق كل صف بمفتاحه الخاص بصرف النظر عن قسمه/شطره
+  /// (`mergeAllProcessedRows`)، فلا حاجة لاختيار قسم أو شطر يدويًا. إجراء
+  /// وقائي/احتياطي بطلب سليمان صراحةً 2026-08-20.
+  Future<void> _pickAndUploadProcessedFilesAll() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['xlsx'],
+      allowMultiple: true,
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('لم يتم اختيار أي ملف - حاول مرة أخرى.')),
+        );
+      }
+      return;
+    }
+
+    setState(() => _uploadingProcessedAll = true);
+    try {
+      final allRows = <Map<String, dynamic>>[];
+      for (final file in result.files) {
+        if (file.bytes == null) continue;
+        allRows.addAll(ProcessedFileParserService.parseProcessedRows(file.bytes!));
+      }
+      if (allRows.isEmpty) {
+        throw Exception('تعذّرت قراءة محتوى الملفات المختارة (قد تكون فارغة أو غير مدعومة).');
+      }
+
+      final mergeResult = await FirestoreTicketService.mergeAllProcessedRows(allRows).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () => throw Exception('انتهت مهلة الاتصال بالخادم (30 ثانية بلا استجابة) - تأكد من اتصال الإنترنت وحاول مرة أخرى'),
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _uploadingProcessedAll = false;
+        _processedAllLastUpload = DateTime.now();
+      });
+      _showSuccessSnackBar(
+        'تم الدمج: ${mergeResult.matchedCount} حالة مطابَقة'
+        '${mergeResult.unmatchedCount > 0 ? '، ${mergeResult.unmatchedCount} غير مطابَقة' : ''}',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _uploadingProcessedAll = false);
+      showUploadErrorDialog(context, 'تعذّر رفع ملفات المعالجة', '$e');
+    }
+  }
+
+  /// نفس الفكرة لكن لملفات منسّق الكلية (تُجمِّع الأقسام الخمسة لشطر واحد) -
+  /// نفس دالة الدمج الشاملة تعمل بلا تمييز لأن كل صف يحمل مفتاحه الخاص.
+  Future<void> _pickAndUploadCollegeProcessedFilesAll() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['xlsx'],
+      allowMultiple: true,
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('لم يتم اختيار أي ملف - حاول مرة أخرى.')),
+        );
+      }
+      return;
+    }
+
+    setState(() => _uploadingCollegeAll = true);
+    try {
+      final allRows = <Map<String, dynamic>>[];
+      for (final file in result.files) {
+        if (file.bytes == null) continue;
+        allRows.addAll(ProcessedFileParserService.parseProcessedRows(file.bytes!));
+      }
+      if (allRows.isEmpty) {
+        throw Exception('تعذّرت قراءة محتوى الملفات المختارة (قد تكون فارغة أو غير مدعومة).');
+      }
+
+      final mergeResult = await FirestoreTicketService.mergeAllProcessedRows(allRows).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () => throw Exception('انتهت مهلة الاتصال بالخادم (30 ثانية بلا استجابة) - تأكد من اتصال الإنترنت وحاول مرة أخرى'),
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _uploadingCollegeAll = false;
+        _collegeAllLastUpload = DateTime.now();
+      });
+      _showSuccessSnackBar(
+        'تم الدمج: ${mergeResult.matchedCount} حالة مطابَقة'
+        '${mergeResult.unmatchedCount > 0 ? '، ${mergeResult.unmatchedCount} غير مطابَقة' : ''}',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _uploadingCollegeAll = false);
+      showUploadErrorDialog(context, 'تعذّر رفع ملفات منسّق الكلية', '$e');
+    }
+  }
+
+  /// تنزيل ملف مضغوط بداخله ملف Excel منفصل لكل مرشد أكاديمي (مرحلة 1) لقسم/
+  /// شطر واحد - نفس منطق `admin_workspace_screen.dart` بالضبط.
+  Future<void> _downloadStage1(String key, List<Map<String, dynamic>> tickets) async {
+    setState(() => _stageKeys.add(key));
+    try {
+      final zipBytes = AdvisorZipService.buildZip(tickets, roster: _roster);
+      final parts = key.split('|');
+      final shatrLabel = parts[0] == ExcelParserService.shatrMale ? 'male' : 'female';
+      downloadBytes(zipBytes, '${parts.length > 1 ? parts[1] : 'قسم'}_$shatrLabel.zip');
+      if (mounted) _showSuccessSnackBar('تم تنزيل ملف القسم بنجاح');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذّر إنشاء ملف القسم: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _stageKeys.remove(key));
+    }
+  }
+
+  /// تنزيل ملف "مرحلة منسّق القسم" (كل حالات القسم مدمجة بملف واحد) - نفس
+  /// ملف منسّق القسم بالضبط، متاح هنا مباشرة للتنزيل أو إعادة الرفع بعد
+  /// اعتماده (سليمان صراحةً 2026-08-20).
+  Future<void> _downloadStage2(String key, List<Map<String, dynamic>> tickets) async {
+    final stage2Key = 'stage2|$key';
+    setState(() => _stageKeys.add(stage2Key));
+    try {
+      final bytes = EscalationFileService.buildStage2File(tickets);
+      final parts = key.split('|');
+      final shatrLabel = parts[0] == ExcelParserService.shatrMale ? 'male' : 'female';
+      downloadBytes(bytes, '${parts.length > 1 ? parts[1] : 'قسم'}_${shatrLabel}_مرحلة_المنسق.xlsx');
+      if (mounted) _showSuccessSnackBar('تم تنزيل ملف مرحلة المنسّق بنجاح');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذّر إنشاء ملف مرحلة المنسّق: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _stageKeys.remove(stage2Key));
+    }
+  }
+
+  /// تنزيل ملف "مرحلة منسّق الكلية" لشطر كامل (الأقسام الخمسة مدمجة).
+  Future<void> _downloadStage3(String shatr, List<Map<String, dynamic>> shatrTickets) async {
+    final key = 'stage3|$shatr';
+    setState(() => _stageKeys.add(key));
+    try {
+      final bytes = EscalationFileService.buildStage3File(shatrTickets);
+      final shatrLabel = shatr == ExcelParserService.shatrMale ? 'male' : 'female';
+      downloadBytes(bytes, 'منسق_الكلية_$shatrLabel.xlsx');
+      if (mounted) _showSuccessSnackBar('تم تنزيل ملف منسّق الكلية بنجاح');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذّر إنشاء ملف منسّق الكلية: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _stageKeys.remove(key));
+    }
+  }
+
+  /// رفع ملف معالج معتمَد لقسم/شطر محدَّد تحديدًا (نيابةً عن منسّق القسم).
+  Future<void> _uploadProcessedForDepartment(String shatr, String department) async {
+    final key = 'upload|$shatr|$department';
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['xlsx'],
+      allowMultiple: true,
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('لم يتم اختيار أي ملف - حاول مرة أخرى.')),
+        );
+      }
+      return;
+    }
+
+    setState(() => _stageKeys.add(key));
+    try {
+      final allRows = <Map<String, dynamic>>[];
+      for (final file in result.files) {
+        if (file.bytes == null) continue;
+        allRows.addAll(ProcessedFileParserService.parseProcessedRows(file.bytes!));
+      }
+      if (allRows.isEmpty) {
+        throw Exception('تعذّرت قراءة محتوى الملف المختار.');
+      }
+      final mergeResult = await FirestoreTicketService.mergeProcessedRows(
+        allRows,
+        shatr: shatr,
+        department: department,
+      ).timeout(
+        const Duration(seconds: 25),
+        onTimeout: () => throw Exception('انتهت مهلة الاتصال بالخادم (25 ثانية بلا استجابة) - تأكد من اتصال الإنترنت وحاول مرة أخرى'),
+      );
+      if (mounted) {
+        _showSuccessSnackBar(
+          'تم الدمج نيابةً عن "$department - $shatr": ${mergeResult.matchedCount} حالة مطابَقة'
+          '${mergeResult.unmatchedCount > 0 ? '، ${mergeResult.unmatchedCount} غير مطابَقة' : ''}',
+        );
+      }
+    } catch (e) {
+      if (mounted) showUploadErrorDialog(context, 'تعذّر رفع الملف', '$e');
+    } finally {
+      if (mounted) setState(() => _stageKeys.remove(key));
+    }
+  }
+
+  /// رفع ملف معالج معتمَد نيابةً عن منسّق الكلية (شطر كامل).
+  Future<void> _uploadProcessedForShatr(String shatr) async {
+    final key = 'uploadShatr|$shatr';
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['xlsx'],
+      allowMultiple: true,
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('لم يتم اختيار أي ملف - حاول مرة أخرى.')),
+        );
+      }
+      return;
+    }
+
+    setState(() => _stageKeys.add(key));
+    try {
+      final allRows = <Map<String, dynamic>>[];
+      for (final file in result.files) {
+        if (file.bytes == null) continue;
+        allRows.addAll(ProcessedFileParserService.parseProcessedRows(file.bytes!));
+      }
+      if (allRows.isEmpty) {
+        throw Exception('تعذّرت قراءة محتوى الملف المختار.');
+      }
+      final mergeResult = await FirestoreTicketService.mergeProcessedRowsForShatr(
+        allRows,
+        shatr: shatr,
+      ).timeout(
+        const Duration(seconds: 25),
+        onTimeout: () => throw Exception('انتهت مهلة الاتصال بالخادم (25 ثانية بلا استجابة) - تأكد من اتصال الإنترنت وحاول مرة أخرى'),
+      );
+      if (mounted) {
+        _showSuccessSnackBar(
+          'تم الدمج نيابةً عن منسّق الكلية "$shatr": ${mergeResult.matchedCount} حالة مطابَقة'
+          '${mergeResult.unmatchedCount > 0 ? '، ${mergeResult.unmatchedCount} غير مطابَقة' : ''}',
+        );
+      }
+    } catch (e) {
+      if (mounted) showUploadErrorDialog(context, 'تعذّر رفع الملف', '$e');
+    } finally {
+      if (mounted) setState(() => _stageKeys.remove(key));
+    }
+  }
+
   Future<void> _clearCourses() async {
     if (!await _confirmClear('ملف المقررات الدراسية')) return;
     try {
@@ -401,7 +678,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   @override
   Widget build(BuildContext context) {
     return PortalScaffold(
-      title: 'رفع ملفات المنظومة الداخلية',
+      title: 'رفع وتنزيل الملفات',
       navItems: buildAdminNavItems(context, current: 'upload-hub'),
       body: _loadingDates
           ? const Center(child: CircularProgressIndicator())
@@ -412,7 +689,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
               child: Align(
                 alignment: Alignment.topCenter,
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1400),
+                  constraints: const BoxConstraints(maxWidth: 1600),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -420,6 +697,10 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                       Padding(
                         padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
                         child: _formsFileUploadBanner(),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
+                        child: _processingStageSection(),
                       ),
                       Padding(
                         padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
@@ -546,6 +827,296 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   }
 
   // ==================== عناصر التصميم ====================
+
+  /// قسم مراحل معالجة الحذف والإضافة كاملًا: رفع دفعي شامل (مرشدين/منسّقي
+  /// أقسام + منسّق كلية)، ثم جدول Compact لكل قسم علمي × شطر (تنزيل مرحلة
+  /// المرشدين، تنزيل مرحلة المنسّق، رفع الملف المعتمَد)، وأخيرًا صف منسّق
+  /// الكلية (تنزيل/رفع لكل شطر). كله Compact عمدًا (بلا Cards ضخمة) حتى
+  /// يتسع أكبر قدر ممكن من الصفحة بلا تمرير طويل - بطلب سليمان صراحةً
+  /// 2026-08-20.
+  Widget _processingStageSection() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(color: Colors.white, border: Border.all(color: AppColors.goldLight), borderRadius: BorderRadius.circular(16)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(width: 4, height: 18, decoration: BoxDecoration(color: AppColors.gold, borderRadius: BorderRadius.circular(2))),
+              const SizedBox(width: 9),
+              const Icon(Icons.sync_alt, size: 17, color: AppColors.greenDark),
+              const SizedBox(width: 6),
+              const Text('مراحل معالجة الحذف والإضافة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15.5, color: AppColors.greenDark)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'إجراء وقائي/احتياطي - رفع أو تنزيل نيابةً عن أي مرشد/منسّق قسم/منسّق كلية عند الحاجة.',
+            style: TextStyle(fontSize: 10.5, color: Colors.grey.shade500),
+          ),
+          const SizedBox(height: 10),
+          // الجدول هو التسلسل الفعلي للمراحل بالضبط (سليمان 2026-08-20:
+          // "طالما اسميتها مراحل يجب أن يكون الترتيب حسب المراحل") - لكل قسم
+          // علمي بكل شطر: 1) تنزيل ملفات المرشدين 2) رفع معالجة المرشدين
+          // 3) تنزيل ملف مرحلة منسّق القسم 4) رفع معالجة منسّق القسم.
+          StreamBuilder<List<Map<String, dynamic>>>(
+            stream: FirestoreTicketService.watchAllTickets(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return const Padding(padding: EdgeInsets.symmetric(vertical: 20), child: Center(child: CircularProgressIndicator()));
+              }
+              final tickets = snapshot.data!;
+              final groups = ExcelParserService.groupByShatrAndDepartment(tickets);
+              if (groups.isEmpty) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  child: Text('لا توجد بيانات مرفوعة بعد لعرض ملفات الأقسام', style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
+                );
+              }
+
+              final maleEntries = groups.entries.where((e) => e.key.startsWith('${ExcelParserService.shatrMale}|')).toList();
+              final femaleEntries = groups.entries.where((e) => e.key.startsWith('${ExcelParserService.shatrFemale}|')).toList();
+              final maleAll = maleEntries.expand((e) => e.value).toList();
+              final femaleAll = femaleEntries.expand((e) => e.value).toList();
+
+              return LayoutBuilder(builder: (context, constraints) {
+                final narrow = constraints.maxWidth < 900;
+                final maleCol = _departmentColumn('شطر الطلاب', maleEntries, ExcelParserService.shatrMale, maleAll);
+                final femaleCol = _departmentColumn('شطر الطالبات', femaleEntries, ExcelParserService.shatrFemale, femaleAll);
+                return narrow
+                    ? Column(children: [maleCol, const SizedBox(height: 12), femaleCol])
+                    : Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: maleCol), const SizedBox(width: 14), Expanded(child: femaleCol)]);
+              });
+            },
+          ),
+          const SizedBox(height: 14),
+          const Divider(height: 1),
+          const SizedBox(height: 10),
+          Text('رفع دفعي سريع (اختياري - بديل عن الرفع لكل قسم على حدة)', style: TextStyle(fontSize: 11, color: Colors.grey.shade500, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          LayoutBuilder(builder: (context, constraints) {
+            final narrow = constraints.maxWidth < 720;
+            final cards = [
+              _bulkStageCard(
+                icon: Icons.groups_2_outlined,
+                title: 'ملفات المعالجة (كل الأقسام والشطرين)',
+                subtitle: 'من المرشدين ومنسّقي الأقسام - يقبل 10+ ملفات دفعة واحدة',
+                uploading: _uploadingProcessedAll,
+                lastUpload: _processedAllLastUpload,
+                onPressed: _pickAndUploadProcessedFilesAll,
+              ),
+              _bulkStageCard(
+                icon: Icons.school_outlined,
+                title: 'ملف منسّق الكلية',
+                subtitle: 'رفع دفعي لملفات منسّق الكلية المعتمَدة',
+                uploading: _uploadingCollegeAll,
+                lastUpload: _collegeAllLastUpload,
+                onPressed: _pickAndUploadCollegeProcessedFilesAll,
+              ),
+            ];
+            return narrow
+                ? Column(children: [cards[0], const SizedBox(height: 10), cards[1]])
+                : Row(children: [Expanded(child: cards[0]), const SizedBox(width: 12), Expanded(child: cards[1])]);
+          }),
+        ],
+      ),
+    );
+  }
+
+  /// بطاقة صغيرة أفقية لرفع دفعي (icon + عنوان/وصف + زر) - أصغر بكثير من
+  /// `_uploadCard` العادية، مناسبة لصفّين جنبًا إلى جنب.
+  Widget _bulkStageCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required bool uploading,
+    required DateTime? lastUpload,
+    required VoidCallback onPressed,
+  }) {
+    final timeFmt = DateFormat('h:mm a', 'ar');
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(12)),
+      child: Row(
+        children: [
+          _goldIconBadge(icon),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5, color: AppColors.greenDark), maxLines: 1, overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 2),
+                Text(subtitle, style: TextStyle(color: Colors.grey.shade600, fontSize: 10.5), maxLines: 2, overflow: TextOverflow.ellipsis),
+                if (lastUpload != null) ...[
+                  const SizedBox(height: 2),
+                  Text('آخر رفعة: ${timeFmt.format(lastUpload)}', style: TextStyle(color: Colors.grey.shade500, fontSize: 9.5)),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            height: 34,
+            child: ElevatedButton.icon(
+              onPressed: uploading ? null : onPressed,
+              icon: uploading
+                  ? const SizedBox(width: 13, height: 13, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.greenDark))
+                  : const Icon(Icons.upload_file, size: 15),
+              label: Text(uploading ? 'جارٍ الرفع...' : 'رفع', style: const TextStyle(fontSize: 11.5)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.gold,
+                foregroundColor: AppColors.greenDark,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// عمود أقسام شطر واحد (5 صفوف) + صف منسّق الكلية لنفس الشطر أسفلها.
+  Widget _departmentColumn(
+    String shatrLabel,
+    List<MapEntry<String, List<Map<String, dynamic>>>> entries,
+    String shatrValue,
+    List<Map<String, dynamic>> shatrAll,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(shatrLabel, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5, color: AppColors.greenDark)),
+        const SizedBox(height: 6),
+        for (final e in entries) _departmentStageRow(e.key, e.value),
+        const SizedBox(height: 4),
+        _collegeStageRow(shatrValue, shatrLabel, shatrAll),
+      ],
+    );
+  }
+
+  /// صف Compact واحد لقسم علمي: اسم القسم + عدد الحالات + 3 أيقونات
+  /// (تنزيل مرحلة المرشدين، تنزيل مرحلة المنسّق، رفع ملف معتمَد).
+  Widget _departmentStageRow(String key, List<Map<String, dynamic>> tickets) {
+    final parts = key.split('|');
+    final shatr = parts[0];
+    final department = parts.length > 1 ? parts[1] : '';
+    final isDownloading1 = _stageKeys.contains(key);
+    final isDownloading2 = _stageKeys.contains('stage2|$key');
+    final isUploading = _stageKeys.contains('upload|$key');
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      constraints: const BoxConstraints(minHeight: 44),
+      decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(9)),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '$department — ${tickets.length} حالة',
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11.5),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          // ترتيب الأيقونات هو نفسه تسلسل المراحل الفعلي بالضبط (سليمان
+          // 2026-08-20): 1) تنزيل المرشدين 2) رفع معالجتهم 3) تنزيل مرحلة
+          // المنسّق 4) رفع معالجته - لا ترتيب تصميمي عشوائي.
+          _miniIconButton(
+            tooltip: '1) تنزيل ملفات المرشدين',
+            icon: Icons.download_outlined,
+            color: AppColors.green,
+            isLoading: isDownloading1,
+            onPressed: isDownloading1 ? null : () => _downloadStage1(key, tickets),
+          ),
+          _miniIconButton(
+            tooltip: '2) رفع معالجة المرشدين',
+            icon: Icons.upload_file_outlined,
+            color: Colors.deepPurple,
+            isLoading: isUploading,
+            onPressed: isUploading ? null : () => _uploadProcessedForDepartment(shatr, department),
+          ),
+          _miniIconButton(
+            tooltip: '3) تنزيل ملف مرحلة منسّق القسم',
+            icon: Icons.assignment_return_outlined,
+            color: AppColors.gold,
+            isLoading: isDownloading2,
+            onPressed: isDownloading2 ? null : () => _downloadStage2(key, tickets),
+          ),
+          _miniIconButton(
+            tooltip: '4) رفع معالجة منسّق القسم',
+            icon: Icons.upload_file_outlined,
+            color: Colors.deepPurple.shade700,
+            isLoading: isUploading,
+            onPressed: isUploading ? null : () => _uploadProcessedForDepartment(shatr, department),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// صف منسّق الكلية لشطر كامل (تنزيل مرحلة الكلية + رفع ملف معتمَد).
+  Widget _collegeStageRow(String shatr, String shatrLabel, List<Map<String, dynamic>> shatrAll) {
+    final key = 'stage3|$shatr';
+    final uploadKey = 'uploadShatr|$shatr';
+    final isDownloading = _stageKeys.contains(key);
+    final isUploading = _stageKeys.contains(uploadKey);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      constraints: const BoxConstraints(minHeight: 44),
+      decoration: BoxDecoration(color: AppColors.gold.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(9), border: Border.all(color: AppColors.goldLight)),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text('منسّق الكلية — $shatrLabel', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11.5, color: AppColors.greenDark), maxLines: 1, overflow: TextOverflow.ellipsis),
+          ),
+          _miniIconButton(
+            tooltip: 'تنزيل ملف مرحلة منسّق الكلية',
+            icon: Icons.download_outlined,
+            color: AppColors.green,
+            isLoading: isDownloading,
+            onPressed: (shatrAll.isEmpty || isDownloading) ? null : () => _downloadStage3(shatr, shatrAll),
+          ),
+          _miniIconButton(
+            tooltip: 'رفع ملف معتمَد نيابةً عن منسّق الكلية',
+            icon: Icons.upload_file_outlined,
+            color: Colors.deepPurple,
+            isLoading: isUploading,
+            onPressed: isUploading ? null : () => _uploadProcessedForShatr(shatr),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _miniIconButton({
+    required String tooltip,
+    required IconData icon,
+    required Color color,
+    required bool isLoading,
+    required VoidCallback? onPressed,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: SizedBox(
+        width: 30,
+        height: 30,
+        child: IconButton(
+          tooltip: tooltip,
+          padding: EdgeInsets.zero,
+          style: IconButton.styleFrom(backgroundColor: color, disabledBackgroundColor: color.withValues(alpha: 0.35)),
+          icon: isLoading
+              ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : Icon(icon, size: 14, color: Colors.white),
+          onPressed: onPressed,
+        ),
+      ),
+    );
+  }
 
   /// رأس مصرَّف داكن بخط ذهبي وشارة ماسية، مع زخرفة أقواس ذهبية بزوايا الرأس.
   /// بطاقة مميَّزة بصريًا لرفع ملف طلبات الحذف/الإضافة - مصدرها مختلف عمدًا

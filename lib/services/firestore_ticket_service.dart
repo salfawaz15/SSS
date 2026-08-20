@@ -142,6 +142,18 @@ class FirestoreTicketService {
     return _mergeProcessedRowsIntoDocs(processedRows, snap.docs);
   }
 
+  /// دمج على مستوى **كل الأقسام وكلا الشطرين معًا** بدفعة واحدة - إجراء
+  /// وقائي/احتياطي لإدارة الوحدة لرفع ملفات معالجة نيابةً عن أي مرشد/منسّق
+  /// قسم/منسّق كلية غائب، بلا حاجة لتحديد قسم أو شطر يدويًا لكل ملف (بطلب
+  /// سليمان صراحةً 2026-08-20، صفحة "رفع ملفات"). كل صف يُطابَق بمفتاحه
+  /// الخاص (رقم جامعي/نوع/مقرر/شعبة) بصرف النظر عن قسمه أو شطره.
+  static Future<MergeResult> mergeAllProcessedRows(
+    List<Map<String, dynamic>> processedRows,
+  ) async {
+    final snap = await _col.get();
+    return _mergeProcessedRowsIntoDocs(processedRows, snap.docs);
+  }
+
   static Future<MergeResult> _mergeProcessedRowsIntoDocs(
     List<Map<String, dynamic>> processedRows,
     List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,

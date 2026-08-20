@@ -99,7 +99,7 @@ List<PortalNavItem> buildAdminNavItems(BuildContext context, {required String cu
     // للشؤون الإدارية.
     if (isSuperAdmin)
       PortalNavItem(
-        label: 'رفع ملفات',
+        label: 'رفع وتنزيل الملفات',
         icon: Icons.cloud_upload_outlined,
         selected: current == 'upload-hub',
         onTap: () => Navigator.of(context).push(
