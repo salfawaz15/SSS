@@ -2215,6 +2215,39 @@ class _MissionBar extends StatelessWidget {
 
 /// درجة هوية (لون + تدرّجه الفاتح) لبطاقة مؤشر واحدة - إيقاع أخضر/ذهبي
 /// متحكَّم به بدل ألوان عشوائية لكل بطاقة (بطلب سليمان الصريح 2026-08-20).
+/// أيقونة "شخص + علامة اعتماد" مركَّبة (Stack) لتمثيل المرشد الأكاديمي حرفيًا
+/// - لا توجد أيقونة Material واحدة تطابق "UserRoundCheck" بلا استخدام درع أو
+/// سماعة دعم فني أو بطاقة هوية (كلها استُبعِدت صراحةً بطلب سليمان 2026-08-20).
+class _PersonCheckIcon extends StatelessWidget {
+  final double size;
+  const _PersonCheckIcon({required this.size});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Icon(Icons.person_outline, color: Colors.white, size: size),
+          Positioned(
+            bottom: -1,
+            right: -2,
+            child: Container(
+              width: size * 0.46,
+              height: size * 0.46,
+              decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
+              alignment: Alignment.center,
+              child: Icon(Icons.check, color: AppColors.greenDark, size: size * 0.34),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 enum _MetricTone { green, darkGreen, gold, softGold }
 
 extension on _MetricTone {
@@ -2233,12 +2266,13 @@ extension on _MetricTone {
 /// —  مقصودة لا ناقصة"). حين تتوفر البيانات لاحقًا يكفي تمرير [value] الحقيقي
 /// بلا أي تعديل على التصميم.
 class _MetricCard extends StatelessWidget {
-  final IconData icon;
+  final IconData? icon;
+  final Widget Function(double size)? iconBuilder;
   final String label;
   final _MetricTone tone;
   final int? value;
 
-  const _MetricCard({required this.icon, required this.label, required this.tone, this.value});
+  const _MetricCard({this.icon, this.iconBuilder, required this.label, required this.tone, this.value});
 
   @override
   Widget build(BuildContext context) {
@@ -2256,10 +2290,10 @@ class _MetricCard extends StatelessWidget {
         child: Row(
           children: [
             Container(
-              width: 56,
+              width: 64,
               alignment: Alignment.center,
               color: accent,
-              child: Icon(icon, color: Colors.white, size: 26),
+              child: iconBuilder != null ? iconBuilder!(27) : Icon(icon, color: Colors.white, size: 27),
             ),
             Expanded(
               child: Padding(
@@ -2270,7 +2304,7 @@ class _MetricCard extends StatelessWidget {
                   children: [
                     Text(
                       value == null ? '—' : '$value',
-                      style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w800, color: AppColors.greenDark, height: 1),
+                      style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w800, color: AppColors.greenDark, height: 1),
                     ),
                     const SizedBox(height: 5),
                     Text(
@@ -2345,15 +2379,19 @@ class _MetricsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // أيقونات مختارة صراحةً لتمثيل المعنى الدقيق (بطلب سليمان 2026-08-20):
-    // "verified_user" (شخص + علامة اعتماد) للمرشدين بدل سماعة دعم فني لا
-    // تمثّل إرشادًا أكاديميًا إطلاقًا (استُبدلت لاحقًا من "how_to_reg" الذي
-    // ظهر بلا رمز مرئي فعليًا رغم تصريف Dart له - سليمان 2026-08-20)، و
-    // "school" (قبعة تخرّج فعلية) للخريجين.
-    const metrics = [
-      _MetricCard(icon: Icons.groups_outlined, label: 'الطلبة المستفيدون', tone: _MetricTone.green),
-      _MetricCard(icon: Icons.badge_outlined, label: 'المرشدون الأكاديميون', tone: _MetricTone.darkGreen),
-      _MetricCard(icon: Icons.school_outlined, label: 'الخريجون', tone: _MetricTone.gold),
-      _MetricCard(icon: Icons.volunteer_activism_outlined, label: 'الخدمات والمبادرات', tone: _MetricTone.softGold),
+    // "شخص + علامة اعتماد" مركَّبة يدويًا (Stack) للمرشدين - لا توجد أيقونة
+    // Material جاهزة تطابق "UserRoundCheck" حرفيًا بلا استخدام درع/سماعة/
+    // بطاقة هوية (كلها استُبعِدت صراحةً)، و"school" (قبعة تخرّج فعلية)
+    // للخريجين.
+    final metrics = [
+      const _MetricCard(icon: Icons.groups_outlined, label: 'الطلبة المستفيدون', tone: _MetricTone.green),
+      _MetricCard(
+        iconBuilder: (size) => _PersonCheckIcon(size: size),
+        label: 'المرشدون الأكاديميون',
+        tone: _MetricTone.darkGreen,
+      ),
+      const _MetricCard(icon: Icons.school_outlined, label: 'الخريجون', tone: _MetricTone.gold),
+      const _MetricCard(icon: Icons.volunteer_activism_outlined, label: 'الخدمات والمبادرات', tone: _MetricTone.softGold),
     ];
     return Container(
       width: double.infinity,
@@ -2493,11 +2531,11 @@ class _TrackCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Container(
-                    width: 54,
-                    height: 54,
+                    width: 56,
+                    height: 56,
                     decoration: BoxDecoration(color: AppColors.greenDark.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(14)),
                     alignment: Alignment.center,
-                    child: Icon(icon, color: AppColors.greenDark, size: 28),
+                    child: Icon(icon, color: AppColors.greenDark, size: 29),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
