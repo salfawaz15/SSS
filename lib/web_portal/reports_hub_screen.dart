@@ -2,7 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-import '../theme/app_theme.dart';
+import '../theme/dashboard_tokens.dart';
 import 'admin_nav.dart';
 import 'admin_reports_screen.dart';
 import 'advising_cases_admin_screen.dart';
@@ -29,8 +29,8 @@ extension on ReportHubCategory {
       };
 
   Color get color => switch (this) {
-        ReportHubCategory.report => AppColors.green,
-        ReportHubCategory.workFile => AppColors.gold,
+        ReportHubCategory.report => DashTokens.green900,
+        ReportHubCategory.workFile => DashTokens.gold600,
         ReportHubCategory.guide => Colors.blueGrey,
       };
 }
@@ -331,26 +331,44 @@ class _ReportsHubScreenState extends State<ReportsHubScreen> {
         return e.matches(_searchCtrl.text);
       }).toList();
 
-      return SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 900),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                TextField(
-                  controller: _searchCtrl,
-                  onChanged: (_) => setState(() {}),
-                  decoration: InputDecoration(
-                    hintText: 'ابحث عن تقرير (مثال: جدول، إرشاد، نصاب، إعاقة...)',
-                    prefixIcon: const Icon(Icons.search),
-                    filled: true,
-                    fillColor: Colors.white,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      return Container(
+        color: DashTokens.pageBg,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1400),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const DashSectionHeader(
+                    title: 'مركز التقارير',
+                    subtitle: 'كل مخرجات البوابة القابلة للطباعة/التصدير بمكان واحد',
+                    icon: Icons.summarize_outlined,
                   ),
-                ),
-                const SizedBox(height: 14),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: DashTokens.cardBg,
+                      border: Border.all(color: DashTokens.border),
+                      borderRadius: BorderRadius.circular(DashTokens.radiusLg),
+                      boxShadow: DashTokens.cardShadow,
+                    ),
+                    child: TextField(
+                      controller: _searchCtrl,
+                      onChanged: (_) => setState(() {}),
+                      decoration: InputDecoration(
+                        hintText: 'ابحث عن تقرير (مثال: جدول، إرشاد، نصاب، إعاقة...)',
+                        prefixIcon: const Icon(Icons.search),
+                        filled: true,
+                        fillColor: Colors.white,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: DashTokens.border)),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: DashTokens.border)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
@@ -408,7 +426,8 @@ class _ReportsHubScreenState extends State<ReportsHubScreen> {
                     ),
                     itemBuilder: (context, i) => _ReportCard(entry: filtered[i], onTap: () => filtered[i].onOpen(context)),
                   ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -456,68 +475,12 @@ class _ReportCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = entry.category.color;
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey.shade200),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(color: accent.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
-                alignment: Alignment.center,
-                child: Icon(entry.icon, size: 22, color: accent),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            entry.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.greenDark),
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
-                          decoration: BoxDecoration(color: accent.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
-                          child: Text(
-                            entry.category.label,
-                            style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: accent),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      entry.description,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600, height: 1.3),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return DashActionCard(
+      icon: entry.icon,
+      title: entry.title,
+      subtitle: entry.description,
+      accent: entry.category.color,
+      onTap: onTap,
     );
   }
 }

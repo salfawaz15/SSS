@@ -2,22 +2,18 @@ import 'package:flutter/material.dart';
 
 import '../models/course_section_record.dart';
 import '../services/course_schedule_repository.dart' show CourseScheduleRepository, Shatr;
-import '../theme/app_theme.dart';
+import '../theme/dashboard_tokens.dart';
 import 'admin_nav.dart';
 import 'course_schedule_admin_screen.dart';
-import 'portal_cards.dart';
 import 'portal_header.dart';
 
 /// صفحة وسيطة تجمع "تسكين المقررات الدراسية" و"الجدول الدراسي" بضغطة واحدة
 /// من الشريط العلوي - حصرية لحساب المدير العام (نفس تقييد وصولهما الأصلي
 /// بلوحة الإدارة)، بطلب سليمان صراحةً (2026-08-07).
 ///
-/// أُعيد تصميمها (2026-08-09) بنفس قالب لوحة الإرشاد: شريط إحصائيات علوي
-/// (`PortalStatCard`) بأرقام فعلية من الجدول الدراسي المرفوع فعليًا لكلا
-/// الشطرين، ثم شبكة أيقونات صغيرة (`PortalIconTileCard` - نفس حجم "تسكين
-/// المقررات"/"الجدول الدراسي" المعتمد بلوحة الإدارة) بدل بطاقات التدرّج
-/// الضخمة السابقة اللي كانت تترك فراغًا أبيض كبيرًا (سليمان). المحتوى محصور
-/// بعرض أقصى 900 ومتوسّط بالصفحة بنفس أسلوب صفحتَي المنسّق والإرشاد.
+/// أُعيد تصميمها (2026-08-20) بهوية `DashTokens` الموحَّدة (المستخرجة من لوحة
+/// "الحذف والإضافة") - نفس قالب لوحة الإرشاد: شريط KPI بشريط أعلى ملوَّن +
+/// بطاقات إجراء بيضاء، بدل البلاطات الملوَّنة السابقة.
 class AcademicServicesHubScreen extends StatefulWidget {
   const AcademicServicesHubScreen({super.key});
 
@@ -80,18 +76,29 @@ class _AcademicServicesHubScreenState extends State<AcademicServicesHubScreen> {
     return PortalScaffold(
       title: 'خدمات أكاديمية',
       navItems: buildAdminNavItems(context, current: 'academic-services'),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1400),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _buildStatsBar(context),
-                const SizedBox(height: 20),
-                _buildActionsGrid(context),
-              ],
+      body: Container(
+        color: DashTokens.pageBg,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1400),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const DashSectionHeader(
+                    title: 'نظرة عامة على الخدمات الأكاديمية',
+                    subtitle: 'أرقام حيّة من آخر جدول دراسي مرفوع',
+                    icon: Icons.query_stats_outlined,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildStatsBar(context),
+                  const SizedBox(height: 20),
+                  const DashSectionHeader(title: 'الخدمات السريعة', icon: Icons.dashboard_customize_outlined),
+                  const SizedBox(height: 12),
+                  _buildActionsGrid(context),
+                ],
+              ),
             ),
           ),
         ),
@@ -104,59 +111,57 @@ class _AcademicServicesHubScreenState extends State<AcademicServicesHubScreen> {
       (
         label: 'عدد مقررات الكلية',
         value: _loadingStats ? '...' : '$_totalCourses',
+        note: 'مقررًا مسجَّلًا',
         icon: Icons.menu_book_outlined,
-        color: AppColors.greenDark,
+        color: DashTokens.green900,
       ),
       (
         label: 'أعضاء هيئة تدريس لديهم شعب',
         value: _loadingStats ? '...' : '$_facultyCount',
+        note: 'عضو هيئة تدريس',
         icon: Icons.person_search_outlined,
-        color: AppColors.gold,
+        color: DashTokens.gold600,
       ),
       (
         label: 'شعب مسكَّنة',
         value: _loadingStats ? '...' : '$_scheduledSections',
+        note: 'أُسنِد لها محاضر',
         icon: Icons.event_available_outlined,
-        color: AppColors.green,
+        color: DashTokens.success,
       ),
       (
         label: 'شعب غير مسكَّنة',
         value: _loadingStats ? '...' : '$_unscheduledSections',
+        note: 'بلا محاضر بعد',
         icon: Icons.event_busy_outlined,
-        color: Colors.redAccent,
+        color: DashTokens.danger,
       ),
     ];
 
-    final isNarrow = MediaQuery.of(context).size.width < 700;
-    if (isNarrow) {
-      return Column(
-        children: [
-          for (var i = 0; i < tiles.length; i++) ...[
-            PortalStatCard(icon: tiles[i].icon, value: tiles[i].value, label: tiles[i].label, accentColor: tiles[i].color),
-            if (i < tiles.length - 1) const SizedBox(height: 12),
-          ],
-        ],
-      );
-    }
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (var i = 0; i < tiles.length; i++) ...[
-            Expanded(child: PortalStatCard(icon: tiles[i].icon, value: tiles[i].value, label: tiles[i].label, accentColor: tiles[i].color)),
-            if (i < tiles.length - 1) const SizedBox(width: 12),
-          ],
-        ],
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: tiles.length,
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 300,
+        mainAxisExtent: 92,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
       ),
+      itemBuilder: (context, i) {
+        final t = tiles[i];
+        return DashKpiCard(label: t.label, value: t.value, note: t.note, icon: t.icon, accent: t.color);
+      },
     );
   }
 
   Widget _buildActionsGrid(BuildContext context) {
-    final tiles = <({IconData icon, String title, Color background, VoidCallback onTap})>[
+    final tiles = <({IconData icon, String title, String subtitle, Color accent, VoidCallback onTap})>[
       (
         icon: Icons.event_note_outlined,
         title: 'تسكين المقررات الدراسية',
-        background: AppColors.greenDark,
+        subtitle: 'تسكين شعب المقررات على المحاضرين وأوقات الحويّة',
+        accent: DashTokens.green900,
         onTap: () => Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => const CourseScheduleAdminScreen(initialTabIndex: 0, singleTab: true)),
         ),
@@ -164,32 +169,28 @@ class _AcademicServicesHubScreenState extends State<AcademicServicesHubScreen> {
       (
         icon: Icons.person_search_outlined,
         title: 'الجدول الدراسي',
-        background: AppColors.gold,
+        subtitle: 'عرض الجدول الدراسي الكامل حسب المحاضر أو الشعبة',
+        accent: DashTokens.gold600,
         onTap: () => Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => const CourseScheduleAdminScreen(initialTabIndex: 1, singleTab: true)),
         ),
       ),
     ];
 
-    // Wrap مع توسيط (بدل GridView) - نفس إصلاح لوحة الإرشاد (سليمان 2026-08-09).
-    return Wrap(
-      alignment: WrapAlignment.center,
-      spacing: 14,
-      runSpacing: 14,
-      children: [
-        for (final t in tiles)
-          SizedBox(
-            width: 200,
-            height: 118,
-            child: PortalIconTileCard(
-              icon: t.icon,
-              title: t.title,
-              background: t.background,
-              foreground: Colors.white,
-              onTap: t.onTap,
-            ),
-          ),
-      ],
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: tiles.length,
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 420,
+        mainAxisExtent: 108,
+        crossAxisSpacing: 14,
+        mainAxisSpacing: 14,
+      ),
+      itemBuilder: (context, i) {
+        final t = tiles[i];
+        return DashActionCard(icon: t.icon, title: t.title, subtitle: t.subtitle, accent: t.accent, onTap: t.onTap);
+      },
     );
   }
 }
