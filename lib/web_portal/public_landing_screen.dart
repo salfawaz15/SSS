@@ -178,24 +178,28 @@ class _PublicPageShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, outerConstraints) {
-        return SingleChildScrollView(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: outerConstraints.maxHeight),
-            child: IntrinsicHeight(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  ...header,
-                  Expanded(child: content),
-                  footer,
-                ],
-              ),
-            ),
+    // CustomScrollView + SliverFillRemaining(hasScrollBody: false) بدل
+    // ConstrainedBox+IntrinsicHeight+Expanded السابقة - تلك كانت تقيس كل
+    // طفل بمعزل عن توزيع Flex الفعلي (قياس جوهري/Intrinsic) فتتعارض حقيقةً
+    // مع أي محتوى داخلي معقّد (LayoutBuilder متجاوب، Wrap متداخل...)، فتظهر
+    // فجوة القياس كتراكب فعلي بين الفوتر والمحتوى - تكرّر هذا حتى بالصفحة
+    // الرئيسية نفسها (سليمان 2026-08-21). SliverFillRemaining تستخدم تخطيط
+    // Box عاديًا (لا قياسًا جوهريًا إطلاقًا) فتتفادى هذه الفئة من الأعطال
+    // كليًا - نفس الحل لكل صفحات الموقع العام بلا استثناء لأي صفحة.
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: header),
+        ),
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [content, footer],
           ),
-        );
-      },
+        ),
+      ],
     );
   }
 }
@@ -217,41 +221,21 @@ void _goHome(BuildContext context) {
 class InfoPageScaffold extends StatelessWidget {
   final Widget child;
   final String? current;
-  // بعض الصفحات (تواصل معنا/التقويم الجامعي) لها محتوى متداخل معقّد
-  // (LayoutBuilder متجاوب/جدول بتمرير أفقي) لا يتطابق قياسه الجوهري
-  // (Intrinsic) مع قياسه الفعلي بدقة، فيسبّب هيكل `_PublicPageShell`
-  // (المعتمَد لبقية الصفحات) تراكبًا حقيقيًا بين الفوتر والمحتوى هناك تحديدًا
-  // (سليمان لاحظ صراحةً 2026-08-21). لهذا تُستثنى هاتان الصفحتان فقط
-  // (`fillViewport: false`) وتعودان للتمرير الطبيعي البسيط، بلا مسّ لبقية
-  // الصفحات العاملة فعليًا بالهيكل المشترك.
-  final bool fillViewport;
 
-  const InfoPageScaffold({super.key, required this.child, this.current, this.fillViewport = true});
+  const InfoPageScaffold({super.key, required this.child, this.current});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7F6),
-      body: fillViewport
-          ? _PublicPageShell(
-              header: [
-                _TopUtilityBar(onLogin: () => _pushLogin(context)),
-                _NavBar(current: current),
-              ],
-              content: child,
-              footer: const _Footer(),
-            )
-          : SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _TopUtilityBar(onLogin: () => _pushLogin(context)),
-                  _NavBar(current: current),
-                  child,
-                  const _Footer(),
-                ],
-              ),
-            ),
+      body: _PublicPageShell(
+        header: [
+          _TopUtilityBar(onLogin: () => _pushLogin(context)),
+          _NavBar(current: current),
+        ],
+        content: child,
+        footer: const _Footer(),
+      ),
     );
   }
 }
@@ -342,7 +326,6 @@ class ContactPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return InfoPageScaffold(
       current: 'contact',
-      fillViewport: false,
       child: PageSection(
         eyebrow: 'تواصل معنا',
         title: 'تواصل',
@@ -746,7 +729,6 @@ class AcademicCalendarPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return InfoPageScaffold(
       current: 'calendar',
-      fillViewport: false,
       child: PageSection(
         eyebrow: 'هيكلتنا الزمنية',
         title: 'التقويم الجامعي للفصل الدراسي الأول لعام 1448هـ',
