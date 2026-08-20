@@ -140,20 +140,61 @@ class _PublicLandingScreenState extends State<PublicLandingScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7F6),
-      body: SingleChildScrollView(
-        child: Column(
+      body: _PublicPageShell(
+        header: [
+          _TopUtilityBar(onLogin: _openLogin),
+          const _NavBar(current: 'home'),
+        ],
+        content: const Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _TopUtilityBar(onLogin: _openLogin),
-            const _NavBar(current: 'home'),
-            const _HeroSection(),
-            const _MetricsSection(),
-            const _TracksSection(),
-            const _LatestUpdatesSection(),
-            const _Footer(),
+            _HeroSection(),
+            _MetricsSection(),
+            _TracksSection(),
+            _LatestUpdatesSection(),
           ],
         ),
+        footer: const _Footer(),
       ),
+    );
+  }
+}
+
+/// الهيكل المشترك الوحيد لكل صفحات الموقع العام (الرئيسية وكل الصفحات
+/// الفرعية) - يضمن التصاق الفوتر بأسفل الشاشة تمامًا بلا أي فراغ أسفله على
+/// الصفحات القصيرة، مع بقاء التمرير الطبيعي على الصفحات الطويلة، بلا أي حل
+/// خاص بصفحة بعينها (بطلب سليمان الصريح 2026-08-20 بعد تكرار نفس الخلل عبر
+/// عدة صفحات - `SingleChildScrollView` وحدها لا تتمدَّد لملء ارتفاع الشاشة،
+/// فتظهر خلفية Scaffold فارغة أسفل الفوتر كلما كان المحتوى أقصر من الشاشة).
+/// النمط: `ConstrainedBox(minHeight: ارتفاع الشاشة)` + `IntrinsicHeight` +
+/// `Expanded` حول المحتوى الأساسي فقط - الفوتر يبقى دائمًا آخر عنصر فعليًا.
+class _PublicPageShell extends StatelessWidget {
+  final List<Widget> header;
+  final Widget content;
+  final Widget footer;
+
+  const _PublicPageShell({required this.header, required this.content, required this.footer});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, outerConstraints) {
+        return SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: outerConstraints.maxHeight),
+            child: IntrinsicHeight(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  ...header,
+                  Expanded(child: content),
+                  footer,
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -182,16 +223,13 @@ class InfoPageScaffold extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7F6),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _TopUtilityBar(onLogin: () => _pushLogin(context)),
-            _NavBar(current: current),
-            child,
-            const _Footer(),
-          ],
-        ),
+      body: _PublicPageShell(
+        header: [
+          _TopUtilityBar(onLogin: () => _pushLogin(context)),
+          _NavBar(current: current),
+        ],
+        content: child,
+        footer: const _Footer(),
       ),
     );
   }
@@ -2378,17 +2416,31 @@ class _MetricsSection extends StatelessWidget {
                 style: TextStyle(color: Colors.grey.shade600, fontSize: 12.5, height: 1.5),
               ),
               const SizedBox(height: 12),
+              // Row/Wrap بدل GridView عمدًا - GridView (حتى shrinkWrap) يستخدم
+              // Viewport داخليًا لا يدعم القياس الجوهري (Intrinsic)، فيتعطّل
+              // بصمت داخل هيكل الصفحة المشترك الجديد (`_PublicPageShell`
+              // يستخدم `IntrinsicHeight` لإلصاق الفوتر بأسفل الشاشة - سليمان
+              // 2026-08-20).
               LayoutBuilder(
                 builder: (context, constraints) {
                   final isNarrow = constraints.maxWidth < 700;
-                  return GridView.count(
-                    crossAxisCount: isNarrow ? 2 : 4,
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    mainAxisSpacing: 14,
-                    crossAxisSpacing: 14,
-                    childAspectRatio: isNarrow ? 1.6 : (constraints.maxWidth / 4 - 11) / 120,
-                    children: metrics,
+                  if (isNarrow) {
+                    return Wrap(
+                      spacing: 14,
+                      runSpacing: 14,
+                      children: [for (final m in metrics) SizedBox(width: (constraints.maxWidth - 14) / 2, height: 120, child: m)],
+                    );
+                  }
+                  return IntrinsicHeight(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (var i = 0; i < metrics.length; i++) ...[
+                          Expanded(child: metrics[i]),
+                          if (i < metrics.length - 1) const SizedBox(width: 14),
+                        ],
+                      ],
+                    ),
                   );
                 },
               ),
@@ -2592,15 +2644,21 @@ class _ImportantLinksSection extends StatelessWidget {
               Center(
                 child: ConstrainedBox(
                   constraints: BoxConstraints(maxWidth: isNarrow ? 300 : 560),
-                  child: GridView.count(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: isNarrow ? 2 : 3,
-                mainAxisSpacing: 16,
-                crossAxisSpacing: 16,
-                childAspectRatio: 1.05,
-                children: _allLinks.map((link) {
-                  return InkWell(
+                  // Wrap بدل GridView عمدًا (لا تدعم GridView القياس الجوهري
+                  // Intrinsic المطلوب لهيكل الصفحة المشترك الجديد - سليمان
+                  // 2026-08-20).
+                  child: Builder(builder: (context) {
+                    final cols = isNarrow ? 2 : 3;
+                    final maxW = isNarrow ? 300.0 : 560.0;
+                    final itemWidth = (maxW - 16 * (cols - 1)) / cols;
+                    return Wrap(
+                      spacing: 16,
+                      runSpacing: 16,
+                      children: _allLinks.map((link) {
+                  return SizedBox(
+                    width: itemWidth,
+                    height: itemWidth / 1.05,
+                    child: InkWell(
                     borderRadius: BorderRadius.circular(16),
                     onTap: () => _openLink(link.url),
                     child: Container(
@@ -2650,9 +2708,11 @@ class _ImportantLinksSection extends StatelessWidget {
                         ],
                       ),
                     ),
+                  ),
                   );
                 }).toList(),
-                  ),
+                    );
+                  }),
                 ),
               ),
             ],
