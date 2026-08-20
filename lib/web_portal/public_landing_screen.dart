@@ -1252,29 +1252,39 @@ class _TopUtilityBarState extends State<_TopUtilityBar> {
           child: SafeArea(
             bottom: false,
             top: kIsWeb,
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1240),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    onPressed: widget.onLogin,
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-                      minimumSize: Size.zero,
-                      splashFactory: NoSplash.splashFactory,
-                    ).copyWith(
-                      overlayColor: WidgetStateProperty.all(AppColors.gold.withValues(alpha: 0.12)),
+            // مثبَّت لأقصى يسار الشاشة فعليًا (لا حاوية المحتوى 1240) - بطلب
+            // سليمان الصريح 2026-08-20: "الموضع الحالي لا يزال بعيدًا للداخل".
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final inset = (constraints.maxWidth * 0.02).clamp(24.0, 40.0);
+                return Stack(
+                  children: [
+                    Positioned(
+                      left: inset,
+                      top: 0,
+                      bottom: 0,
+                      child: Center(
+                        child: TextButton.icon(
+                          onPressed: widget.onLogin,
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            minimumSize: Size.zero,
+                            splashFactory: NoSplash.splashFactory,
+                          ).copyWith(
+                            overlayColor: WidgetStateProperty.all(AppColors.gold.withValues(alpha: 0.12)),
+                          ),
+                          icon: const Icon(Icons.login, size: 15),
+                          label: const Text(
+                            'تسجيل الدخول',
+                            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ),
                     ),
-                    icon: const Icon(Icons.login, size: 15),
-                    label: const Text(
-                      'تسجيل الدخول',
-                      style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                ),
-              ),
+                  ],
+                );
+              },
             ),
           ),
         ),
@@ -1385,6 +1395,10 @@ class _NavBar extends StatelessWidget {
           final navButtonStyle = TextButton.styleFrom(
             foregroundColor: AppColors.green,
             textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ).copyWith(
+            overlayColor: WidgetStateProperty.all(AppColors.green.withValues(alpha: 0.05)),
           );
           final navItems = [
             TextButton(
@@ -1456,11 +1470,24 @@ class _NavBar extends StatelessWidget {
           ];
 
           if (isWide) {
+            // العرض بالكامل RTL: الشعار يبقى أقصى اليمين، وعناصر التنقّل
+            // تبدأ فورًا بجانبه (لا فراغ Spacer بينهما) داخل حاوية موحَّدة
+            // خفيفة (nav-shell) - أي فراغ متبقٍ يُدفَع لأقصى اليسار بطلب
+            // سليمان الصريح 2026-08-20.
             return Row(
               children: [
                 const _BrandLogo(),
+                const SizedBox(width: 20),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: AppColors.green.withValues(alpha: 0.10)),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: navItems),
+                ),
                 const Spacer(),
-                ...navItems,
               ],
             );
           }
@@ -1528,56 +1555,49 @@ class _NavBar extends StatelessWidget {
   }
 }
 
-/// قسم Hero التعريفي - فاتح ومضغوط بدل الشريط الأخضر الكبير السابق (بطلب
-/// سليمان الصريح 2026-08-20: "لا نريد تكرار كتل خضراء كبيرة ومتتابعة أعلى
-/// الصفحة"). التسلسل المؤسسي المعتمد دائمًا: الجامعة، ثم الكلية، ثم الوحدة.
+/// قسم Hero التعريفي - مضغوط جدًا (بلا ارتفاع ثابت كبير) بدل الشريط الأخضر
+/// الكبير السابق. استثناء مقصود من التسلسل المؤسسي العام (الجامعة ثم الكلية
+/// ثم الوحدة): هنا اسم الوحدة هو عنوان الصفحة نفسه فيظهر أولًا وأكبر، تليه
+/// التبعية المؤسسية بسطر واحد (بطلب سليمان الصريح 2026-08-20).
 class _HeroSection extends StatelessWidget {
   const _HeroSection();
 
   @override
   Widget build(BuildContext context) {
-    final isNarrow = MediaQuery.of(context).size.width < 600;
+    final width = MediaQuery.of(context).size.width;
+    final isNarrow = width < 600;
+    final titleSize = (34 + (width / 1920) * 8).clamp(34.0, 42.0);
     return Container(
       width: double.infinity,
-      constraints: const BoxConstraints(minHeight: 180),
+      color: const Color(0xFFFAFAF8),
       alignment: Alignment.center,
-      padding: EdgeInsets.symmetric(horizontal: 24, vertical: isNarrow ? 24 : 32),
-      decoration: const BoxDecoration(
-        color: Color(0xFFFAFAF8),
-        border: Border(bottom: BorderSide(color: Color(0xFFEEEEE9))),
-      ),
+      padding: EdgeInsets.symmetric(horizontal: 24, vertical: isNarrow ? 20 : 24),
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 820),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
-                'جامعة الطائف',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.greenDark, fontWeight: FontWeight.w600, fontSize: 18),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'كلية إدارة الأعمال',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.green, fontWeight: FontWeight.w700, fontSize: 24),
-              ),
-              const SizedBox(height: 12),
-              Container(width: 52, height: 3, decoration: BoxDecoration(color: AppColors.gold, borderRadius: BorderRadius.circular(3))),
-              const SizedBox(height: 20),
               Text(
                 'وحدة الإرشاد الأكاديمي والخريجين',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.greenDark, fontWeight: FontWeight.bold, fontSize: isNarrow ? 28 : 42, height: 1.35),
+                style: TextStyle(color: AppColors.greenDark, fontWeight: FontWeight.bold, fontSize: isNarrow ? 28 : titleSize, height: 1.25),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 9),
+              Container(width: 48, height: 3, decoration: BoxDecoration(color: AppColors.gold, borderRadius: BorderRadius.circular(4))),
+              const SizedBox(height: 8),
+              const Text(
+                'جامعة الطائف — كلية إدارة الأعمال',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppColors.green, fontWeight: FontWeight.w600, fontSize: 19, height: 1.5),
+              ),
+              const SizedBox(height: 10),
               ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 760),
                 child: const Text(
                   'منظومة متكاملة لدعم الطلبة أكاديميًا وتعزيز التواصل المستدام مع خريجي الكلية.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Color(0xFF5F6368), fontWeight: FontWeight.w500, fontSize: 18, height: 1.8),
+                  style: TextStyle(color: Color(0xFF565D5B), fontWeight: FontWeight.w500, fontSize: 17, height: 1.7),
                 ),
               ),
             ],
@@ -1591,51 +1611,49 @@ class _HeroSection extends StatelessWidget {
 /// عنوان قسم موحّد (شارة أيقونة + تسمية صغيرة بالذهبي + عنوان كبير + خط
 /// أخضر) يُستخدم في كل الأقسام لضمان اتساق بصري واحد على طول الصفحة.
 class _SectionHeader extends StatelessWidget {
-  final String eyebrow;
+  final String? eyebrow;
   final String title;
   final IconData icon;
 
-  const _SectionHeader({required this.eyebrow, required this.title, required this.icon});
+  const _SectionHeader({this.eyebrow, required this.title, required this.icon});
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
       children: [
-        Row(
-          children: [
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [AppColors.greenDark, AppColors.green],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Icon(icon, color: AppColors.goldLight, size: 24),
+        Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [AppColors.greenDark, AppColors.green],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
-            const SizedBox(width: 16),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  eyebrow.toUpperCase(),
-                  style: const TextStyle(
-                    color: AppColors.gold,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                    letterSpacing: 1.2,
-                  ),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: AppColors.goldLight, size: 20),
+        ),
+        const SizedBox(width: 14),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (eyebrow != null) ...[
+              Text(
+                eyebrow!.toUpperCase(),
+                style: const TextStyle(
+                  color: AppColors.gold,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                  letterSpacing: 1.2,
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  title,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 24),
-                ),
-              ],
+              ),
+              const SizedBox(height: 2),
+            ],
+            Text(
+              title,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 22),
             ),
           ],
         ),
@@ -1697,25 +1715,28 @@ class _Footer extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
+      constraints: const BoxConstraints(minHeight: 88),
+      alignment: Alignment.center,
       color: AppColors.greenDark,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 820),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
               const Text(
                 'جامعة الطائف — كلية إدارة الأعمال — وحدة الإرشاد الأكاديمي والخريجين',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white70, fontSize: 13),
+                style: TextStyle(color: Colors.white70, fontSize: 12.5),
               ),
-              const SizedBox(height: 14),
-              Container(height: 1, width: 60, color: Colors.white.withValues(alpha: 0.15)),
-              const SizedBox(height: 14),
+              const SizedBox(height: 8),
+              Container(height: 1, width: 50, color: Colors.white.withValues(alpha: 0.15)),
+              const SizedBox(height: 8),
               Text(
                 '© 2026 سليمان الفواز. جميع الحقوق محفوظة.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11.5),
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
               ),
             ],
           ),
@@ -2123,8 +2144,8 @@ class _MetricCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      constraints: const BoxConstraints(minHeight: 115, maxHeight: 130),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      height: 120,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border.all(color: const Color(0xFFE6E8EB)),
@@ -2133,15 +2154,22 @@ class _MetricCard extends StatelessWidget {
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: AppColors.gold, size: 26),
-          const SizedBox(height: 6),
+          Icon(icon, color: AppColors.gold, size: 20),
+          const SizedBox(height: 4),
           Text(
             value == null ? '—' : '$value',
-            style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: AppColors.greenDark, height: 1),
+            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.greenDark, height: 1),
           ),
-          const SizedBox(height: 4),
-          Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.green)),
+          const SizedBox(height: 5),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.green, height: 1.35),
+          ),
           if (value == null) ...[
             const SizedBox(height: 3),
             Text(
@@ -2149,7 +2177,7 @@ class _MetricCard extends StatelessWidget {
               textAlign: TextAlign.center,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 9.5, color: Colors.grey.shade500),
+              style: const TextStyle(fontSize: 11, height: 1.35, color: Color(0xFF7A817F)),
             ),
           ],
         ],
@@ -2175,7 +2203,7 @@ class _MetricsSection extends StatelessWidget {
     return Container(
       width: double.infinity,
       color: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
+      padding: const EdgeInsets.fromLTRB(24, 18, 24, 22),
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 1240),
@@ -2187,12 +2215,12 @@ class _MetricsSection extends StatelessWidget {
                 title: 'أرقام ومؤشرات الوحدة',
                 icon: Icons.bar_chart_rounded,
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Text(
                 'نظرة عامة على نطاق خدمات الإرشاد الأكاديمي والخريجين، ويجري استكمال ربط مصادر البيانات لعرض المؤشرات المحدَّثة تلقائيًا.',
                 style: TextStyle(color: Colors.grey.shade600, fontSize: 12.5, height: 1.5),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 12),
               LayoutBuilder(
                 builder: (context, constraints) {
                   final isNarrow = constraints.maxWidth < 700;
@@ -2200,9 +2228,9 @@ class _MetricsSection extends StatelessWidget {
                     crossAxisCount: isNarrow ? 2 : 4,
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
-                    mainAxisSpacing: 16,
-                    crossAxisSpacing: 16,
-                    childAspectRatio: isNarrow ? 1.3 : 1.15,
+                    mainAxisSpacing: 14,
+                    crossAxisSpacing: 14,
+                    childAspectRatio: isNarrow ? 1.6 : (constraints.maxWidth / 4 - 11) / 120,
                     children: metrics,
                   );
                 },
@@ -2227,15 +2255,15 @@ class _TracksSection extends StatelessWidget {
     return Container(
       width: double.infinity,
       color: const Color(0xFFF7F7F5),
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 1240),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const _SectionHeader(eyebrow: 'خدماتنا', title: 'مسارات الوحدة', icon: Icons.route_outlined),
-              const SizedBox(height: 24),
+              const _SectionHeader(title: 'مسارات الوحدة', icon: Icons.route_outlined),
+              const SizedBox(height: 14),
               LayoutBuilder(
                 builder: (context, constraints) {
                   final isNarrow = constraints.maxWidth < 700;
@@ -2284,27 +2312,41 @@ class _TrackCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(24),
+      height: 100,
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border.all(color: const Color(0xFFE6E8EB)),
         borderRadius: BorderRadius.circular(12),
         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 14, offset: const Offset(0, 4))],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(color: AppColors.green.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(14)),
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(color: AppColors.green.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
             alignment: Alignment.center,
-            child: Icon(icon, color: AppColors.green, size: 26),
+            child: Icon(icon, color: AppColors.green, size: 22),
           ),
-          const SizedBox(height: 16),
-          Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.greenDark)),
-          const SizedBox(height: 8),
-          Text(description, style: TextStyle(fontSize: 13.5, color: Colors.grey.shade700, height: 1.6)),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(title, maxLines: 1, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.greenDark)),
+                const SizedBox(height: 3),
+                Text(
+                  description,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade700, height: 1.4),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
