@@ -144,20 +144,47 @@ class _CollegeCoordinatorBodyState extends State<_CollegeCoordinatorBody> {
         allRows.addAll(ProcessedFileParserService.parseProcessedRows(bytes));
       }
 
+      if (allRows.isEmpty) {
+        throw Exception('تعذّرت قراءة محتوى الملف المختار (قد يكون فارغًا أو غير مدعوم).');
+      }
+
+      // مهلة 25 ثانية بدل انتظار بلا نهاية بلا أي رسالة (نفس إصلاح شاشة
+      // منسّق القسم - سليمان 2026-08-20).
       final mergeResult = await FirestoreTicketService.mergeProcessedRowsForShatr(
         allRows,
         shatr: widget.shatr,
+      ).timeout(
+        const Duration(seconds: 25),
+        onTimeout: () => throw Exception(
+          'انتهت مهلة الاتصال بالخادم (25 ثانية بلا استجابة) - تأكد من اتصال الإنترنت وحاول مرة أخرى',
+        ),
       );
 
       setState(() {
         _lastResult = mergeResult;
         _isUploading = false;
       });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'تم الدمج: ${mergeResult.matchedCount} حالة مطابَقة'
+              '${mergeResult.unmatchedCount > 0 ? '، ${mergeResult.unmatchedCount} غير مطابَقة' : ''}',
+            ),
+            duration: const Duration(seconds: 6),
+          ),
+        );
+      }
     } catch (e) {
       setState(() {
         _errorMessage = 'حدث خطأ أثناء معالجة الملف: $e';
         _isUploading = false;
       });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('حدث خطأ أثناء معالجة الملف: $e'), duration: const Duration(seconds: 8)),
+        );
+      }
     }
   }
 

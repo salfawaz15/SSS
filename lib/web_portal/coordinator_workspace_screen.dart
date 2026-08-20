@@ -431,6 +431,13 @@ class _CoordinatorBodyState extends State<_CoordinatorBody> {
         allRows.addAll(ProcessedFileParserService.parseProcessedRows(bytes));
       }
 
+      if (allRows.isEmpty) {
+        // كل الملفات المختارة بلا بيانات قابلة للقراءة (bytes فارغة أو ملف
+        // بلا صفوف) - لا نكمل الرفع بصمت (سليمان 2026-08-20: رفع ملف حقيقي
+        // ولم تظهر أي رسالة إطلاقًا).
+        throw Exception('تعذّرت قراءة محتوى الملف المختار (قد يكون فارغًا أو غير مدعوم).');
+      }
+
       // مهلة 25 ثانية بدل انتظار بلا نهاية - لو تعثّر الاتصال بـFirestore
       // (بطء شبكة/جانب العميل) يظهر خطأ واضح بدل دوران أبدي بلا أي رسالة
       // (سليمان 2026-08-09: لاحظ الأيقونة تدور بلا توقف بلا خطأ ولا نجاح).
@@ -449,11 +456,30 @@ class _CoordinatorBodyState extends State<_CoordinatorBody> {
         _lastResult = mergeResult;
         _isUploading = false;
       });
+      // SnackBar إضافي يظهر دائمًا أسفل الشاشة بصرف النظر عن موضع التمرير -
+      // الرسالة النصية بالبطاقة قد تكون خارج نطاق الرؤية الحالي (سليمان
+      // 2026-08-20: "رفعت الملف ولم تظهر أي رسالة" رغم نجاح الدمج فعليًا).
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'تم الدمج: ${mergeResult.matchedCount} حالة مطابَقة'
+              '${mergeResult.unmatchedCount > 0 ? '، ${mergeResult.unmatchedCount} غير مطابَقة' : ''}',
+            ),
+            duration: const Duration(seconds: 6),
+          ),
+        );
+      }
     } catch (e) {
       setState(() {
         _errorMessage = 'حدث خطأ أثناء معالجة الملف: $e';
         _isUploading = false;
       });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('حدث خطأ أثناء معالجة الملف: $e'), duration: const Duration(seconds: 8)),
+        );
+      }
     }
   }
 
