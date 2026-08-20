@@ -16,7 +16,6 @@ import '../utils/name_display.dart';
 import 'admin_nav.dart';
 import 'portal_header.dart';
 import 'upload_dialogs.dart';
-import 'upload_flows.dart';
 
 const String _kAllShatr = 'كل الشطرين';
 const String _kAllDepartments = 'كل الأقسام';
@@ -305,11 +304,9 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
                   child: Column(
                     children: [
-                      _buildUploadBar(),
-                      const SizedBox(height: 16),
                       _buildStatsGrid(tabs),
                       const SizedBox(height: 16),
-                      _buildFilterBar(tabs),
+                      _buildFilterBar(),
                     ],
                   ),
                 ),
@@ -322,131 +319,6 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
               ],
             ),
     );
-  }
-
-  Widget _buildUploadBar() {
-    final fmt = DateFormat('yyyy/MM/dd');
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: AppColors.gold.withValues(alpha: 0.35)),
-      ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            _uploadTile(
-              label: 'رفع جميع الطلاب (كل الكليات)',
-              uploading: _allColleges.uploading,
-              maleDate: _allColleges.maleDate,
-              femaleDate: _allColleges.femaleDate,
-              fmt: fmt,
-              onPressed: () => runUploadAllColleges(
-                context: context,
-                setUploading: (v) => setState(() => _allColleges.uploading = v),
-                onSuccess: _loadAll,
-              ),
-              onClear: () => _clearKindBoth(AdvisingReportKind.allColleges, 'رفع جميع الطلاب (كل الكليات)'),
-            ),
-            const SizedBox(width: 10),
-            _uploadTile(
-              label: 'رفع طلبة ذوي الإعاقة',
-              uploading: _health.uploading,
-              maleDate: _health.maleDate,
-              femaleDate: _health.femaleDate,
-              fmt: fmt,
-              color: Colors.purple.shade700,
-              onPressed: () => runUploadHealth(
-                context: context,
-                setUploading: (v) => setState(() => _health.uploading = v),
-                onSuccess: _loadAll,
-              ),
-              onClear: () => _clearKindBoth(AdvisingReportKind.health, 'رفع طلبة ذوي الإعاقة'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// خانة رفع موحَّدة لكلا الشطرين (ملف واحد يُفرز داخليًا) - تعرض تاريخ آخر
-  /// رفع لكل شطر على حدة لأن البيانات تبقى مخزَّنة منفصلة، حتى مع رفعها معًا.
-  Widget _uploadTile({
-    required String label,
-    required bool uploading,
-    required DateTime? maleDate,
-    required DateTime? femaleDate,
-    required DateFormat fmt,
-    required VoidCallback onPressed,
-    Color? color,
-    VoidCallback? onClear,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(AppRadius.sm)),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              FilledButton.icon(
-                onPressed: uploading ? null : onPressed,
-                icon: uploading
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Icon(Icons.upload_file, size: 18),
-                label: Text(label),
-                style: FilledButton.styleFrom(backgroundColor: color ?? AppColors.green),
-              ),
-              if (onClear != null && (maleDate != null || femaleDate != null))
-                IconButton(
-                  tooltip: 'تفريغ البيانات (للاختبار)',
-                  onPressed: onClear,
-                  icon: Icon(Icons.delete_sweep_outlined, color: Colors.red.shade700, size: 20),
-                ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text('طلاب: ${maleDate != null ? fmt.format(maleDate) : 'لم يُرفع بعد'}',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 11)),
-          Text('طالبات: ${femaleDate != null ? fmt.format(femaleDate) : 'لم يُرفع بعد'}',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 11)),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _clearKindBoth(AdvisingReportKind kind, String label) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('تفريغ $label'),
-        content: const Text('سيُحذَف كل ما هو مخزَّن حاليًا لهذا العنصر (لتسهيل إعادة اختبار الرفع). هل تريد المتابعة؟'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
-            child: const Text('تفريغ'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    try {
-      await AdvisingReportRepository.clear(Shatr.male, kind: kind);
-      await AdvisingReportRepository.clear(Shatr.female, kind: kind);
-      await _loadAll();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تم تفريغ $label بنجاح.')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      showUploadErrorDialog(context, 'تعذّر التفريغ', '$e');
-    }
   }
 
   /// تفريغ سجل "حركات الإرشاد" التراكمي بالكامل - بطلب سليمان الصريح
@@ -585,27 +457,12 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
   /// شريط الفلترة (شطر/قسم/مرشد/بحث) - يظهر أعلى التبويبات الاثني عشر ويؤثر
   /// عليها جميعًا فورًا، كما طُلب صراحةً (2026-08-14). قائمة المرشد تُعاد
   /// بناؤها تلقائيًا (عبر `key`) كلما تغيّر القسم لأنها مقصورة عليه.
-  Widget _buildFilterBar(List<(String, Widget Function())> tabs) {
+  Widget _buildFilterBar() {
     return Wrap(
       spacing: 12,
       runSpacing: 10,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        SizedBox(
-          // وُسِّع من 260 إلى 420 - بطلب سليمان الصريح (2026-08-15): التسميات
-          // الجديدة أطول من السابقة (مثال: "مرشدون داخل الكلية ← طلاب خارج
-          // الكلية") وكانت تُقتَص بالعرض القديم.
-          width: 420,
-          child: DropdownMenu<int>(
-            label: const Text('عرض'),
-            width: 420,
-            initialSelection: _sectionIndex,
-            dropdownMenuEntries: [
-              for (var i = 0; i < tabs.length; i++) DropdownMenuEntry(value: i, label: tabs[i].$1),
-            ],
-            onSelected: (v) => setState(() => _sectionIndex = v ?? 0),
-          ),
-        ),
         SizedBox(
           width: 160,
           child: DropdownMenu<String>(
@@ -1222,8 +1079,12 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: AppColors.gold.withValues(alpha: 0.35)),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [
+          BoxShadow(color: AppColors.greenDark.withValues(alpha: 0.03), blurRadius: 5, offset: const Offset(0, 2)),
+          BoxShadow(color: AppColors.greenDark.withValues(alpha: 0.05), blurRadius: 20, offset: const Offset(0, 8)),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1299,8 +1160,12 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: DataTable(
-              headingRowColor: WidgetStateProperty.all(AppColors.green),
-              headingTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              headingRowColor: WidgetStateProperty.all(Colors.transparent),
+              headingTextStyle: TextStyle(color: AppColors.greenDark, fontWeight: FontWeight.w600, fontSize: 13),
+              dividerThickness: 1,
+              dataRowColor: WidgetStateProperty.resolveWith(
+                (states) => states.contains(WidgetState.hovered) ? const Color(0xFFFAFCFB) : Colors.white,
+              ),
               sortColumnIndex: sortIndex != null && sortIndex < columns.length ? sortIndex : null,
               sortAscending: _tableSortAscending,
               columns: [
@@ -1316,7 +1181,6 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
               rows: [
                 for (var i = 0; i < visible.length; i++)
                   DataRow(
-                    color: WidgetStateProperty.all(i.isEven ? Colors.white : const Color(0xFFF7F5EF)),
                     cells: [for (final v in visible[i]) DataCell(Center(child: Text(v)))],
                   ),
               ],
