@@ -65,6 +65,7 @@ flutter:
     - assets/images/unit_logo_transparent.png
     - assets/images/unit_logo_light.png
     - assets/images/unit_logo_dark.png
+    - assets/images/academic_calendar_1448_sem1.jpeg
     - assets/images/guide/login_coordinator.png
     - assets/images/guide/workspace_overview.png
     - assets/images/guide/change_password.png

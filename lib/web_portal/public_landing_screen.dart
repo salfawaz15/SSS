@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../utils/mailto.dart';
@@ -768,20 +769,101 @@ class PortalAcademicCalendarPage extends StatelessWidget {
 /// مباشرة من تطبيق الجوال (`mobile_home_screen.dart`) كتبويب علوي بدل
 /// تكرار البيانات هناك - بطلب سليمان صراحةً (2026-08-16): "التقويم يكون
 /// بالشريط العلوي بالتطبيق مع التواصل".
+const String _kAcademicCalendarImageAsset = 'assets/images/academic_calendar_1448_sem1.jpeg';
+
 class AcademicCalendarContent extends StatelessWidget {
   const AcademicCalendarContent({super.key});
 
+  Future<void> _downloadOfficialImage(BuildContext context) async {
+    try {
+      final data = await rootBundle.load(_kAcademicCalendarImageAsset);
+      await downloadBytes(data.buffer.asUint8List(), 'التقويم_الجامعي_الفصل_الأول_1448هـ.jpeg');
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذّر تنزيل الصورة: $e')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return const Column(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _CalendarMonthsStrip(),
-        SizedBox(height: 24),
-        _CalendarTable(),
-        SizedBox(height: 20),
-        _CalendarNotesBox(),
+        const _CalendarMonthsStrip(),
+        const SizedBox(height: 24),
+        const _CalendarTable(),
+        const SizedBox(height: 20),
+        const _CalendarNotesBox(),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            OutlinedButton.icon(
+              onPressed: () => showDialog<void>(
+                context: context,
+                builder: (_) => const _CalendarImageViewerDialog(),
+              ),
+              icon: const Icon(Icons.image_outlined, size: 18),
+              label: const Text('عرض التقويم الرسمي'),
+            ),
+            ElevatedButton.icon(
+              onPressed: () => _downloadOfficialImage(context),
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.gold),
+              icon: const Icon(Icons.download, size: 18),
+              label: const Text('تحميل التقويم'),
+            ),
+          ],
+        ),
       ],
+    );
+  }
+}
+
+/// نافذة عرض صورة التقويم الرسمي عالية الدقة - معاينة كاملة بلا قصّ، تمرير
+/// وتكبير عند الحاجة، وزر إغلاق واضح (بطلب سليمان الصريح 2026-08-21).
+class _CalendarImageViewerDialog extends StatelessWidget {
+  const _CalendarImageViewerDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    final screen = MediaQuery.of(context).size;
+    return Dialog(
+      backgroundColor: Colors.black,
+      insetPadding: const EdgeInsets.all(16),
+      child: SizedBox(
+        width: screen.width * 0.9,
+        height: screen.height * 0.9,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: InteractiveViewer(
+                minScale: 0.5,
+                maxScale: 4,
+                child: Center(
+                  child: SingleChildScrollView(
+                    child: Image.asset(_kAcademicCalendarImageAsset, fit: BoxFit.contain),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 8,
+              left: 8,
+              child: Material(
+                color: Colors.black.withValues(alpha: 0.4),
+                shape: const CircleBorder(),
+                child: IconButton(
+                  tooltip: 'إغلاق',
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
