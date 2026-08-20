@@ -2215,7 +2215,7 @@ class _MetricCard extends StatelessWidget {
     final accent = tone.color;
     return _HoverLift(
       child: Container(
-        height: 124,
+        height: 120,
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: Colors.white,
@@ -2227,14 +2227,14 @@ class _MetricCard extends StatelessWidget {
           children: [
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
                       value == null ? '—' : '$value',
-                      style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800, color: AppColors.greenDark, height: 1),
+                      style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w800, color: AppColors.greenDark, height: 1),
                     ),
                     const SizedBox(height: 5),
                     Text(
@@ -2248,10 +2248,10 @@ class _MetricCard extends StatelessWidget {
                       const SizedBox(height: 5),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(color: AppColors.gold.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(999)),
+                        decoration: BoxDecoration(color: const Color(0xFFC9A638).withValues(alpha: 0.11), borderRadius: BorderRadius.circular(999)),
                         child: const Text(
                           'قيد ربط البيانات',
-                          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Color(0xFF786321)),
+                          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Color(0xFF80691E)),
                         ),
                       ),
                     ],
@@ -2260,10 +2260,10 @@ class _MetricCard extends StatelessWidget {
               ),
             ),
             Container(
-              width: 46,
+              width: 56,
               alignment: Alignment.center,
               color: accent,
-              child: Icon(icon, color: Colors.white, size: 20),
+              child: Icon(icon, color: Colors.white, size: 26),
             ),
           ],
         ),
@@ -2314,9 +2314,12 @@ class _MetricsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // أيقونات مختارة صراحةً لتمثيل المعنى الدقيق (بطلب سليمان 2026-08-20):
+    // "how_to_reg" (شخص + علامة اعتماد) للمرشدين بدل سماعة دعم فني لا تمثّل
+    // إرشادًا أكاديميًا إطلاقًا، و"school" (قبعة تخرّج فعلية) للخريجين.
     const metrics = [
       _MetricCard(icon: Icons.groups_outlined, label: 'الطلبة المستفيدون', tone: _MetricTone.green),
-      _MetricCard(icon: Icons.support_agent_outlined, label: 'المرشدون الأكاديميون', tone: _MetricTone.darkGreen),
+      _MetricCard(icon: Icons.how_to_reg_outlined, label: 'المرشدون الأكاديميون', tone: _MetricTone.darkGreen),
       _MetricCard(icon: Icons.school_outlined, label: 'الخريجون', tone: _MetricTone.gold),
       _MetricCard(icon: Icons.volunteer_activism_outlined, label: 'الخدمات والمبادرات', tone: _MetricTone.softGold),
     ];
@@ -2349,7 +2352,7 @@ class _MetricsSection extends StatelessWidget {
                     physics: const NeverScrollableScrollPhysics(),
                     mainAxisSpacing: 14,
                     crossAxisSpacing: 14,
-                    childAspectRatio: isNarrow ? 1.6 : (constraints.maxWidth / 4 - 11) / 124,
+                    childAspectRatio: isNarrow ? 1.6 : (constraints.maxWidth / 4 - 11) / 120,
                     children: metrics,
                   );
                 },
@@ -2388,12 +2391,12 @@ class _TracksSection extends StatelessWidget {
                   final isNarrow = constraints.maxWidth < 700;
                   const cards = [
                     _TrackCard(
-                      icon: Icons.school_outlined,
+                      icon: Icons.explore_outlined,
                       title: 'الإرشاد الأكاديمي',
                       description: 'خدمات ومصادر تدعم الطلبة في مسيرتهم الأكاديمية وتسهّل الوصول إلى خدمات الإرشاد الأكاديمي.',
                     ),
                     _TrackCard(
-                      icon: Icons.groups_2_outlined,
+                      icon: Icons.school_outlined,
                       title: 'الخريجون',
                       description: 'خدمات ومبادرات تعزّز التواصل مع خريجي الكلية واستمرارية العلاقة معهم بعد التخرج.',
                     ),
@@ -2458,11 +2461,11 @@ class _TrackCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Container(
-                    width: 52,
-                    height: 52,
+                    width: 54,
+                    height: 54,
                     decoration: BoxDecoration(color: AppColors.greenDark.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(14)),
                     alignment: Alignment.center,
-                    child: Icon(icon, color: AppColors.greenDark, size: 26),
+                    child: Icon(icon, color: AppColors.greenDark, size: 27),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
