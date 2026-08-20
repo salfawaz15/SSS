@@ -720,14 +720,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                           if (!wide) {
                             return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [_coursesBanner(), const SizedBox(height: 14), _advisingSection()]);
                           }
-                          return Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(child: _coursesBanner()),
-                              const SizedBox(width: 14),
-                              Expanded(child: _advisingSection()),
-                            ],
-                          );
+                          return _EqualHeightRow(left: _coursesBanner(), right: _advisingSection());
                         }),
                       ),
                     ],
@@ -1150,9 +1143,9 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
           const SizedBox(height: 10),
           Row(
             children: [
-              Expanded(child: _courseCountStat(label: 'مقررات شطر الطلاب', count: _maleCourseCount)),
+              Expanded(child: _courseCountStat(label: 'مقررات شطر الطلاب', count: _maleCourseCount, emoji: '👨‍🎓')),
               const SizedBox(width: 10),
-              Expanded(child: _courseCountStat(label: 'مقررات شطر الطالبات', count: _femaleCourseCount)),
+              Expanded(child: _courseCountStat(label: 'مقررات شطر الطالبات', count: _femaleCourseCount, emoji: '👩‍🎓')),
             ],
           ),
           if (coursesDate != null)
@@ -1166,13 +1159,13 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   }
 
   /// بطاقة إحصائية صغيرة: عدد شعب المقررات المرفوعة لشطر واحد.
-  Widget _courseCountStat({required String label, required int count}) {
+  Widget _courseCountStat({required String label, required int count, required String emoji}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(9)),
       child: Column(
         children: [
-          Text('$count', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: AppColors.greenDark)),
+          Text('$emoji  $count', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: AppColors.greenDark)),
           const SizedBox(height: 3),
           Text(label, style: TextStyle(fontSize: 11, color: Colors.grey.shade600), textAlign: TextAlign.center),
         ],
@@ -1334,7 +1327,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
             child: Column(
               children: [
                 const Text(
-                  'رفع ملفات الإرشاد الأكاديمي',
+                  'رفع وتنزيل الملفات',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
                 ),
@@ -1446,6 +1439,60 @@ class _HoverableClearButtonState extends State<_HoverableClearButton> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// يعرض بطاقتين جنبًا إلى جنب بنفس الارتفاع تمامًا رغم اختلاف محتواهما -
+/// بديل عن `IntrinsicHeight` (يتعارض مع `LayoutBuilder` المتداخل بداخل
+/// `_greenBanner`، انظر ملاحظة README.md 2026-08-20) يقيس الارتفاع الفعلي
+/// بعد الرسم عبر `GlobalKey` ويطبّق الأطول كحدّ أدنى للطرفين.
+class _EqualHeightRow extends StatefulWidget {
+  final Widget left;
+  final Widget right;
+  const _EqualHeightRow({required this.left, required this.right});
+
+  @override
+  State<_EqualHeightRow> createState() => _EqualHeightRowState();
+}
+
+class _EqualHeightRowState extends State<_EqualHeightRow> {
+  final _leftKey = GlobalKey();
+  final _rightKey = GlobalKey();
+  double? _matchedHeight;
+
+  void _measure() {
+    final leftBox = _leftKey.currentContext?.findRenderObject() as RenderBox?;
+    final rightBox = _rightKey.currentContext?.findRenderObject() as RenderBox?;
+    if (leftBox == null || rightBox == null || !leftBox.hasSize || !rightBox.hasSize) return;
+    final maxHeight = leftBox.size.height > rightBox.size.height ? leftBox.size.height : rightBox.size.height;
+    if (_matchedHeight != maxHeight && mounted) {
+      setState(() => _matchedHeight = maxHeight);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _measure());
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: ConstrainedBox(
+            key: _leftKey,
+            constraints: BoxConstraints(minHeight: _matchedHeight ?? 0),
+            child: widget.left,
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: ConstrainedBox(
+            key: _rightKey,
+            constraints: BoxConstraints(minHeight: _matchedHeight ?? 0),
+            child: widget.right,
+          ),
+        ),
+      ],
     );
   }
 }
