@@ -1258,14 +1258,15 @@ class _TopUtilityBarState extends State<_TopUtilityBar> {
           width: double.infinity,
           color: AppColors.greenDark,
           constraints: const BoxConstraints(minHeight: 38, maxHeight: 42),
+          // بلا SafeArea إطلاقًا على الويب (لا يوجد notch أصلًا هناك) - كان
+          // `top: kIsWeb` قد يحجز مساحة علوية غير صفرية في بعض متصفحات
+          // الجوال (شريط العنوان) فيُصفِّر مساحة الزر داخل شريط بارتفاع
+          // 38-42px محدود - هذا هو السبب الأرجح لاختفاء الزر الذي لاحظه
+          // سليمان مرارًا (2026-08-20). SafeArea يبقى لازمًا فقط لتطبيق
+          // الأندرويد الأصلي (!kIsWeb) حيث notch حقيقي محتمل.
           child: SafeArea(
             bottom: false,
-            top: kIsWeb,
-            // مثبَّت لأقصى يسار الشاشة فعليًا (لا حاوية المحتوى 1240) - بطلب
-            // سليمان الصريح 2026-08-20: "الموضع الحالي لا يزال بعيدًا للداخل".
-            // Align+Padding مباشرة (بدل Stack/LayoutBuilder) لضمان ظهوره دومًا
-            // بلا اعتماد على قياسات وسيطة قد تُصفِّر عرضه (سليمان لاحظ صراحةً
-            // 2026-08-20 أن الزر اختفى تمامًا بالنسخة السابقة).
+            top: !kIsWeb,
             child: Align(
               alignment: Alignment.centerLeft,
               child: Padding(
@@ -2225,6 +2226,12 @@ class _MetricCard extends StatelessWidget {
         ),
         child: Row(
           children: [
+            Container(
+              width: 56,
+              alignment: Alignment.center,
+              color: accent,
+              child: Icon(icon, color: Colors.white, size: 26),
+            ),
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
@@ -2234,7 +2241,7 @@ class _MetricCard extends StatelessWidget {
                   children: [
                     Text(
                       value == null ? '—' : '$value',
-                      style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w800, color: AppColors.greenDark, height: 1),
+                      style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w800, color: AppColors.greenDark, height: 0.85),
                     ),
                     const SizedBox(height: 5),
                     Text(
@@ -2258,12 +2265,6 @@ class _MetricCard extends StatelessWidget {
                   ],
                 ),
               ),
-            ),
-            Container(
-              width: 56,
-              alignment: Alignment.center,
-              color: accent,
-              child: Icon(icon, color: Colors.white, size: 26),
             ),
           ],
         ),
@@ -2465,7 +2466,7 @@ class _TrackCard extends StatelessWidget {
                     height: 54,
                     decoration: BoxDecoration(color: AppColors.greenDark.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(14)),
                     alignment: Alignment.center,
-                    child: Icon(icon, color: AppColors.greenDark, size: 27),
+                    child: Icon(icon, color: AppColors.greenDark, size: 28),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
