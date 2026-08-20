@@ -357,11 +357,10 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
   }
 
   /// شبكة إحصائيات (10 بطاقات: 5 أعلى + 5 أسفل) بنفس تصميم [PortalStatCard]
-  /// المستخدم بلوحة الإرشاد - بطلب سليمان صراحةً (2026-08-15): "نفس المكان
-  /// بنفس التصميم" لتصنيفات قائمة "عرض" التسعة الأولى (استُبعدت الأربعة
-  /// الأخيرة - تقرير نصاب الإرشاد/خطة التوزيع/الإحصائيات/الحركات - لأنها
-  /// تقارير كاملة لا عدد واحد). كل بطاقة قابلة للنقر فتُبدّل قسم العرض
-  /// مباشرة (نفس أثر اختيار نفس البند من قائمة "عرض" المنسدلة).
+  /// المستخدم بلوحة الإرشاد. بطاقة واحدة لكل تبويب من التبويبات الأربعة عشر
+  /// كلها (بعد حذف قائمة "عرض" المنسدلة صار هذا الشريط الوسيلة الوحيدة
+  /// للوصول لأي تبويب - سليمان 2026-08-20). كل بطاقة قابلة للنقر فتُبدّل قسم
+  /// العرض مباشرة.
   Widget _buildStatsGrid(List<(String, Widget Function())> tabs) {
     final counts = <int>[
       _classification.studentsCorrectlyAssigned.length +
@@ -378,6 +377,10 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       _classification.ourAdvisorsWithExternalStudents.length,
       _analysis.exemptAdvisorsWithStudents.length,
       _analysis.advisorsWithNoStudents.length,
+      _analysis.quotaReport.length,
+      _analysis.transferSuggestions.length,
+      _analysis.advisorStatistics.fold<int>(0, (sum, b) => sum + b.totalAdvisors),
+      _movementsLog.length,
     ];
     const icons = <IconData>[
       Icons.groups_outlined,
@@ -390,6 +393,10 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       Icons.logout_outlined,
       Icons.no_accounts_outlined,
       Icons.person_off_outlined,
+      Icons.pie_chart_outline,
+      Icons.published_with_changes_outlined,
+      Icons.bar_chart_outlined,
+      Icons.history_outlined,
     ];
     final colors = <Color>[
       AppColors.greenDark,
@@ -402,10 +409,19 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       Colors.indigo,
       Colors.blueGrey,
       Colors.brown,
+      Colors.cyan.shade700,
+      Colors.pink.shade700,
+      Colors.lime.shade800,
+      Colors.blueGrey.shade400,
     ];
 
+    // 14 بطاقة (لكل التبويبات الأربعة عشر - كانت 10 فقط قبل ذلك) - سليمان لاحظ
+    // صراحةً (2026-08-20) أن أربعة تبويبات ("تقرير نصاب الإرشاد"، "خطة إعادة
+    // التوزيع العادل"، "إحصائيات الإرشاد"، "حركات الإرشاد") صارت غير قابلة
+    // للوصول إطلاقًا بعد حذف قائمة "عرض" المنسدلة التي كانت الوسيلة الوحيدة
+    // للوصول إليها.
     final cards = [
-      for (var i = 0; i < 10; i++)
+      for (var i = 0; i < tabs.length; i++)
         _CompactStatTile(
           icon: icons[i],
           value: '${counts[i]}',
@@ -415,42 +431,10 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
         ),
     ];
 
-    final isNarrow = MediaQuery.of(context).size.width < 900;
-    if (isNarrow) {
-      // بطاقات بعرض ثابت تلتف تلقائيًا (Wrap) بدل صفّين صارمين على الجوّال -
-      // يمنع تكدّس النصوص الطويلة بعرض ضيق جدًا.
-      return Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [for (final c in cards) SizedBox(width: 160, child: c)],
-      );
-    }
-    return Column(
-      children: [
-        IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (var i = 0; i < 5; i++) ...[
-                Expanded(child: cards[i]),
-                if (i < 4) const SizedBox(width: 8),
-              ],
-            ],
-          ),
-        ),
-        const SizedBox(height: 8),
-        IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (var i = 5; i < 10; i++) ...[
-                Expanded(child: cards[i]),
-                if (i < 9) const SizedBox(width: 8),
-              ],
-            ],
-          ),
-        ),
-      ],
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [for (final c in cards) SizedBox(width: 190, child: c)],
     );
   }
 

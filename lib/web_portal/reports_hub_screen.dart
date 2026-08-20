@@ -12,7 +12,6 @@ import 'coordinator_nav.dart';
 import 'coordinator_workspace_screen.dart';
 import 'course_schedule_admin_screen.dart';
 import 'portal_accounts.dart';
-import 'portal_cards.dart';
 import 'portal_header.dart';
 import 'portal_operations_guide_page.dart';
 import 'public_landing_screen.dart';
@@ -45,7 +44,6 @@ class _ReportEntry {
   final ReportHubCategory category;
   final String subtype;
   final IconData icon;
-  final List<Color> gradientColors;
   final void Function(BuildContext context) onOpen;
 
   const _ReportEntry({
@@ -54,7 +52,6 @@ class _ReportEntry {
     required this.category,
     required this.subtype,
     required this.icon,
-    required this.gradientColors,
     required this.onOpen,
   });
 
@@ -122,7 +119,6 @@ class _ReportsHubScreenState extends State<ReportsHubScreen> {
           category: ReportHubCategory.report,
           subtype: 'تقرير إرشاد',
           icon: Icons.summarize_outlined,
-          gradientColors: const [AppColors.green, AppColors.greenDark],
           onOpen: (c) => _openScreen(c, const AdminReportsScreen()),
         ),
         _ReportEntry(
@@ -131,7 +127,6 @@ class _ReportsHubScreenState extends State<ReportsHubScreen> {
           category: ReportHubCategory.report,
           subtype: 'تقرير إرشاد',
           icon: Icons.fact_check_outlined,
-          gradientColors: const [AppColors.green, AppColors.greenDark],
           onOpen: (c) => _openScreen(c, const AdminReportsScreen()),
         ),
         _ReportEntry(
@@ -140,7 +135,6 @@ class _ReportsHubScreenState extends State<ReportsHubScreen> {
           category: ReportHubCategory.report,
           subtype: 'حالات خاصة',
           icon: Icons.accessible_outlined,
-          gradientColors: const [AppColors.gold, AppColors.goldLight],
           onOpen: (c) => _openScreen(c, const AdminReportsScreen()),
         ),
         _ReportEntry(
@@ -149,7 +143,6 @@ class _ReportsHubScreenState extends State<ReportsHubScreen> {
           category: ReportHubCategory.report,
           subtype: 'تقرير إرشاد',
           icon: Icons.groups_outlined,
-          gradientColors: const [AppColors.green, AppColors.greenDark],
           onOpen: (c) => _openScreen(c, const AdvisingCasesAdminScreen()),
         ),
         _ReportEntry(
@@ -158,7 +151,6 @@ class _ReportsHubScreenState extends State<ReportsHubScreen> {
           category: ReportHubCategory.report,
           subtype: 'نصاب تدريسي',
           icon: Icons.pie_chart_outline,
-          gradientColors: const [AppColors.green, AppColors.greenDark],
           onOpen: (c) => _openScreen(c, const CourseScheduleAdminScreen()),
         ),
         _ReportEntry(
@@ -167,7 +159,6 @@ class _ReportsHubScreenState extends State<ReportsHubScreen> {
           category: ReportHubCategory.report,
           subtype: 'جدول دراسي',
           icon: Icons.table_chart_outlined,
-          gradientColors: const [AppColors.green, AppColors.greenDark],
           onOpen: (c) => _openScreen(c, const CourseScheduleAdminScreen()),
         ),
         _ReportEntry(
@@ -176,7 +167,6 @@ class _ReportsHubScreenState extends State<ReportsHubScreen> {
           category: ReportHubCategory.report,
           subtype: 'جدول دراسي',
           icon: Icons.person_outline,
-          gradientColors: const [AppColors.green, AppColors.greenDark],
           onOpen: (c) => _openScreen(c, const CourseScheduleAdminScreen()),
         ),
         _ReportEntry(
@@ -185,7 +175,6 @@ class _ReportsHubScreenState extends State<ReportsHubScreen> {
           category: ReportHubCategory.report,
           subtype: 'تقرير إرشاد',
           icon: Icons.schedule_outlined,
-          gradientColors: const [AppColors.green, AppColors.greenDark],
           onOpen: (c) => _openScreen(c, const AdvisingScheduleAdminScreen()),
         ),
       ]);
@@ -199,7 +188,6 @@ class _ReportsHubScreenState extends State<ReportsHubScreen> {
           category: ReportHubCategory.report,
           subtype: 'تقرير إرشاد',
           icon: Icons.summarize_outlined,
-          gradientColors: const [AppColors.green, AppColors.greenDark],
           onOpen: (c) => _openScreen(c, const ViewerReportsScreen()),
         ),
       );
@@ -213,7 +201,6 @@ class _ReportsHubScreenState extends State<ReportsHubScreen> {
           category: ReportHubCategory.workFile,
           subtype: 'بيانات منسوبين',
           icon: Icons.merge_type_outlined,
-          gradientColors: const [AppColors.gold, AppColors.goldLight],
           onOpen: (c) => _openScreen(c, CollegeCoordinatorWorkspaceScreen(uid: uid)),
         ),
       );
@@ -227,7 +214,6 @@ class _ReportsHubScreenState extends State<ReportsHubScreen> {
           category: ReportHubCategory.report,
           subtype: 'تقرير إرشاد',
           icon: Icons.fact_check_outlined,
-          gradientColors: const [AppColors.green, AppColors.greenDark],
           onOpen: (c) => _openScreen(c, CoordinatorWorkspaceScreen(uid: uid)),
         ),
         _ReportEntry(
@@ -236,7 +222,6 @@ class _ReportsHubScreenState extends State<ReportsHubScreen> {
           category: ReportHubCategory.workFile,
           subtype: 'بيانات منسوبين',
           icon: Icons.folder_zip_outlined,
-          gradientColors: const [AppColors.gold, AppColors.goldLight],
           onOpen: (c) => _openScreen(c, CoordinatorWorkspaceScreen(uid: uid)),
         ),
         _ReportEntry(
@@ -245,7 +230,6 @@ class _ReportsHubScreenState extends State<ReportsHubScreen> {
           category: ReportHubCategory.workFile,
           subtype: 'حالات خاصة',
           icon: Icons.accessible_outlined,
-          gradientColors: const [AppColors.gold, AppColors.goldLight],
           onOpen: (c) => _openScreen(c, CoordinatorWorkspaceScreen(uid: uid)),
         ),
         _ReportEntry(
@@ -254,7 +238,6 @@ class _ReportsHubScreenState extends State<ReportsHubScreen> {
           category: ReportHubCategory.workFile,
           subtype: 'بيانات منسوبين',
           icon: Icons.merge_type_outlined,
-          gradientColors: const [AppColors.gold, AppColors.goldLight],
           onOpen: (c) => _openScreen(c, CoordinatorWorkspaceScreen(uid: uid)),
         ),
       ]);
@@ -268,7 +251,6 @@ class _ReportsHubScreenState extends State<ReportsHubScreen> {
         category: ReportHubCategory.guide,
         subtype: 'دليل تشغيلي',
         icon: Icons.menu_book_outlined,
-        gradientColors: const [Colors.blueGrey, Colors.blueGrey],
         onOpen: (c) => _openScreen(c, const UnitGuidePage()),
       ),
       _ReportEntry(
@@ -277,7 +259,6 @@ class _ReportsHubScreenState extends State<ReportsHubScreen> {
         category: ReportHubCategory.guide,
         subtype: 'دليل تشغيلي',
         icon: Icons.settings_suggest_outlined,
-        gradientColors: const [Colors.blueGrey, Colors.blueGrey],
         onOpen: (c) => _openScreen(c, const PortalOperationsGuidePage()),
       ),
       _ReportEntry(
@@ -286,7 +267,6 @@ class _ReportsHubScreenState extends State<ReportsHubScreen> {
         category: ReportHubCategory.guide,
         subtype: 'دليل تشغيلي',
         icon: Icons.support_agent_outlined,
-        gradientColors: const [Colors.blueGrey, Colors.blueGrey],
         onOpen: (c) => _openScreen(c, const GuidesHubPage()),
       ),
       _ReportEntry(
@@ -295,7 +275,6 @@ class _ReportsHubScreenState extends State<ReportsHubScreen> {
         category: ReportHubCategory.guide,
         subtype: 'نموذج ورقي',
         icon: Icons.favorite_border,
-        gradientColors: const [Colors.blueGrey, Colors.blueGrey],
         onOpen: (c) => _openScreen(c, const FormsPage()),
       ),
       _ReportEntry(
@@ -304,7 +283,6 @@ class _ReportsHubScreenState extends State<ReportsHubScreen> {
         category: ReportHubCategory.guide,
         subtype: 'نموذج ورقي',
         icon: Icons.volunteer_activism_outlined,
-        gradientColors: const [Colors.blueGrey, Colors.blueGrey],
         onOpen: (c) => _openScreen(c, const FormsPage()),
       ),
       _ReportEntry(
@@ -313,7 +291,6 @@ class _ReportsHubScreenState extends State<ReportsHubScreen> {
         category: ReportHubCategory.guide,
         subtype: 'نموذج ورقي',
         icon: Icons.description_outlined,
-        gradientColors: const [Colors.blueGrey, Colors.blueGrey],
         onOpen: (c) => _openScreen(c, const FormsPage()),
       ),
     ]);
@@ -429,43 +406,7 @@ class _ReportsHubScreenState extends State<ReportsHubScreen> {
                       crossAxisSpacing: 14,
                       mainAxisSpacing: 14,
                     ),
-                    itemBuilder: (context, i) {
-                      final e = filtered[i];
-                      return Stack(
-                        children: [
-                          PortalActionCard(
-                            icon: e.icon,
-                            title: e.title,
-                            subtitle: e.description,
-                            // لون موحَّد حسب تصنيف البند (تقرير/ملف عمل/دليل) -
-                            // كان كل بند يحمل تدرّجه اللوني المستقل بلا علاقة
-                            // بتصنيفه، فتختلط الألوان بلا نمط واضح (سليمان
-                            // 2026-08-09).
-                            gradientColors: [e.category.color, e.category.color.withValues(alpha: 0.75)],
-                            onTap: () => e.onOpen(context),
-                          ),
-                          Positioned(
-                            top: 8,
-                            left: 8,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.9),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                e.category.label,
-                                style: TextStyle(
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.bold,
-                                  color: e.category.color,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      );
-                    },
+                    itemBuilder: (context, i) => _ReportCard(entry: filtered[i], onTap: () => filtered[i].onOpen(context)),
                   ),
               ],
             ),
@@ -499,6 +440,84 @@ class _ReportsHubScreenState extends State<ReportsHubScreen> {
       title: 'تقارير',
       navItems: navItems(),
       body: buildBody(null, null),
+    );
+  }
+}
+
+/// بطاقة تقرير بهوية "لوحة الإدارة" (بطاقة بيضاء بحدّ رمادي فاتح + أيقونة
+/// ملوَّنة بخلفية شفافة 10%) بدل التدرّج اللوني الكامل السابق - بطلب سليمان
+/// الصريح (2026-08-20): هذه الصفحة كانت "لا تطابق الهوية" مقارنة بلوحة
+/// الإدارة ولوحة الحذف والإضافة.
+class _ReportCard extends StatelessWidget {
+  final _ReportEntry entry;
+  final VoidCallback onTap;
+
+  const _ReportCard({required this.entry, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = entry.category.color;
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey.shade200),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(color: accent.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
+                alignment: Alignment.center,
+                child: Icon(entry.icon, size: 22, color: accent),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            entry.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.greenDark),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                          decoration: BoxDecoration(color: accent.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
+                          child: Text(
+                            entry.category.label,
+                            style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: accent),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      entry.description,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600, height: 1.3),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
