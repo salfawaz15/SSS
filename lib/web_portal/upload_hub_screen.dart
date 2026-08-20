@@ -82,8 +82,10 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   // الإدارة وقوائم "المزيد" المتفرّقة).
   List<AdvisorRosterEntry> _roster = [];
   bool _uploadingProcessedAll = false;
+  bool _uploadingCoordinatorAll = false;
   bool _uploadingCollegeAll = false;
   DateTime? _processedAllLastUpload;
+  DateTime? _coordinatorAllLastUpload;
   DateTime? _collegeAllLastUpload;
   final Set<String> _stageKeys = {}; // مفاتيح تحميل تنزيل/رفع لكل قسم-شطر أو شطر
 
@@ -376,6 +378,60 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _uploadingProcessedAll = false);
+      showUploadErrorDialog(context, 'تعذّر رفع ملفات المعالجة', '$e');
+    }
+  }
+
+  /// نفس فكرة الرفع الدفعي الشامل أعلاه لكن كزرّ مستقل لملفات "منسّقي
+  /// الأقسام" تحديدًا (بطلب سليمان صراحةً 2026-08-20: فصل الزرّين حتى لا
+  /// يلتبس الأمر بين مرحلة المرشدين ومرحلة منسّقي الأقسام) - تُستخدَم نفس
+  /// دالة الدمج الشاملة تمامًا (`mergeAllProcessedRows` لا تميّز بين
+  /// المراحل، كل صف يحمل مفتاحه الخاص) بحالة/تتبّع منفصلَين فقط لوضوح
+  /// الواجهة.
+  Future<void> _pickAndUploadCoordinatorProcessedFilesAll() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['xlsx'],
+      allowMultiple: true,
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('لم يتم اختيار أي ملف - حاول مرة أخرى.')),
+        );
+      }
+      return;
+    }
+
+    setState(() => _uploadingCoordinatorAll = true);
+    try {
+      final allRows = <Map<String, dynamic>>[];
+      for (final file in result.files) {
+        if (file.bytes == null) continue;
+        allRows.addAll(ProcessedFileParserService.parseProcessedRows(file.bytes!));
+      }
+      if (allRows.isEmpty) {
+        throw Exception('تعذّرت قراءة محتوى الملفات المختارة (قد تكون فارغة أو غير مدعومة).');
+      }
+
+      final mergeResult = await FirestoreTicketService.mergeAllProcessedRows(allRows).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () => throw Exception('انتهت مهلة الاتصال بالخادم (30 ثانية بلا استجابة) - تأكد من اتصال الإنترنت وحاول مرة أخرى'),
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _uploadingCoordinatorAll = false;
+        _coordinatorAllLastUpload = DateTime.now();
+      });
+      _showSuccessSnackBar(
+        'تم الدمج: ${mergeResult.matchedCount} حالة مطابَقة'
+        '${mergeResult.unmatchedCount > 0 ? '، ${mergeResult.unmatchedCount} غير مطابَقة' : ''}',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _uploadingCoordinatorAll = false);
       showUploadErrorDialog(context, 'تعذّر رفع ملفات المعالجة', '$e');
     }
   }
@@ -801,38 +857,62 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
           Text('رفع دفعي سريع (اختياري - بديل عن الرفع لكل قسم على حدة)', style: TextStyle(fontSize: 11, color: Colors.grey.shade500, fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
           LayoutBuilder(builder: (context, constraints) {
-            final narrow = constraints.maxWidth < 720;
+            final narrow = constraints.maxWidth < 1000;
             final cards = [
               _bulkStageCard(
                 icon: Icons.groups_2_outlined,
-                title: 'ملفات المعالجة (كل الأقسام والشطرين)',
-                subtitle: 'من المرشدين ومنسّقي الأقسام - يقبل 10+ ملفات دفعة واحدة',
+                accentColor: const Color(0xFF2F6B4F),
+                title: 'ملفات المرشدين',
+                subtitle: 'كل الأقسام والشطرين',
                 uploading: _uploadingProcessedAll,
                 lastUpload: _processedAllLastUpload,
                 onPressed: _pickAndUploadProcessedFilesAll,
               ),
               _bulkStageCard(
+                icon: Icons.supervisor_account_outlined,
+                accentColor: const Color(0xFF8A6D1E),
+                title: 'ملفات منسّقي الأقسام',
+                subtitle: 'كل الأقسام والشطرين',
+                uploading: _uploadingCoordinatorAll,
+                lastUpload: _coordinatorAllLastUpload,
+                onPressed: _pickAndUploadCoordinatorProcessedFilesAll,
+              ),
+              _bulkStageCard(
                 icon: Icons.school_outlined,
+                accentColor: const Color(0xFF1E5F8A),
                 title: 'ملف منسّق الكلية',
-                subtitle: 'رفع دفعي لملفات منسّق الكلية المعتمَدة',
+                subtitle: 'الأقسام الخمسة معًا',
                 uploading: _uploadingCollegeAll,
                 lastUpload: _collegeAllLastUpload,
                 onPressed: _pickAndUploadCollegeProcessedFilesAll,
               ),
             ];
             return narrow
-                ? Column(children: [cards[0], const SizedBox(height: 10), cards[1]])
-                : Row(children: [Expanded(child: cards[0]), const SizedBox(width: 12), Expanded(child: cards[1])]);
+                ? Column(children: [cards[0], const SizedBox(height: 10), cards[1], const SizedBox(height: 10), cards[2]])
+                : IntrinsicHeight(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(child: cards[0]),
+                        const SizedBox(width: 12),
+                        Expanded(child: cards[1]),
+                        const SizedBox(width: 12),
+                        Expanded(child: cards[2]),
+                      ],
+                    ),
+                  );
           }),
         ],
       ),
     );
   }
 
-  /// بطاقة صغيرة أفقية لرفع دفعي (icon + عنوان/وصف + زر) - أصغر بكثير من
-  /// `_uploadCard` العادية، مناسبة لصفّين جنبًا إلى جنب.
+  /// بطاقة رفع دفعي عمودية - شارة أيقونة ملوَّنة (لون مميّز لكل مرحلة) أعلاها
+  /// وزر رفع بعرض كامل أسفلها - الثلاث بطاقات (مرشدون/منسّقو أقسام/منسّق
+  /// كلية) بنفس الحجم تمامًا جنبًا إلى جنب (بطلب سليمان صراحةً 2026-08-20).
   Widget _bulkStageCard({
     required IconData icon,
+    required Color accentColor,
     required String title,
     required String subtitle,
     required bool uploading,
@@ -841,27 +921,43 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   }) {
     final timeFmt = DateFormat('h:mm a', 'ar');
     return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(12)),
-      child: Row(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: accentColor.withValues(alpha: 0.28)),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, 3))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _goldIconBadge(icon),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5, color: AppColors.greenDark), maxLines: 1, overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 2),
-                Text(subtitle, style: TextStyle(color: Colors.grey.shade600, fontSize: 10.5), maxLines: 2, overflow: TextOverflow.ellipsis),
-                if (lastUpload != null) ...[
-                  const SizedBox(height: 2),
-                  Text('آخر رفعة: ${timeFmt.format(lastUpload)}', style: TextStyle(color: Colors.grey.shade500, fontSize: 9.5)),
-                ],
-              ],
-            ),
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(color: accentColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
+                alignment: Alignment.center,
+                child: Icon(icon, color: accentColor, size: 19),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5, color: accentColor), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    Text(subtitle, style: TextStyle(color: Colors.grey.shade600, fontSize: 10.5), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 8),
+          const SizedBox(height: 10),
+          Text(
+            lastUpload != null ? 'آخر رفعة: ${timeFmt.format(lastUpload)}' : 'لا توجد بيانات مرفوعة',
+            style: TextStyle(color: Colors.grey.shade500, fontSize: 10),
+          ),
+          const SizedBox(height: 8),
           SizedBox(
             height: 34,
             child: ElevatedButton.icon(
@@ -873,7 +969,6 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.gold,
                 foregroundColor: AppColors.greenDark,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
             ),
@@ -1373,19 +1468,6 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     );
   }
 
-  Widget _goldIconBadge(IconData icon, {double size = 46}) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFFDF6),
-        borderRadius: BorderRadius.circular(13),
-        border: Border.all(color: AppColors.goldLight),
-      ),
-      alignment: Alignment.center,
-      child: Icon(icon, color: AppColors.green, size: size * 0.46),
-    );
-  }
 
   /// زر "مسح البيانات الحالية" - خلفية حمراء فاتحة جدًا، حدّ أحمر خفيف، نص
   /// وأيقونة، يعكس لونه بالكامل عند Hover - سليمان صراحةً 2026-08-17: هذا
