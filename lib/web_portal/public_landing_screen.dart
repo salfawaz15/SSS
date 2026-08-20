@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -12,7 +11,6 @@ import '../services/unit_committee_repository.dart';
 import '../services/unit_guide_pdf_service.dart';
 import '../services/web_download.dart';
 import '../theme/app_theme.dart';
-import 'portal_cards.dart';
 import 'portal_root.dart';
 
 class _ExternalLink {
@@ -149,8 +147,10 @@ class _PublicLandingScreenState extends State<PublicLandingScreen> {
             _TopUtilityBar(onLogin: _openLogin),
             const _NavBar(),
             const _HeroSection(),
-            const _StatsSection(),
-            _Footer(onLogin: _openLogin),
+            const _MetricsSection(),
+            const _TracksSection(),
+            const _LatestUpdatesSection(),
+            const _Footer(),
           ],
         ),
       ),
@@ -188,7 +188,7 @@ class InfoPageScaffold extends StatelessWidget {
             _TopUtilityBar(onLogin: () => _pushLogin(context)),
             const _NavBar(),
             child,
-            _Footer(onLogin: () => _pushLogin(context)),
+            const _Footer(),
           ],
         ),
       ),
@@ -1247,22 +1247,32 @@ class _TopUtilityBarState extends State<_TopUtilityBar> {
         // الأندرويد شريط التحديث (أعلاه) يحمي الشِّق العلوي بالفعل فتُعطَّل
         // هنا لتفادي حشوة مضاعفة.
         Container(
-          color: AppColors.green,
+          color: AppColors.greenDark,
+          constraints: const BoxConstraints(minHeight: 38, maxHeight: 42),
           child: SafeArea(
             bottom: false,
             top: kIsWeb,
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: widget.onLogin,
-                style: TextButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                ),
-                icon: const Icon(Icons.arrow_back, size: 16),
-                label: const Text(
-                  'تسجيل الدخول',
-                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1240),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: widget.onLogin,
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                      minimumSize: Size.zero,
+                      splashFactory: NoSplash.splashFactory,
+                    ).copyWith(
+                      overlayColor: WidgetStateProperty.all(AppColors.gold.withValues(alpha: 0.12)),
+                    ),
+                    icon: const Icon(Icons.login, size: 15),
+                    label: const Text(
+                      'تسجيل الدخول',
+                      style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -1273,10 +1283,9 @@ class _TopUtilityBarState extends State<_TopUtilityBar> {
   }
 }
 
-/// شعار موحّد (نفس تصميم الحلقة الذهبية حول "TU" الظاهرة في قسم الترحيب)
-/// يُستخدم في الشريط العلوي، والضغط عليه يعيد المستخدم للصفحة الرئيسية من
-/// أي مكان في الموقع/التطبيق. النسخة المعتمدة هنا هي الشعار الكامل بخلفية
-/// خضراء صلبة (نفس الشعار الظاهر في الصفحة الرئيسية).
+/// الشعار الرسمي المعتمد بالهيدر الأبيض - بلا أي مستطيل/حدّ/ظل خلفه (بطلب
+/// سليمان الصريح 2026-08-20: خلفية شفافة حقيقية، لا صندوق أخضر خلف الشعار).
+/// الضغط عليه يعيد المستخدم للصفحة الرئيسية من أي مكان.
 class _BrandLogo extends StatelessWidget {
   const _BrandLogo();
 
@@ -1284,22 +1293,78 @@ class _BrandLogo extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: () => _goHome(context),
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: AppColors.green,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Image.asset(
-          'assets/images/full_logo_green.png',
-          height: 36,
-          fit: BoxFit.contain,
+      borderRadius: BorderRadius.circular(8),
+      child: Image.asset(
+        'assets/images/unit_logo_final.png',
+        height: 56,
+        fit: BoxFit.contain,
+      ),
+    );
+  }
+}
+
+/// عنصر تنقّل فرعي واحد داخل قائمة منسدلة بالهيدر ("عن الوحدة"/"الأدلة
+/// والنماذج") - يجمع تسمية وصفحة الوجهة.
+class _NavSubItem {
+  final String label;
+  final IconData icon;
+  final WidgetBuilder pageBuilder;
+  const _NavSubItem(this.label, this.icon, this.pageBuilder);
+}
+
+/// قائمة تنقّل منسدلة موحَّدة الشكل بالهيدر - نفس أسلوب "روابط مهمة" الأصلي،
+/// لكن لصفحات داخلية بدل روابط خارجية. السهم ملاصق للنص بلا مسافة زائدة
+/// (بطلب سليمان الصريح 2026-08-20).
+class _NavDropdown extends StatelessWidget {
+  final String label;
+  final List<_NavSubItem> items;
+
+  const _NavDropdown({required this.label, required this.items});
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<int>(
+      tooltip: label,
+      color: const Color(0xFFFBF6E9),
+      onSelected: (i) => Navigator.of(context).push(MaterialPageRoute(builder: items[i].pageBuilder)),
+      itemBuilder: (context) => [
+        for (var i = 0; i < items.length; i++)
+          PopupMenuItem(
+            value: i,
+            child: Row(
+              children: [
+                Icon(items[i].icon, size: 18, color: AppColors.green),
+                const SizedBox(width: 10),
+                Text(items[i].label, style: const TextStyle(color: AppColors.greenDark, fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ),
+      ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label, style: const TextStyle(color: AppColors.green, fontSize: 14, fontWeight: FontWeight.w700)),
+            const Icon(Icons.arrow_drop_down, size: 20, color: AppColors.green),
+          ],
         ),
       ),
     );
   }
 }
+
+final List<_NavSubItem> _aboutUnitItems = [
+  _NavSubItem('نبذة عن الوحدة', Icons.info_outline, (_) => const IntroPage()),
+  _NavSubItem('الرؤية والرسالة', Icons.visibility_outlined, (_) => const VisionPage()),
+  _NavSubItem('الأهداف', Icons.flag_outlined, (_) => const GoalsPage()),
+  _NavSubItem('الهيكل التنظيمي', Icons.account_tree_outlined, (_) => const MembersPage()),
+];
+
+final List<_NavSubItem> _guidesAndFormsItems = [
+  _NavSubItem('الدليل الإرشادي', Icons.menu_book_outlined, (_) => const GuidesHubPage()),
+  _NavSubItem('النماذج', Icons.description_outlined, (_) => const FormsPage()),
+];
 
 class _NavBar extends StatelessWidget {
   const _NavBar();
@@ -1308,8 +1373,12 @@ class _NavBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       color: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      child: LayoutBuilder(
+      constraints: const BoxConstraints(minHeight: 72, maxHeight: 76),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1240),
+          child: LayoutBuilder(
         builder: (context, constraints) {
           final isWide = constraints.maxWidth >= 860;
 
@@ -1323,61 +1392,15 @@ class _NavBar extends StatelessWidget {
               style: navButtonStyle,
               child: const Text('الرئيسية'),
             ),
-            TextButton(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const IntroPage()),
-              ),
-              style: navButtonStyle,
-              child: const Text('نبذة عن الوحدة'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const VisionPage()),
-              ),
-              style: navButtonStyle,
-              child: const Text('الرؤية والرسالة'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const GoalsPage()),
-              ),
-              style: navButtonStyle,
-              child: const Text('الأهداف'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const MembersPage()),
-              ),
-              style: navButtonStyle,
-              child: const Text('الهيكل التنظيمي'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const FormsPage()),
-              ),
-              style: navButtonStyle,
-              child: const Text('النماذج'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const GuidesHubPage()),
-              ),
-              style: navButtonStyle,
-              child: const Text('الدليل الإرشادي'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const ContactPage()),
-              ),
-              style: navButtonStyle,
-              child: const Text('تواصل'),
-            ),
-            IconButton(
-              tooltip: 'التقويم الجامعي',
+            _NavDropdown(label: 'عن الوحدة', items: _aboutUnitItems),
+            _NavDropdown(label: 'الأدلة والنماذج', items: _guidesAndFormsItems),
+            TextButton.icon(
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const AcademicCalendarPage()),
               ),
-              icon: const Icon(Icons.calendar_month_outlined, color: AppColors.green),
+              style: navButtonStyle,
+              icon: const Icon(Icons.calendar_month_outlined, size: 17, color: AppColors.green),
+              label: const Text('التقويم الجامعي'),
             ),
             PopupMenuButton<String>(
               tooltip: 'روابط مهمة',
@@ -1423,15 +1446,21 @@ class _NavBar extends StatelessWidget {
                 ),
               ),
             ),
+            TextButton(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ContactPage()),
+              ),
+              style: navButtonStyle,
+              child: const Text('تواصل معنا'),
+            ),
           ];
 
           if (isWide) {
             return Row(
               children: [
                 const _BrandLogo(),
-                const SizedBox(width: 24),
-                ...navItems,
                 const Spacer(),
+                ...navItems,
               ],
             );
           }
@@ -1460,19 +1489,19 @@ class _NavBar extends StatelessWidget {
                       Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MembersPage()));
                       break;
                     case 5:
-                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const FormsPage()));
+                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const GuidesHubPage()));
                       break;
                     case 6:
-                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ImportantLinksPage()));
+                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const FormsPage()));
                       break;
                     case 7:
-                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const UnitGuidePage()));
+                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AcademicCalendarPage()));
                       break;
                     case 8:
-                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ContactPage()));
+                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ImportantLinksPage()));
                       break;
                     case 9:
-                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AcademicCalendarPage()));
+                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ContactPage()));
                       break;
                   }
                 },
@@ -1482,21 +1511,26 @@ class _NavBar extends StatelessWidget {
                   PopupMenuItem(value: 2, child: Text('الرؤية والرسالة')),
                   PopupMenuItem(value: 3, child: Text('الأهداف')),
                   PopupMenuItem(value: 4, child: Text('الهيكل التنظيمي')),
-                  PopupMenuItem(value: 5, child: Text('النماذج')),
-                  PopupMenuItem(value: 6, child: Text('روابط مهمة')),
-                  PopupMenuItem(value: 7, child: Text('الدليل الإرشادي')),
-                  PopupMenuItem(value: 8, child: Text('تواصل')),
-                  PopupMenuItem(value: 9, child: Text('التقويم الجامعي')),
+                  PopupMenuItem(value: 5, child: Text('الدليل الإرشادي')),
+                  PopupMenuItem(value: 6, child: Text('النماذج')),
+                  PopupMenuItem(value: 7, child: Text('التقويم الجامعي')),
+                  PopupMenuItem(value: 8, child: Text('روابط مهمة')),
+                  PopupMenuItem(value: 9, child: Text('تواصل معنا')),
                 ],
               ),
             ],
           );
         },
       ),
+        ),
+      ),
     );
   }
 }
 
+/// قسم Hero التعريفي - فاتح ومضغوط بدل الشريط الأخضر الكبير السابق (بطلب
+/// سليمان الصريح 2026-08-20: "لا نريد تكرار كتل خضراء كبيرة ومتتابعة أعلى
+/// الصفحة"). التسلسل المؤسسي المعتمد دائمًا: الجامعة، ثم الكلية، ثم الوحدة.
 class _HeroSection extends StatelessWidget {
   const _HeroSection();
 
@@ -1505,29 +1539,43 @@ class _HeroSection extends StatelessWidget {
     final isNarrow = MediaQuery.of(context).size.width < 600;
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.symmetric(horizontal: 24, vertical: isNarrow ? 18 : 26),
+      constraints: const BoxConstraints(minHeight: 180, maxHeight: 210),
+      alignment: Alignment.center,
+      padding: EdgeInsets.symmetric(horizontal: 24, vertical: isNarrow ? 20 : 28),
       decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [AppColors.greenDark, AppColors.green],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: Color(0xFFFAFAF8),
+        border: Border(bottom: BorderSide(color: Color(0xFFEEEEE9))),
       ),
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 720),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
               const Text(
+                'جامعة الطائف',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppColors.greenDark, fontWeight: FontWeight.w600, fontSize: 15),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'كلية إدارة الأعمال',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppColors.green, fontWeight: FontWeight.w700, fontSize: 18),
+              ),
+              const SizedBox(height: 10),
+              Container(width: 46, height: 3, decoration: BoxDecoration(color: AppColors.gold, borderRadius: BorderRadius.circular(2))),
+              const SizedBox(height: 10),
+              Text(
                 'وحدة الإرشاد الأكاديمي والخريجين',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 22),
+                style: TextStyle(color: AppColors.greenDark, fontWeight: FontWeight.bold, fontSize: isNarrow ? 26 : 36),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 10),
               Text(
-                'جامعة الطائف — كلية إدارة الأعمال',
+                'منظومة متكاملة لدعم الطلبة أكاديميًا وتعزيز التواصل المستدام مع خريجي الكلية.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 13),
+                style: TextStyle(color: Colors.grey.shade700, fontSize: 15, height: 1.5),
               ),
             ],
           ),
@@ -1635,10 +1683,12 @@ class PageSection extends StatelessWidget {
   }
 }
 
+/// الفوتر - مختصر بلا تكرار للهيدر، بالتسلسل المؤسسي المعتمد (الجامعة ثم
+/// الكلية ثم الوحدة) وبلا تسجيل دخول مكرَّر (موجود بالشريط العلوي فقط -
+/// بطلب سليمان الصريح 2026-08-20). سطر الحقوق باسم سليمان الفواز حصرًا،
+/// بلا أي اسم جهة أو كلمة "تصميم/تطوير/تنفيذ".
 class _Footer extends StatelessWidget {
-  final VoidCallback onLogin;
-
-  const _Footer({required this.onLogin});
+  const _Footer();
 
   @override
   Widget build(BuildContext context) {
@@ -1652,22 +1702,15 @@ class _Footer extends StatelessWidget {
           child: Column(
             children: [
               const Text(
-                'وحدة الإرشاد الأكاديمي والخريجين — كلية إدارة الأعمال — جامعة الطائف',
+                'جامعة الطائف — كلية إدارة الأعمال — وحدة الإرشاد الأكاديمي والخريجين',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.white70, fontSize: 13),
               ),
               const SizedBox(height: 14),
-              TextButton.icon(
-                onPressed: onLogin,
-                style: TextButton.styleFrom(foregroundColor: AppColors.goldLight),
-                icon: const Icon(Icons.login, size: 18),
-                label: const Text('تسجيل الدخول'),
-              ),
-              const SizedBox(height: 10),
               Container(height: 1, width: 60, color: Colors.white.withValues(alpha: 0.15)),
-              const SizedBox(height: 10),
+              const SizedBox(height: 14),
               Text(
-                'جميع الحقوق محفوظة لـ سليمان الفواز © 2026',
+                '© 2026 سليمان الفواز. جميع الحقوق محفوظة.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11.5),
               ),
@@ -2062,108 +2105,235 @@ class _MissionBar extends StatelessWidget {
   }
 }
 
-class _Stat {
+/// بطاقة مؤشر عام واحدة - مصمَّمة كـ`Dynamic Component` منذ البداية
+/// ([value] اختياري نوعه `int?`): طالما لم تُربَط ببيانات حقيقية بعد تعرض
+/// "—" وملاحظة "سيتم تحديث المؤشر عند اكتمال ربط البيانات" (بطلب سليمان
+/// الصريح 2026-08-20: يُمنع منعًا تامًا وضع أرقام تجريبية/وهمية). حين تتوفر
+/// البيانات لاحقًا يكفي تمرير [value] الحقيقي بلا أي تعديل على التصميم.
+class _MetricCard extends StatelessWidget {
   final IconData icon;
   final String label;
-  final String value;
+  final int? value;
 
-  const _Stat(this.icon, this.label, this.value);
-}
-
-/// قسم "إحصائيات هامة" على غرار موقع جامعة الطائف الرسمي - حلقة ذهبية
-/// مزدوجة حول كل أيقونة، تسمية خضراء، ورقم ذهبي بارز أسفلها.
-/// تعرض القيمة الفعلية إن توفّرت بيانات حقيقية (> صفر)، وإلا نصًا توضيحيًا
-/// بدل رقم صفر يبدو وكأن الموقع فارغ أو معطّل عند أول انطلاقه.
-String _statDisplayValue(int? value, {bool isPercent = false}) {
-  if (value == null || value == 0) return 'قيد الرصد التلقائي';
-  return isPercent ? '$value%' : value.toString();
-}
-
-/// قسم "إحصائيات هامة" - مرتبط لحظيًا بوثيقة public_stats/summary التي
-/// تُحدَّثها لوحة الإدارة تلقائيًا مع كل تغيير في بيانات الطلبات. يظهر نص
-/// "قيد الرصد التلقائي" بدل الرقم صفر طالما لم تُرفع بيانات فعلية بعد.
-class _StatsSection extends StatelessWidget {
-  const _StatsSection();
+  const _MetricCard({required this.icon, required this.label, this.value});
 
   @override
   Widget build(BuildContext context) {
     return Container(
+      constraints: const BoxConstraints(minHeight: 115, maxHeight: 130),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: const Color(0xFFE6E8EB)),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 14, offset: const Offset(0, 4))],
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, color: AppColors.gold, size: 26),
+          const SizedBox(height: 6),
+          Text(
+            value == null ? '—' : '$value',
+            style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: AppColors.greenDark, height: 1),
+          ),
+          const SizedBox(height: 4),
+          Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.green)),
+          if (value == null) ...[
+            const SizedBox(height: 3),
+            Text(
+              'سيتم تحديث المؤشر عند اكتمال ربط البيانات',
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 9.5, color: Colors.grey.shade500),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// قسم "أرقام ومؤشرات الوحدة" - مؤشرات عامة فقط (لا بيانات تشغيلية داخلية
+/// كنِسَب الإنجاز أو الطلبات المتأخرة، تلك تبقى حصرًا بلوحة الإدارة الداخلية)
+/// بطلب سليمان الصريح 2026-08-20. أربع بطاقات بصف واحد على شاشة الويب.
+class _MetricsSection extends StatelessWidget {
+  const _MetricsSection();
+
+  @override
+  Widget build(BuildContext context) {
+    const metrics = [
+      _MetricCard(icon: Icons.groups_outlined, label: 'الطلبة المستفيدون'),
+      _MetricCard(icon: Icons.support_agent_outlined, label: 'المرشدون الأكاديميون'),
+      _MetricCard(icon: Icons.school_outlined, label: 'الخريجون'),
+      _MetricCard(icon: Icons.volunteer_activism_outlined, label: 'الخدمات والمبادرات'),
+    ];
+    return Container(
       width: double.infinity,
       color: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 44),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 980),
+          constraints: const BoxConstraints(maxWidth: 1240),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const _SectionHeader(
                 eyebrow: 'أرقامنا',
-                title: 'إحصائيات هامة',
+                title: 'أرقام ومؤشرات الوحدة',
                 icon: Icons.bar_chart_rounded,
               ),
               const SizedBox(height: 8),
               Text(
-                'تُحدَّث تلقائيًا كلما أنجز المنسّقون طلبات جديدة',
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 12.5),
+                'نظرة عامة على نطاق خدمات الإرشاد الأكاديمي والخريجين، ويجري استكمال ربط مصادر البيانات لعرض المؤشرات المحدَّثة تلقائيًا.',
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 12.5, height: 1.5),
               ),
-              const SizedBox(height: 28),
-              StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                stream: FirebaseFirestore.instance
-                    .collection('public_stats')
-                    .doc('summary')
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  final data = snapshot.data?.data();
-                  final stats = <_Stat>[
-                    _Stat(
-                      Icons.assignment_turned_in_outlined,
-                      'عدد الطلبات المُنجزة',
-                      _statDisplayValue(data?['completed_requests'] as int?),
-                    ),
-                    _Stat(
-                      Icons.groups_outlined,
-                      'عدد الطلاب المستفيدين',
-                      _statDisplayValue(data?['students_served'] as int?),
-                    ),
-                    _Stat(
-                      Icons.support_agent_outlined,
-                      'عدد المرشدين الأكاديميين',
-                      _statDisplayValue(data?['advisors_count'] as int?),
-                    ),
-                    _Stat(
-                      Icons.trending_up,
-                      'نسبة الإنجاز',
-                      _statDisplayValue(data?['completion_rate'] as int?, isPercent: true),
-                    ),
-                  ];
-
-                  final accentColors = [
-                    AppColors.greenDark,
-                    AppColors.gold,
-                    AppColors.green,
-                    AppColors.goldLight,
-                  ];
-                  final isNarrow = MediaQuery.of(context).size.width < 700;
+              const SizedBox(height: 24),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final isNarrow = constraints.maxWidth < 700;
                   return GridView.count(
-                    crossAxisCount: isNarrow ? 1 : 2,
+                    crossAxisCount: isNarrow ? 2 : 4,
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
-                    mainAxisSpacing: 14,
-                    crossAxisSpacing: 14,
-                    childAspectRatio: isNarrow ? 3.4 : 3.6,
-                    children: [
-                      for (var i = 0; i < stats.length; i++)
-                        PortalStatCard(
-                          icon: stats[i].icon,
-                          value: stats[i].value,
-                          label: stats[i].label,
-                          accentColor: accentColors[i % accentColors.length],
-                        ),
-                    ],
+                    mainAxisSpacing: 16,
+                    crossAxisSpacing: 16,
+                    childAspectRatio: isNarrow ? 1.3 : 1.15,
+                    children: metrics,
                   );
                 },
               ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// قسم "مسارات الوحدة" - مساران متساويان تمامًا بصريًا (العرض/الارتفاع/حجم
+/// العنوان والأيقونة/البروز) لأن الوحدة تمثّلهما معًا بلا أفضلية لأحدهما
+/// (بطلب سليمان الصريح 2026-08-20: "لا يظهر مسار الخريجين كجزء ثانوي تابع
+/// للإرشاد").
+class _TracksSection extends StatelessWidget {
+  const _TracksSection();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      color: const Color(0xFFF7F7F5),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1240),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const _SectionHeader(eyebrow: 'خدماتنا', title: 'مسارات الوحدة', icon: Icons.route_outlined),
+              const SizedBox(height: 24),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final isNarrow = constraints.maxWidth < 700;
+                  const cards = [
+                    _TrackCard(
+                      icon: Icons.school_outlined,
+                      title: 'الإرشاد الأكاديمي',
+                      description: 'خدمات ومصادر تدعم الطلبة في مسيرتهم الأكاديمية وتسهّل الوصول إلى خدمات الإرشاد الأكاديمي.',
+                    ),
+                    _TrackCard(
+                      icon: Icons.groups_2_outlined,
+                      title: 'الخريجون',
+                      description: 'خدمات ومبادرات تعزّز التواصل مع خريجي الكلية واستمرارية العلاقة معهم بعد التخرج.',
+                    ),
+                  ];
+                  if (isNarrow) {
+                    return Column(children: [cards[0], const SizedBox(height: 16), cards[1]]);
+                  }
+                  return IntrinsicHeight(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(child: cards[0]),
+                        const SizedBox(width: 16),
+                        Expanded(child: cards[1]),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TrackCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String description;
+
+  const _TrackCard({required this.icon, required this.title, required this.description});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: const Color(0xFFE6E8EB)),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 14, offset: const Offset(0, 4))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(color: AppColors.green.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(14)),
+            alignment: Alignment.center,
+            child: Icon(icon, color: AppColors.green, size: 26),
+          ),
+          const SizedBox(height: 16),
+          Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.greenDark)),
+          const SizedBox(height: 8),
+          Text(description, style: TextStyle(fontSize: 13.5, color: Colors.grey.shade700, height: 1.6)),
+        ],
+      ),
+    );
+  }
+}
+
+/// قسم "آخر المستجدات" - يظهر فقط عند وجود محتوى فعلي (أخبار/إعلانات/
+/// تنبيهات/مبادرات)؛ يختفي بالكامل بلا أي رسالة "لا توجد أخبار حاليًا" داخل
+/// مساحة فارغة طالما القائمة فارغة (بطلب سليمان الصريح 2026-08-20). لا يوجد
+/// مصدر بيانات بعد، فالقائمة فارغة افتراضيًا - جاهز للربط لاحقًا بلا إعادة
+/// تصميم.
+class _LatestUpdatesSection extends StatelessWidget {
+  const _LatestUpdatesSection({this.updates = const []});
+
+  final List<String> updates;
+
+  @override
+  Widget build(BuildContext context) {
+    if (updates.isEmpty) return const SizedBox.shrink();
+    return Container(
+      width: double.infinity,
+      color: Colors.white,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1240),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const _SectionHeader(eyebrow: 'جديدنا', title: 'آخر المستجدات', icon: Icons.campaign_outlined),
+              const SizedBox(height: 24),
+              for (final u in updates) Text(u),
             ],
           ),
         ),
