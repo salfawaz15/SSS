@@ -461,7 +461,11 @@ class _UnitLeaderCard extends StatelessWidget {
         // أفقي (أيقونة بجانب النص) بدل الرأسي (أيقونة فوق النص) - بطلب
         // سليمان الصريح 2026-08-21: الأيقونة أقصى يمين كتلة النص لأن الواجهة
         // RTL، لا فوقها، لتقليص ارتفاع البطاقة 35-45% بلا تصغير الخط.
+        // مركَّزة أفقيًا داخل عرض البطاقة بالكامل (أيقونة+نص كوحدة واحدة) -
+        // بطلب سليمان الصريح 2026-08-21: كانت الكتلة ملاصقة لليمين تاركةً
+        // فراغًا كبيرًا لليسار، فتبدو "غير متوسّطة".
         child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Container(
@@ -472,15 +476,16 @@ class _UnitLeaderCard extends StatelessWidget {
               child: Icon(icon, color: AppColors.goldLight, size: 21),
             ),
             const SizedBox(width: 14),
-            Expanded(
+            Flexible(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
                     role,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
                     style: const TextStyle(fontSize: 11.5, color: Colors.white70, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 2),
@@ -488,6 +493,7 @@ class _UnitLeaderCard extends StatelessWidget {
                     name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5, color: AppColors.goldLight),
                   ),
                   const SizedBox(height: 3),
