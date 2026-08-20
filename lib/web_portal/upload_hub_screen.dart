@@ -59,6 +59,8 @@ class UploadHubScreen extends StatefulWidget {
 class _UploadHubScreenState extends State<UploadHubScreen> {
   DateTime? _maleExportDate;
   DateTime? _femaleExportDate;
+  int _maleCourseCount = 0;
+  int _femaleCourseCount = 0;
   bool _uploadingCourses = false;
 
   DateTime? _allCollegesMaleDate;
@@ -106,6 +108,8 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
         AdvisingReportRepository.currentUploadDate(Shatr.female, kind: AdvisingReportKind.health),
         AdvisingScheduleRepository.latestUploadDate(),
         AdvisingScheduleRepository.uploadedCount(),
+        CourseScheduleRepository.loadSchedule(Shatr.male),
+        CourseScheduleRepository.loadSchedule(Shatr.female),
       ]);
       if (!mounted) return;
       setState(() {
@@ -117,6 +121,8 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
         _healthFemaleDate = results[5] as DateTime?;
         _scheduleLatestDate = results[6] as DateTime?;
         _scheduleUploadedCount = results[7] as int;
+        _maleCourseCount = (results[8] as List<CourseSectionRecord>).length;
+        _femaleCourseCount = (results[9] as List<CourseSectionRecord>).length;
       });
     } finally {
       if (mounted) setState(() => _loadingDates = false);
@@ -704,116 +710,22 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                       ),
                       Padding(
                         padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+                        // القسم الثاني (المقررات الدراسية) والثالث (الإرشاد)
+                        // جنبًا إلى جنب على الشاشات العريضة بدل التكديس
+                        // الرأسي - يقلّل الارتفاع الكلي للصفحة (بطلب سليمان
+                        // صراحةً 2026-08-20: "الهدف أن تكون الصفحة واحدة
+                        // دون تمرير").
                         child: LayoutBuilder(builder: (context, constraints) {
-                          final wide = constraints.maxWidth >= 780;
-                          final coursesDate = _latestOf(_maleExportDate, _femaleExportDate);
-                          final coursesCard = _uploadCard(
-                            icon: Icons.menu_book_outlined,
-                            title: 'المقررات الدراسية',
-                            subtitle: 'لاستخراج شعب المقررات الدراسية',
-                            uploading: _uploadingCourses,
-                            date: coursesDate,
-                            clearLabel: 'مسح البيانات الحالية',
-                            onPressed: _uploadCoursesCombined,
-                            onClear: coursesDate != null ? _clearCourses : null,
-                          );
-                          final casesDate = _latestOf(_allCollegesMaleDate, _allCollegesFemaleDate);
-                          final casesCard = _uploadCard(
-                            icon: Icons.groups_outlined,
-                            title: 'حالات الإرشاد',
-                            subtitle: 'رفع ملف حالات الإرشاد',
-                            uploading: _uploadingAllColleges,
-                            date: casesDate,
-                            clearLabel: 'مسح البيانات الحالية',
-                            onPressed: () => runUploadAllColleges(
-                              context: context,
-                              setUploading: (v) => setState(() => _uploadingAllColleges = v),
-                              onSuccess: () async {
-                                await _loadDates();
-                                if (mounted) _showSuccessSnackBar('تم رفع الملف بنجاح');
-                              },
-                            ),
-                            onClear: casesDate != null ? () => _clearKindBoth(AdvisingReportKind.allColleges, 'ملف حالات الإرشاد') : null,
-                          );
-                          final disabilityDate = _latestOf(_healthMaleDate, _healthFemaleDate);
-                          final disabilityCard = _uploadCard(
-                            icon: Icons.accessible_outlined,
-                            title: 'طلبة ذوو الإعاقة',
-                            subtitle: 'رفع بيانات طلبة ذوي الإعاقة',
-                            uploading: _uploadingHealth,
-                            date: disabilityDate,
-                            clearLabel: 'مسح البيانات الحالية',
-                            onPressed: () => runUploadHealth(
-                              context: context,
-                              setUploading: (v) => setState(() => _uploadingHealth = v),
-                              onSuccess: () async {
-                                await _loadDates();
-                                if (mounted) _showSuccessSnackBar('تم رفع الملف بنجاح');
-                              },
-                            ),
-                            onClear: disabilityDate != null ? () => _clearKindBoth(AdvisingReportKind.health, 'ملف طلبة ذوي الإعاقة') : null,
-                          );
-                          final scheduleMaxed = _scheduleUploadedCount >= 10;
-                          final scheduleCard = _uploadCard(
-                            icon: Icons.event_available_outlined,
-                            title: 'جداول مواعيد الإرشاد',
-                            subtitle: 'رفع جداول مواعيد الإرشاد (حتى 10 ملفات)',
-                            uploading: _uploadingSchedule,
-                            disabled: scheduleMaxed,
-                            date: _scheduleLatestDate,
-                            fileCounterText: '$_scheduleUploadedCount / 10 ملفات',
-                            isMultiple: true,
-                            clearLabel: 'مسح بيانات المواعيد',
-                            onPressed: scheduleMaxed
-                                ? null
-                                : () => runUploadAdvisingSchedule(
-                                      context: context,
-                                      setUploading: (v) => setState(() => _uploadingSchedule = v),
-                                      onSuccess: () async {
-                                        await _loadDates();
-                                        if (mounted) _showSuccessSnackBar('تم رفع الملفات بنجاح');
-                                      },
-                                    ),
-                            onClear: _scheduleLatestDate != null ? _clearSchedule : null,
-                          );
-
-                          // شبكة 2×2: أعلى اليمين=المقررات، أعلى اليسار=حالات
-                          // الإرشاد، أسفل اليمين=ذوو الإعاقة، أسفل اليسار=مواعيد
-                          // الإرشاد - في RTL أول عنصر بالصف يظهر يمينًا.
+                          final wide = constraints.maxWidth >= 900;
                           if (!wide) {
-                            return Column(children: [
-                              coursesCard,
-                              const SizedBox(height: 12),
-                              casesCard,
-                              const SizedBox(height: 12),
-                              disabilityCard,
-                              const SizedBox(height: 12),
-                              scheduleCard,
-                            ]);
+                            return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [_coursesBanner(), const SizedBox(height: 14), _advisingSection()]);
                           }
-                          return Column(
+                          return Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              IntrinsicHeight(
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                                  children: [
-                                    Expanded(child: coursesCard),
-                                    const SizedBox(width: 14),
-                                    Expanded(child: casesCard),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 14),
-                              IntrinsicHeight(
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                                  children: [
-                                    Expanded(child: disabilityCard),
-                                    const SizedBox(width: 14),
-                                    Expanded(child: scheduleCard),
-                                  ],
-                                ),
-                              ),
+                              Expanded(flex: 4, child: _coursesBanner()),
+                              const SizedBox(width: 14),
+                              Expanded(flex: 6, child: _advisingSection()),
                             ],
                           );
                         }),
@@ -1125,37 +1037,63 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   /// البيضاء الموحَّد، وبإشارة صريحة لمصدرها تحت العنوان - بطلب سليمان
   /// 2026-08-19 (نُقلت من لوحة الإدارة إلى هنا).
   Widget _formsFileUploadBanner() {
+    return _greenBanner(
+      icon: Icons.assignment_outlined,
+      title: 'الملف الأساسي - طلبات الحذف والإضافة',
+      subtitleIcon: Icons.description_outlined,
+      subtitle: 'المصدر: نموذج Microsoft Forms',
+      button: _bannerButton(
+        uploading: _uploadingFormsFile,
+        label: 'رفع الملف',
+        onPressed: _pickAndUploadFormsFile,
+      ),
+    );
+  }
+
+  /// شريط أخضر عام موحَّد (نفس هوية "الملف الأساسي") - يُستخدَم لعنونة أي
+  /// قسم رئيسي بالصفحة (الحذف والإضافة/المقررات الدراسية/الإرشاد) بنفس
+  /// الهوية البصرية، بزر رفع اختياري (`button`) - بلا زر إن كان القسم
+  /// عنوانًا فقط لعناصر أدناه (بطلب سليمان صراحةً 2026-08-20: "ليس بالضرورة
+  /// أن يكون فيه كلمة رفع").
+  Widget _greenBanner({
+    required IconData icon,
+    required String title,
+    required IconData subtitleIcon,
+    required String subtitle,
+    Widget? button,
+    double verticalPadding = 16,
+  }) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      padding: EdgeInsets.symmetric(horizontal: 18, vertical: verticalPadding),
       decoration: BoxDecoration(
         gradient: const LinearGradient(colors: [AppColors.greenDark, AppColors.green]),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.gold, width: 1.4),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.12), blurRadius: 14, offset: const Offset(0, 5))],
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.gold, width: 1.2),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: LayoutBuilder(builder: (context, constraints) {
-        final narrow = constraints.maxWidth < 640;
+        final narrow = constraints.maxWidth < 560;
         final info = Row(
           children: [
             Container(
-              width: 46,
-              height: 46,
-              decoration: BoxDecoration(color: AppColors.gold, borderRadius: BorderRadius.circular(12)),
-              child: const Icon(Icons.assignment_outlined, color: AppColors.greenDark, size: 24),
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(color: AppColors.gold, borderRadius: BorderRadius.circular(10)),
+              child: Icon(icon, color: AppColors.greenDark, size: 20),
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('الملف الأساسي - طلبات الحذف والإضافة', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 4),
+                  Text(title, style: const TextStyle(color: Colors.white, fontSize: 14.5, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 3),
                   Row(
                     children: [
-                      Icon(Icons.description_outlined, size: 13, color: AppColors.goldLight.withValues(alpha: 0.9)),
+                      Icon(subtitleIcon, size: 12, color: AppColors.goldLight.withValues(alpha: 0.9)),
                       const SizedBox(width: 5),
-                      Text('المصدر: نموذج Microsoft Forms', style: TextStyle(color: AppColors.goldLight.withValues(alpha: 0.9), fontSize: 11.5)),
+                      Flexible(child: Text(subtitle, style: TextStyle(color: AppColors.goldLight.withValues(alpha: 0.9), fontSize: 10.5), overflow: TextOverflow.ellipsis)),
                     ],
                   ),
                 ],
@@ -1163,25 +1101,215 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
             ),
           ],
         );
-        final button = ElevatedButton.icon(
-          onPressed: _uploadingFormsFile ? null : _pickAndUploadFormsFile,
-          icon: _uploadingFormsFile
-              ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.greenDark))
-              : const Icon(Icons.upload_file, size: 18),
-          label: Text(_uploadingFormsFile ? 'جارٍ الرفع...' : 'رفع الملف'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.gold,
-            foregroundColor: AppColors.greenDark,
-            textStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-        );
+        if (button == null) return info;
         if (narrow) {
-          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [info, const SizedBox(height: 14), button]);
+          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [info, const SizedBox(height: 12), button]);
         }
-        return Row(children: [Expanded(child: info), const SizedBox(width: 16), button]);
+        return Row(children: [Expanded(child: info), const SizedBox(width: 14), button]);
       }),
+    );
+  }
+
+  /// زر ذهبي موحَّد لكل أشرطة `_greenBanner`.
+  Widget _bannerButton({required bool uploading, required String label, required VoidCallback? onPressed}) {
+    return ElevatedButton.icon(
+      onPressed: uploading ? null : onPressed,
+      icon: uploading
+          ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.greenDark))
+          : const Icon(Icons.upload_file, size: 16),
+      label: Text(uploading ? 'جارٍ الرفع...' : label, style: const TextStyle(fontSize: 12.5)),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: AppColors.gold,
+        foregroundColor: AppColors.greenDark,
+        textStyle: const TextStyle(fontWeight: FontWeight.bold),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+      ),
+    );
+  }
+
+  /// القسم الثاني: المقررات الدراسية - شريط أخضر بنفس هوية "الملف الأساسي"
+  /// (بطلب سليمان صراحةً 2026-08-20) بدل بطاقة بيضاء منفصلة ضمن شبكة.
+  Widget _coursesBanner() {
+    final coursesDate = _latestOf(_maleExportDate, _femaleExportDate);
+    final dateFmt = DateFormat('d MMMM yyyy، h:mm a', 'ar');
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(color: Colors.white, border: Border.all(color: AppColors.goldLight), borderRadius: BorderRadius.circular(16)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _greenBanner(
+            icon: Icons.menu_book_outlined,
+            title: 'المقررات الدراسية',
+            subtitleIcon: Icons.info_outline,
+            subtitle: coursesDate != null ? 'آخر رفع: ${dateFmt.format(coursesDate)}' : 'لاستخراج شعب المقررات الدراسية - لا توجد بيانات مرفوعة بعد',
+            button: _bannerButton(uploading: _uploadingCourses, label: 'رفع الملف', onPressed: _uploadCoursesCombined),
+            verticalPadding: 12,
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(child: _courseCountStat(label: 'مقررات شطر الطلاب', count: _maleCourseCount)),
+              const SizedBox(width: 10),
+              Expanded(child: _courseCountStat(label: 'مقررات شطر الطالبات', count: _femaleCourseCount)),
+            ],
+          ),
+          if (coursesDate != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Align(alignment: Alignment.centerLeft, child: _clearDataButton(label: 'مسح بيانات المقررات', onPressed: _clearCourses)),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// بطاقة إحصائية صغيرة: عدد شعب المقررات المرفوعة لشطر واحد.
+  Widget _courseCountStat({required String label, required int count}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(9)),
+      child: Column(
+        children: [
+          Text('$count', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: AppColors.greenDark)),
+          const SizedBox(height: 3),
+          Text(label, style: TextStyle(fontSize: 11, color: Colors.grey.shade600), textAlign: TextAlign.center),
+        ],
+      ),
+    );
+  }
+
+  /// القسم الثالث: الإرشاد الأكاديمي - شريط أخضر عنوان فقط (بلا زر) يوضّح
+  /// أن ما يليه (3 صفوف Compact) خاص بالإرشاد، ثم الصفوف الثلاثة بنفس أسلوب
+  /// صفوف الأقسام العلمية بالقسم الأول - بطلب سليمان صراحةً 2026-08-20.
+  Widget _advisingSection() {
+    final casesDate = _latestOf(_allCollegesMaleDate, _allCollegesFemaleDate);
+    final disabilityDate = _latestOf(_healthMaleDate, _healthFemaleDate);
+    final scheduleMaxed = _scheduleUploadedCount >= 10;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(color: Colors.white, border: Border.all(color: AppColors.goldLight), borderRadius: BorderRadius.circular(16)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _greenBanner(
+            icon: Icons.fact_check_outlined,
+            title: 'الإرشاد الأكاديمي',
+            subtitleIcon: Icons.info_outline,
+            subtitle: 'حالات الإرشاد، ذوو الإعاقة، ومواعيد الإرشاد',
+            verticalPadding: 12,
+          ),
+          const SizedBox(height: 10),
+          _advisingCompactRow(
+            icon: Icons.groups_outlined,
+            title: 'حالات الإرشاد',
+            uploading: _uploadingAllColleges,
+            date: casesDate,
+            onPressed: () => runUploadAllColleges(
+              context: context,
+              setUploading: (v) => setState(() => _uploadingAllColleges = v),
+              onSuccess: () async {
+                await _loadDates();
+                if (mounted) _showSuccessSnackBar('تم رفع الملف بنجاح');
+              },
+            ),
+            onClear: casesDate != null ? () => _clearKindBoth(AdvisingReportKind.allColleges, 'ملف حالات الإرشاد') : null,
+          ),
+          _advisingCompactRow(
+            icon: Icons.accessible_outlined,
+            title: 'طلبة ذوو الإعاقة',
+            uploading: _uploadingHealth,
+            date: disabilityDate,
+            onPressed: () => runUploadHealth(
+              context: context,
+              setUploading: (v) => setState(() => _uploadingHealth = v),
+              onSuccess: () async {
+                await _loadDates();
+                if (mounted) _showSuccessSnackBar('تم رفع الملف بنجاح');
+              },
+            ),
+            onClear: disabilityDate != null ? () => _clearKindBoth(AdvisingReportKind.health, 'ملف طلبة ذوي الإعاقة') : null,
+          ),
+          _advisingCompactRow(
+            icon: Icons.event_available_outlined,
+            title: 'جداول مواعيد الإرشاد',
+            uploading: _uploadingSchedule,
+            date: _scheduleLatestDate,
+            fileCounterText: '$_scheduleUploadedCount / 10',
+            disabled: scheduleMaxed,
+            onPressed: scheduleMaxed
+                ? null
+                : () => runUploadAdvisingSchedule(
+                      context: context,
+                      setUploading: (v) => setState(() => _uploadingSchedule = v),
+                      onSuccess: () async {
+                        await _loadDates();
+                        if (mounted) _showSuccessSnackBar('تم رفع الملفات بنجاح');
+                      },
+                    ),
+            onClear: _scheduleLatestDate != null ? _clearSchedule : null,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// صف Compact واحد لعنصر إرشادي (نفس ارتفاع/هوية صفوف الأقسام العلمية).
+  Widget _advisingCompactRow({
+    required IconData icon,
+    required String title,
+    required bool uploading,
+    required DateTime? date,
+    required VoidCallback? onPressed,
+    VoidCallback? onClear,
+    String? fileCounterText,
+    bool disabled = false,
+  }) {
+    final dateFmt = DateFormat('d MMM yyyy، h:mm a', 'ar');
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      constraints: const BoxConstraints(minHeight: 46),
+      decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(9)),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: AppColors.greenDark),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11.5), maxLines: 1, overflow: TextOverflow.ellipsis),
+                Text(
+                  date != null ? dateFmt.format(date) : 'لا توجد بيانات مرفوعة',
+                  style: TextStyle(fontSize: 9.5, color: Colors.grey.shade500),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          if (fileCounterText != null) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(color: const Color(0xFFF3FAF6), borderRadius: BorderRadius.circular(7), border: Border.all(color: const Color(0xFFBFD8C9))),
+              child: Text(fileCounterText, style: const TextStyle(color: Color(0xFF176044), fontSize: 10, fontWeight: FontWeight.bold)),
+            ),
+            const SizedBox(width: 6),
+          ],
+          if (onClear != null) _miniIconButton(tooltip: 'مسح البيانات الحالية', icon: Icons.delete_outline, color: Colors.red.shade400, isLoading: false, onPressed: onClear),
+          _miniIconButton(
+            tooltip: disabled ? 'اكتمل الحد الأعلى' : 'رفع ملف',
+            icon: Icons.upload_file_outlined,
+            color: AppColors.green,
+            isLoading: uploading,
+            onPressed: disabled ? null : onPressed,
+          ),
+        ],
+      ),
     );
   }
 
@@ -1266,166 +1394,6 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     );
   }
 
-  /// بطاقة رفع موحَّدة لكل البطاقات الأربع: رأس (شارة+عنوان+وصف مختصر)،
-  /// منطقة الرفع نفسها هي وسيلة الرفع الوحيدة (بلا زر منفصل مكرِّر لنفس
-  /// الوظيفة) - نصّها يتغيّر حسب وجود بيانات سابقة من عدمه، ثم "آخر رفع"
-  /// وزر أحمر واحد "مسح البيانات الحالية" (حذف حقيقي من قاعدة البيانات، لا
-  /// مجرد إزالة اسم ملف) - سليمان صراحةً 2026-08-17.
-  Widget _uploadCard({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required bool uploading,
-    required DateTime? date,
-    required VoidCallback? onPressed,
-    required VoidCallback? onClear,
-    required String clearLabel,
-    bool isMultiple = false,
-    String? fileCounterText,
-    bool disabled = false,
-  }) {
-    final dateFmt = DateFormat('d MMMM yyyy', 'ar');
-    final timeFmt = DateFormat('h:mm a', 'ar');
-    final hasData = date != null;
-    final mainText = disabled
-        ? 'اكتمل الحد الأعلى (10 ملفات)'
-        : isMultiple
-            ? (hasData ? 'اضغط هنا لإضافة ملفات' : 'اضغط هنا لرفع الملفات')
-            : (hasData ? 'اضغط هنا لرفع ملف بديل' : 'اضغط هنا لرفع الملف');
-    final subText = isMultiple ? 'أو اسحب الملفات إلى هذه المنطقة' : 'أو اسحب الملف إلى هذه المنطقة';
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(17),
-        border: Border.all(color: AppColors.goldLight),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 14, offset: const Offset(0, 5))],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _goldIconBadge(icon),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17, color: AppColors.greenDark)),
-                    const SizedBox(height: 3),
-                    Text(subtitle, style: TextStyle(color: Colors.grey.shade600, fontSize: 12.5)),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _dropzone(
-            uploading: uploading,
-            disabled: disabled,
-            mainText: mainText,
-            subText: subText,
-            onTap: (uploading || disabled) ? null : onPressed,
-          ),
-          const SizedBox(height: 10),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(
-                child: Wrap(
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 10,
-                  runSpacing: 4,
-                  children: [
-                    RichText(
-                      text: TextSpan(
-                        style: TextStyle(color: Colors.grey.shade600, fontSize: 12.5),
-                        children: [
-                          const TextSpan(text: 'آخر رفع: '),
-                          TextSpan(
-                            text: hasData
-                                ? '\u2068${dateFmt.format(date)}، ${timeFmt.format(date)}\u2069'
-                                : 'لا توجد بيانات مرفوعة',
-                            style: TextStyle(color: Colors.grey.shade800, fontWeight: FontWeight.w700),
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (fileCounterText != null)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF3FAF6),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: const Color(0xFFBFD8C9)),
-                        ),
-                        child: Text(
-                          fileCounterText,
-                          style: const TextStyle(color: Color(0xFF176044), fontSize: 12, fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              if (onClear != null) _clearDataButton(label: clearLabel, onPressed: onClear),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// منطقة رفع بحدود متقطّعة كاملة قابلة للضغط - هي وسيلة الرفع الوحيدة
-  /// (بلا زر منفصل مكرِّر) - بلا سحب/إفلات حقيقي حاليًا (يحتاج مكتبة إضافية
-  /// وتعديل منطق مشترك تخدم صفحات أخرى - سليمان صراحةً 2026-08-17 وافق على
-  /// تأجيله لطلب منفصل)، لكن بنفس الشكل البصري المطلوب.
-  Widget _dropzone({
-    required bool uploading,
-    required bool disabled,
-    required String mainText,
-    required String subText,
-    required VoidCallback? onTap,
-  }) {
-    final borderColor = disabled ? Colors.grey.shade300 : const Color(0xFFAAB6B0);
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(13),
-      child: CustomPaint(
-        painter: _DashedBorderPainter(color: borderColor),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 20),
-          decoration: BoxDecoration(
-            color: disabled ? const Color(0xFFF3F4F2) : const Color(0xFFFBFCFB),
-            borderRadius: BorderRadius.circular(13),
-          ),
-          child: Column(
-            children: [
-              uploading
-                  ? const SizedBox(width: 30, height: 30, child: CircularProgressIndicator(strokeWidth: 2.5))
-                  : Icon(Icons.cloud_upload_outlined, size: 32, color: disabled ? Colors.grey.shade400 : AppColors.green),
-              const SizedBox(height: 6),
-              Text(
-                uploading ? 'جارٍ الرفع...' : mainText,
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: disabled ? Colors.grey.shade500 : const Color(0xFF52615C),
-                  fontSize: 14,
-                ),
-              ),
-              if (!uploading && !disabled) ...[
-                const SizedBox(height: 3),
-                Text(subText, style: TextStyle(color: Colors.grey.shade500, fontSize: 11.5)),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   /// زر "مسح البيانات الحالية" - خلفية حمراء فاتحة جدًا، حدّ أحمر خفيف، نص
   /// وأيقونة، يعكس لونه بالكامل عند Hover - سليمان صراحةً 2026-08-17: هذا
   /// الإجراء يحذف البيانات المستخرجة الفعلية من قاعدة البيانات، لا مجرد ملف.
@@ -1482,31 +1450,3 @@ class _HoverableClearButtonState extends State<_HoverableClearButton> {
   }
 }
 
-/// رسم حدّ متقطّع (Flutter لا يدعم BorderStyle.dashed مباشرة).
-class _DashedBorderPainter extends CustomPainter {
-  final Color color;
-  const _DashedBorderPainter({required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = 1.4
-      ..style = PaintingStyle.stroke;
-    final rrect = RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(13));
-    final path = Path()..addRRect(rrect);
-    const dashWidth = 6.0;
-    const dashSpace = 4.0;
-    for (final metric in path.computeMetrics()) {
-      var distance = 0.0;
-      while (distance < metric.length) {
-        final next = distance + dashWidth;
-        canvas.drawPath(metric.extractPath(distance, next.clamp(0, metric.length)), paint);
-        distance = next + dashSpace;
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _DashedBorderPainter oldDelegate) => oldDelegate.color != color;
-}
