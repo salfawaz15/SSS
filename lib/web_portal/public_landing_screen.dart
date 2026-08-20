@@ -1299,18 +1299,47 @@ class _TopUtilityBarState extends State<_TopUtilityBar> {
 /// الشعار الرسمي المعتمد بالهيدر الأبيض - بلا أي مستطيل/حدّ/ظل خلفه (بطلب
 /// سليمان الصريح 2026-08-20: خلفية شفافة حقيقية، لا صندوق أخضر خلف الشعار).
 /// الضغط عليه يعيد المستخدم للصفحة الرئيسية من أي مكان.
-class _BrandLogo extends StatelessWidget {
+/// حاوية هوية مضغوطة أخضر داكن حول الشعار الرسمي الشفاف - نسخة مُحدَّثة أخف
+/// وأنعم من صندوق الشعار بالموقع القديم (بطلب سليمان الصريح 2026-08-20):
+/// نفس المفهوم (أخضر داكن + ذهبي) لكن بلا ظل ثقيل ولا حدّ سميك، وملف الشعار
+/// نفسه يبقى شفافًا بالكامل - الخلفية الخضراء من CSS/الحاوية فقط.
+class _BrandLogo extends StatefulWidget {
   const _BrandLogo();
 
   @override
+  State<_BrandLogo> createState() => _BrandLogoState();
+}
+
+class _BrandLogoState extends State<_BrandLogo> {
+  bool _hovered = false;
+
+  @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: () => _goHome(context),
-      borderRadius: BorderRadius.circular(8),
-      child: Image.asset(
-        'assets/images/unit_logo_final.png',
-        height: 56,
-        fit: BoxFit.contain,
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: () => _goHome(context),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          transform: Matrix4.translationValues(0, _hovered ? -1 : 0, 0),
+          constraints: const BoxConstraints(minHeight: 58),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: AppColors.greenDark,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 210),
+            child: Image.asset(
+              'assets/images/unit_logo_final.png',
+              height: 44,
+              fit: BoxFit.contain,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -1454,8 +1483,8 @@ class _NavBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       color: Colors.white,
-      constraints: const BoxConstraints(minHeight: 72, maxHeight: 76),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      constraints: const BoxConstraints(minHeight: 74, maxHeight: 80),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 1240),
@@ -1532,7 +1561,7 @@ class _NavBar extends StatelessWidget {
             return Row(
               children: [
                 const _BrandLogo(),
-                const SizedBox(width: 20),
+                const SizedBox(width: 18),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                   decoration: BoxDecoration(
