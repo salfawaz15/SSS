@@ -1539,43 +1539,46 @@ class _HeroSection extends StatelessWidget {
     final isNarrow = MediaQuery.of(context).size.width < 600;
     return Container(
       width: double.infinity,
-      constraints: const BoxConstraints(minHeight: 180, maxHeight: 210),
+      constraints: const BoxConstraints(minHeight: 180),
       alignment: Alignment.center,
-      padding: EdgeInsets.symmetric(horizontal: 24, vertical: isNarrow ? 20 : 28),
+      padding: EdgeInsets.symmetric(horizontal: 24, vertical: isNarrow ? 24 : 32),
       decoration: const BoxDecoration(
         color: Color(0xFFFAFAF8),
         border: Border(bottom: BorderSide(color: Color(0xFFEEEEE9))),
       ),
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 720),
+          constraints: const BoxConstraints(maxWidth: 820),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               const Text(
                 'جامعة الطائف',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.greenDark, fontWeight: FontWeight.w600, fontSize: 15),
+                style: TextStyle(color: AppColors.greenDark, fontWeight: FontWeight.w600, fontSize: 18),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 8),
               const Text(
                 'كلية إدارة الأعمال',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.green, fontWeight: FontWeight.w700, fontSize: 18),
+                style: TextStyle(color: AppColors.green, fontWeight: FontWeight.w700, fontSize: 24),
               ),
-              const SizedBox(height: 10),
-              Container(width: 46, height: 3, decoration: BoxDecoration(color: AppColors.gold, borderRadius: BorderRadius.circular(2))),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
+              Container(width: 52, height: 3, decoration: BoxDecoration(color: AppColors.gold, borderRadius: BorderRadius.circular(3))),
+              const SizedBox(height: 20),
               Text(
                 'وحدة الإرشاد الأكاديمي والخريجين',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.greenDark, fontWeight: FontWeight.bold, fontSize: isNarrow ? 26 : 36),
+                style: TextStyle(color: AppColors.greenDark, fontWeight: FontWeight.bold, fontSize: isNarrow ? 28 : 42, height: 1.35),
               ),
-              const SizedBox(height: 10),
-              Text(
-                'منظومة متكاملة لدعم الطلبة أكاديميًا وتعزيز التواصل المستدام مع خريجي الكلية.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey.shade700, fontSize: 15, height: 1.5),
+              const SizedBox(height: 16),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 760),
+                child: const Text(
+                  'منظومة متكاملة لدعم الطلبة أكاديميًا وتعزيز التواصل المستدام مع خريجي الكلية.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Color(0xFF5F6368), fontWeight: FontWeight.w500, fontSize: 18, height: 1.8),
+                ),
               ),
             ],
           ),
