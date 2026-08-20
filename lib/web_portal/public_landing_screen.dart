@@ -1706,17 +1706,17 @@ class _SectionHeader extends StatelessWidget {
     return Row(
       children: [
         Container(
-          width: 44,
-          height: 44,
+          width: 38,
+          height: 38,
           decoration: BoxDecoration(
             gradient: const LinearGradient(
               colors: [AppColors.greenDark, AppColors.green],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(11),
           ),
-          child: Icon(icon, color: AppColors.goldLight, size: 20),
+          child: Icon(icon, color: AppColors.goldLight, size: 17),
         ),
         const SizedBox(width: 14),
         Column(
@@ -1770,7 +1770,7 @@ class PageSection extends StatelessWidget {
     return Container(
       width: double.infinity,
       color: background,
-      padding: EdgeInsets.symmetric(horizontal: 24, vertical: isNarrow ? 32 : 56),
+      padding: EdgeInsets.symmetric(horizontal: 24, vertical: isNarrow ? 24 : 36),
       child: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(maxWidth: maxWidth),
@@ -1778,7 +1778,7 @@ class PageSection extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _SectionHeader(eyebrow: eyebrow, title: title, icon: icon),
-              const SizedBox(height: 28),
+              const SizedBox(height: 20),
               child,
             ],
           ),
@@ -1964,45 +1964,7 @@ class _OrgChartSection extends StatelessWidget {
           ],
         );
 
-        return Stack(
-          children: [
-            Positioned.fill(child: IgnorePointer(child: _SignatureWatermark())),
-            chart,
-          ],
-        );
-      },
-    );
-  }
-}
-
-/// توقيع مائي خفيف "S/A" متكرر بميل قطري - بطلب سليمان صراحةً.
-class _SignatureWatermark extends StatelessWidget {
-  const _SignatureWatermark();
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final w = constraints.maxWidth;
-        final h = constraints.maxHeight.isFinite ? constraints.maxHeight : 900.0;
-        const step = 150.0;
-        final tiles = <Widget>[];
-        for (double y = -50; y < h + 50; y += step) {
-          for (double x = -50; x < w + 50; x += step) {
-            tiles.add(Positioned(
-              left: x,
-              top: y,
-              child: Transform.rotate(
-                angle: -0.55,
-                child: Text(
-                  'S/A',
-                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: AppColors.green.withValues(alpha: 0.05)),
-                ),
-              ),
-            ));
-          }
-        }
-        return Stack(children: tiles);
+        return chart;
       },
     );
   }
