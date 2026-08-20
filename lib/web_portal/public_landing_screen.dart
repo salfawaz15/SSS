@@ -145,7 +145,7 @@ class _PublicLandingScreenState extends State<PublicLandingScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _TopUtilityBar(onLogin: _openLogin),
-            const _NavBar(),
+            const _NavBar(current: 'home'),
             const _HeroSection(),
             const _MetricsSection(),
             const _TracksSection(),
@@ -174,8 +174,9 @@ void _goHome(BuildContext context) {
 /// تكون كل الأقسام مضغوطة في صفحة تمرير واحدة طويلة.
 class InfoPageScaffold extends StatelessWidget {
   final Widget child;
+  final String? current;
 
-  const InfoPageScaffold({super.key, required this.child});
+  const InfoPageScaffold({super.key, required this.child, this.current});
 
   @override
   Widget build(BuildContext context) {
@@ -186,7 +187,7 @@ class InfoPageScaffold extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _TopUtilityBar(onLogin: () => _pushLogin(context)),
-            const _NavBar(),
+            _NavBar(current: current),
             child,
             const _Footer(),
           ],
@@ -203,6 +204,7 @@ class IntroPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InfoPageScaffold(
+      current: 'about',
       child: PageSection(
         eyebrow: 'من نحن',
         title: 'نبذة عن الوحدة',
@@ -237,6 +239,7 @@ class VisionPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InfoPageScaffold(
+      current: 'about',
       child: PageSection(
         eyebrow: 'وجهتنا',
         title: 'الرؤية والرسالة',
@@ -279,6 +282,7 @@ class ContactPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InfoPageScaffold(
+      current: 'contact',
       child: PageSection(
         eyebrow: 'تواصل معنا',
         title: 'تواصل',
@@ -455,6 +459,7 @@ class GoalsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InfoPageScaffold(
+      current: 'about',
       child: PageSection(
         eyebrow: 'طموحنا',
         title: 'أهداف الوحدة',
@@ -548,6 +553,7 @@ class MembersPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InfoPageScaffold(
+      current: 'about',
       child: PageSection(
         eyebrow: 'هيكلتنا',
         title: 'الهيكل التنظيمي',
@@ -648,6 +654,7 @@ class AcademicCalendarPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InfoPageScaffold(
+      current: 'calendar',
       child: PageSection(
         eyebrow: 'هيكلتنا الزمنية',
         title: 'التقويم الجامعي للفصل الدراسي الأول لعام 1448هـ',
@@ -975,6 +982,7 @@ class _FormsPageState extends State<FormsPage> {
   @override
   Widget build(BuildContext context) {
     return InfoPageScaffold(
+      current: 'guides',
       child: PageSection(
         eyebrow: 'نماذج',
         title: 'نماذج الوحدة',
@@ -1328,8 +1336,9 @@ class _NavSubItem {
 class _NavDropdown extends StatelessWidget {
   final String label;
   final List<_NavSubItem> items;
+  final bool active;
 
-  const _NavDropdown({required this.label, required this.items});
+  const _NavDropdown({required this.label, required this.items, this.active = false});
 
   @override
   Widget build(BuildContext context) {
@@ -1350,13 +1359,25 @@ class _NavDropdown extends StatelessWidget {
             ),
           ),
       ],
-      child: Padding(
+      child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: active ? AppColors.gold.withValues(alpha: 0.10) : null,
+          borderRadius: BorderRadius.circular(8),
+          border: active ? const Border(bottom: BorderSide(color: AppColors.gold, width: 2)) : null,
+        ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(label, style: const TextStyle(color: AppColors.green, fontSize: 14, fontWeight: FontWeight.w700)),
-            const Icon(Icons.arrow_drop_down, size: 20, color: AppColors.green),
+            Text(
+              label,
+              style: TextStyle(
+                color: active ? AppColors.greenDark : AppColors.green,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            Icon(Icons.arrow_drop_down, size: 20, color: active ? AppColors.greenDark : AppColors.green),
           ],
         ),
       ),
@@ -1376,8 +1397,47 @@ final List<_NavSubItem> _guidesAndFormsItems = [
   _NavSubItem('النماذج', Icons.description_outlined, (_) => const FormsPage()),
 ];
 
+/// زر تنقّل بسيط بحالة "نشط" (خلفية ذهبية شفافة + خط ذهبي سفلي 2px) - نفس
+/// أسلوب `_NavDropdown` النشط، لضمان هوية موحَّدة لكل عناصر الشريط.
+class _NavItemButton extends StatelessWidget {
+  final String label;
+  final IconData? icon;
+  final VoidCallback onPressed;
+  final bool active;
+
+  const _NavItemButton({required this.label, this.icon, required this.onPressed, this.active = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton(
+      onPressed: onPressed,
+      style: TextButton.styleFrom(
+        foregroundColor: active ? AppColors.greenDark : AppColors.green,
+        textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+          side: active ? const BorderSide(color: AppColors.gold, width: 2) : BorderSide.none,
+        ),
+        backgroundColor: active ? AppColors.gold.withValues(alpha: 0.10) : null,
+      ).copyWith(
+        overlayColor: WidgetStateProperty.all(AppColors.green.withValues(alpha: 0.05)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[Icon(icon, size: 17, color: active ? AppColors.greenDark : AppColors.green), const SizedBox(width: 6)],
+          Text(label),
+        ],
+      ),
+    );
+  }
+}
+
 class _NavBar extends StatelessWidget {
-  const _NavBar();
+  final String? current;
+
+  const _NavBar({this.current});
 
   @override
   Widget build(BuildContext context) {
@@ -1392,29 +1452,15 @@ class _NavBar extends StatelessWidget {
         builder: (context, constraints) {
           final isWide = constraints.maxWidth >= 860;
 
-          final navButtonStyle = TextButton.styleFrom(
-            foregroundColor: AppColors.green,
-            textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          ).copyWith(
-            overlayColor: WidgetStateProperty.all(AppColors.green.withValues(alpha: 0.05)),
-          );
           final navItems = [
-            TextButton(
-              onPressed: () => _goHome(context),
-              style: navButtonStyle,
-              child: const Text('الرئيسية'),
-            ),
-            _NavDropdown(label: 'عن الوحدة', items: _aboutUnitItems),
-            _NavDropdown(label: 'الأدلة والنماذج', items: _guidesAndFormsItems),
-            TextButton.icon(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const AcademicCalendarPage()),
-              ),
-              style: navButtonStyle,
-              icon: const Icon(Icons.calendar_month_outlined, size: 17, color: AppColors.green),
-              label: const Text('التقويم الجامعي'),
+            _NavItemButton(label: 'الرئيسية', onPressed: () => _goHome(context), active: current == 'home'),
+            _NavDropdown(label: 'عن الوحدة', items: _aboutUnitItems, active: current == 'about'),
+            _NavDropdown(label: 'الأدلة والنماذج', items: _guidesAndFormsItems, active: current == 'guides'),
+            _NavItemButton(
+              label: 'التقويم الجامعي',
+              icon: Icons.calendar_month_outlined,
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AcademicCalendarPage())),
+              active: current == 'calendar',
             ),
             PopupMenuButton<String>(
               tooltip: 'روابط مهمة',
@@ -1460,12 +1506,10 @@ class _NavBar extends StatelessWidget {
                 ),
               ),
             ),
-            TextButton(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const ContactPage()),
-              ),
-              style: navButtonStyle,
-              child: const Text('تواصل معنا'),
+            _NavItemButton(
+              label: 'تواصل معنا',
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ContactPage())),
+              active: current == 'contact',
             ),
           ];
 
@@ -2535,6 +2579,7 @@ class _GuidesHubPageState extends State<GuidesHubPage> {
   @override
   Widget build(BuildContext context) {
     return InfoPageScaffold(
+      current: 'guides',
       child: PageSection(
         eyebrow: 'مرجعك الشامل',
         title: 'الأدلة الإرشادية',
