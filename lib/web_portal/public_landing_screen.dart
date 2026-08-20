@@ -2183,58 +2183,124 @@ class _MissionBar extends StatelessWidget {
   }
 }
 
-/// بطاقة مؤشر عام واحدة - مصمَّمة كـ`Dynamic Component` منذ البداية
+/// درجة هوية (لون + تدرّجه الفاتح) لبطاقة مؤشر واحدة - إيقاع أخضر/ذهبي
+/// متحكَّم به بدل ألوان عشوائية لكل بطاقة (بطلب سليمان الصريح 2026-08-20).
+enum _MetricTone { green, darkGreen, gold, softGold }
+
+extension on _MetricTone {
+  Color get color => switch (this) {
+        _MetricTone.green => AppColors.green,
+        _MetricTone.darkGreen => AppColors.greenDark,
+        _MetricTone.gold => AppColors.gold,
+        _MetricTone.softGold => AppColors.goldLight,
+      };
+}
+
+/// بطاقة مؤشر KPI مؤسسية مضغوطة - مصمَّمة كـ`Dynamic Component` منذ البداية
 /// ([value] اختياري نوعه `int?`): طالما لم تُربَط ببيانات حقيقية بعد تعرض
-/// "—" وملاحظة "سيتم تحديث المؤشر عند اكتمال ربط البيانات" (بطلب سليمان
-/// الصريح 2026-08-20: يُمنع منعًا تامًا وضع أرقام تجريبية/وهمية). حين تتوفر
-/// البيانات لاحقًا يكفي تمرير [value] الحقيقي بلا أي تعديل على التصميم.
+/// "—" كقيمة مقصودة (لا فارغة) + شارة "قيد ربط البيانات" المختصرة بدل تكرار
+/// الجملة الطويلة أربع مرات (بطلب سليمان الصريح 2026-08-20: "يجب أن تبدو
+/// —  مقصودة لا ناقصة"). حين تتوفر البيانات لاحقًا يكفي تمرير [value] الحقيقي
+/// بلا أي تعديل على التصميم.
 class _MetricCard extends StatelessWidget {
   final IconData icon;
   final String label;
+  final _MetricTone tone;
   final int? value;
 
-  const _MetricCard({required this.icon, required this.label, this.value});
+  const _MetricCard({required this.icon, required this.label, required this.tone, this.value});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 120,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: const Color(0xFFE6E8EB)),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 14, offset: const Offset(0, 4))],
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: AppColors.gold, size: 18),
-          const SizedBox(height: 2),
-          Text(
-            value == null ? '—' : '$value',
-            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.greenDark, height: 1),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            label,
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.green, height: 1.2),
-          ),
-          if (value == null) ...[
-            const SizedBox(height: 2),
-            Text(
-              'سيتم تحديث المؤشر عند اكتمال ربط البيانات',
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 10, height: 1.2, color: Color(0xFF7A817F)),
+    final accent = tone.color;
+    return _HoverLift(
+      child: Container(
+        height: 124,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: AppColors.green.withValues(alpha: 0.10)),
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [BoxShadow(color: AppColors.greenDark.withValues(alpha: 0.05), blurRadius: 16, offset: const Offset(0, 5))],
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      value == null ? '—' : '$value',
+                      style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800, color: AppColors.greenDark, height: 1),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      label,
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.greenDark, height: 1.2),
+                    ),
+                    if (value == null) ...[
+                      const SizedBox(height: 5),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(color: AppColors.gold.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(999)),
+                        child: const Text(
+                          'قيد ربط البيانات',
+                          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Color(0xFF786321)),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            Container(
+              width: 46,
+              alignment: Alignment.center,
+              color: accent,
+              child: Icon(icon, color: Colors.white, size: 20),
             ),
           ],
-        ],
+        ),
+      ),
+    );
+  }
+}
+
+/// تأثير Hover مؤسسي هادئ (ارتفاع 2px + ظل أعمق قليلًا) - يُستخدم لبطاقات
+/// المؤشرات ومسارات الوحدة معًا لضمان هوية تفاعل موحَّدة.
+class _HoverLift extends StatefulWidget {
+  final Widget child;
+  const _HoverLift({required this.child});
+
+  @override
+  State<_HoverLift> createState() => _HoverLiftState();
+}
+
+class _HoverLiftState extends State<_HoverLift> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        transform: Matrix4.translationValues(0, _hovered ? -2 : 0, 0),
+        decoration: _hovered
+            ? BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [BoxShadow(color: AppColors.greenDark.withValues(alpha: 0.08), blurRadius: 20, offset: const Offset(0, 8))],
+              )
+            : null,
+        child: widget.child,
       ),
     );
   }
@@ -2249,10 +2315,10 @@ class _MetricsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const metrics = [
-      _MetricCard(icon: Icons.groups_outlined, label: 'الطلبة المستفيدون'),
-      _MetricCard(icon: Icons.support_agent_outlined, label: 'المرشدون الأكاديميون'),
-      _MetricCard(icon: Icons.school_outlined, label: 'الخريجون'),
-      _MetricCard(icon: Icons.volunteer_activism_outlined, label: 'الخدمات والمبادرات'),
+      _MetricCard(icon: Icons.groups_outlined, label: 'الطلبة المستفيدون', tone: _MetricTone.green),
+      _MetricCard(icon: Icons.support_agent_outlined, label: 'المرشدون الأكاديميون', tone: _MetricTone.darkGreen),
+      _MetricCard(icon: Icons.school_outlined, label: 'الخريجون', tone: _MetricTone.gold),
+      _MetricCard(icon: Icons.volunteer_activism_outlined, label: 'الخدمات والمبادرات', tone: _MetricTone.softGold),
     ];
     return Container(
       width: double.infinity,
@@ -2283,7 +2349,7 @@ class _MetricsSection extends StatelessWidget {
                     physics: const NeverScrollableScrollPhysics(),
                     mainAxisSpacing: 14,
                     crossAxisSpacing: 14,
-                    childAspectRatio: isNarrow ? 1.6 : (constraints.maxWidth / 4 - 11) / 120,
+                    childAspectRatio: isNarrow ? 1.6 : (constraints.maxWidth / 4 - 11) / 124,
                     children: metrics,
                   );
                 },
@@ -2307,7 +2373,7 @@ class _TracksSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      color: const Color(0xFFF7F7F5),
+      color: const Color(0xFFFAF9F6),
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
       child: Center(
         child: ConstrainedBox(
@@ -2355,6 +2421,10 @@ class _TracksSection extends StatelessWidget {
   }
 }
 
+/// بطاقة "مسار وحدة" مؤسسية - أيقونة قوية + عنوان بارز + خط تفصيلي ذهبي رفيع
+/// على الحافة اليمنى (بدل المستطيل النصّي العام السابق). بلا سهم اتجاهي لأن
+/// البطاقة لا تفتح صفحة فعلية بعد - إضافة سهم بلا وجهة حقيقية تُعدّ "تفاعلًا
+/// وهميًا" مرفوضًا صراحةً (سليمان 2026-08-20).
 class _TrackCard extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -2364,43 +2434,58 @@ class _TrackCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 100,
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: const Color(0xFFE6E8EB)),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 14, offset: const Offset(0, 4))],
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(color: AppColors.green.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
-            alignment: Alignment.center,
-            child: Icon(icon, color: AppColors.green, size: 22),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(title, maxLines: 1, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.greenDark)),
-                const SizedBox(height: 3),
-                Text(
-                  description,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade700, height: 1.4),
-                ),
-              ],
+    return _HoverLift(
+      child: Container(
+        height: 104,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: AppColors.green.withValues(alpha: 0.10)),
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [BoxShadow(color: AppColors.greenDark.withValues(alpha: 0.05), blurRadius: 16, offset: const Offset(0, 5))],
+        ),
+        child: Stack(
+          children: [
+            Positioned(
+              top: 14,
+              bottom: 14,
+              right: 0,
+              child: Container(width: 3, decoration: const BoxDecoration(color: AppColors.gold, borderRadius: BorderRadius.horizontal(left: Radius.circular(3)))),
             ),
-          ),
-        ],
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(color: AppColors.greenDark.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(14)),
+                    alignment: Alignment.center,
+                    child: Icon(icon, color: AppColors.greenDark, size: 26),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(title, maxLines: 1, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold, color: AppColors.greenDark, height: 1.35)),
+                        const SizedBox(height: 5),
+                        Text(
+                          description,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w400, color: Color(0xFF666D6A), height: 1.6),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
