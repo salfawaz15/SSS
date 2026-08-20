@@ -183,6 +183,18 @@ class AppTheme {
           borderSide: const BorderSide(color: AppColors.gold, width: 1.6),
         ),
       ),
+      // خلفية بيضاء صريحة لكل قوائم الفلاتر المنسدلة (DropdownButton/
+      // DropdownMenu) بدل الأخضر الفاتح الذي يفرضه Material 3 افتراضيًا
+      // (تظليل سطحي بلون ColorScheme.primary) - سليمان لاحظ صراحةً
+      // (2026-08-20) أنه يخالف الهوية البصرية (الأبيض هو لون السطح الموحَّد).
+      canvasColor: Colors.white,
+      dropdownMenuTheme: DropdownMenuThemeData(
+        menuStyle: MenuStyle(
+          backgroundColor: const WidgetStatePropertyAll(Colors.white),
+          surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+          shape: WidgetStatePropertyAll(RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+        ),
+      ),
       tabBarTheme: const TabBarThemeData(
         labelColor: Colors.white,
         unselectedLabelColor: Colors.white70,

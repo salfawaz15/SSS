@@ -377,6 +377,7 @@ class _FilterField extends StatelessWidget {
               isDense: true,
               icon: const Icon(Icons.expand_more_rounded, size: 18, color: _Tokens.textSecondary),
               style: const TextStyle(fontSize: 12.5, color: _Tokens.textPrimary, fontWeight: FontWeight.w500),
+              dropdownColor: Colors.white,
               borderRadius: BorderRadius.circular(9),
               items: [
                 const DropdownMenuItem(value: null, child: Padding(padding: EdgeInsets.only(right: 6), child: Text('الكل'))),
