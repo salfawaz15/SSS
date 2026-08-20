@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -21,6 +22,7 @@ import '../services/excel_parser_service.dart';
 import '../services/firestore_ticket_service.dart';
 import '../services/outside_course_repository.dart';
 import '../services/processed_file_parser_service.dart';
+import '../services/stage_download_service.dart';
 import '../services/web_download.dart';
 import '../theme/app_theme.dart';
 import 'admin_nav.dart';
@@ -495,6 +497,9 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
       final parts = key.split('|');
       final shatrLabel = parts[0] == ExcelParserService.shatrMale ? 'male' : 'female';
       downloadBytes(zipBytes, '${parts.length > 1 ? parts[1] : 'قسم'}_$shatrLabel.zip');
+      if (parts.length > 1) {
+        unawaited(StageDownloadService.recordAdvisorDownload(shatr: parts[0], department: parts[1]));
+      }
       if (mounted) _showSuccessSnackBar('تم تنزيل ملف القسم بنجاح');
     } catch (e) {
       if (mounted) {
@@ -516,6 +521,9 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
       final parts = key.split('|');
       final shatrLabel = parts[0] == ExcelParserService.shatrMale ? 'male' : 'female';
       downloadBytes(bytes, '${parts.length > 1 ? parts[1] : 'قسم'}_${shatrLabel}_مرحلة_المنسق.xlsx');
+      if (parts.length > 1) {
+        unawaited(StageDownloadService.recordCoordinatorDownload(shatr: parts[0], department: parts[1]));
+      }
       if (mounted) _showSuccessSnackBar('تم تنزيل ملف مرحلة المنسّق بنجاح');
     } catch (e) {
       if (mounted) {

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -18,6 +19,7 @@ import '../services/report_data_service.dart';
 import '../services/report_excel_service.dart';
 import '../services/report_filter_service.dart';
 import '../services/report_pdf_service.dart';
+import '../services/stage_download_service.dart';
 import '../services/stage_snapshot_service.dart';
 import '../services/web_download.dart';
 import '../theme/app_theme.dart';
@@ -270,6 +272,7 @@ class _CoordinatorBodyState extends State<_CoordinatorBody> {
       final roster = await AdvisorRosterService.loadAll();
       final zipBytes = AdvisorZipService.buildZip(tickets, roster: roster);
       downloadBytes(zipBytes, '${widget.department}.zip');
+      unawaited(StageDownloadService.recordAdvisorDownload(shatr: widget.shatr, department: widget.department));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('تم تنزيل ملف القسم بنجاح')),
@@ -293,6 +296,7 @@ class _CoordinatorBodyState extends State<_CoordinatorBody> {
     try {
       final bytes = EscalationFileService.buildStage2File(tickets);
       downloadBytes(bytes, '${widget.department}_مرحلة_المنسق.xlsx');
+      unawaited(StageDownloadService.recordCoordinatorDownload(shatr: widget.shatr, department: widget.department));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('تم تنزيل ملف مرحلة المنسّق بنجاح')),

@@ -240,6 +240,21 @@ service cloud.firestore {
           isCollegeCoordinatorFor(request.resource.data.shatr));
     }
 
+    // لحظة أول تنزيل لملف كل مرحلة (مرشد/منسّق قسم) لكل قسم-شطر - نقطة
+    // انطلاق حساب "التأخر" بلوحة الإدارة (StageDownloadService، بطلب
+    // سليمان صراحةً 2026-08-20). `resource == null` مطلوبة لأن الخدمة تقرأ
+    // المستند أولاً للتحقق من عدم وجوده قبل أول كتابة (Idempotency) - يجب
+    // السماح بهذه القراءة حتى لو لم يوجد المستند بعد.
+    match /stage_downloads/{docId} {
+      allow read: if isAdmin() || isViewer();
+      allow read: if resource == null || isCoordinatorFor(resource.data.shatr, resource.data.department);
+
+      allow create: if isAdmin() ||
+        isCoordinatorFor(request.resource.data.shatr, request.resource.data.department);
+      allow update: if isAdmin() ||
+        isCoordinatorFor(resource.data.shatr, resource.data.department);
+    }
+
     // دليل مقررات الحذف والإضافة (جدول تسكين الشعب لكل شطر) - رفع وقراءة
     // مقصوران على حساب المدير العام (salfawaz) فقط، حسب طلبه صراحةً.
     match /courseSchedules/{shatrId} {

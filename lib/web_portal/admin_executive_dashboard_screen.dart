@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../data/academic_department_names.dart';
+import '../services/excel_parser_service.dart';
+import '../services/firestore_ticket_service.dart';
+import '../services/stage_download_service.dart';
 import '../theme/app_theme.dart';
 import 'admin_nav.dart';
 import 'portal_header.dart';
@@ -15,9 +19,12 @@ import 'upload_hub_screen.dart';
 /// نوع الإجراء"، وتحويل "تحتاج تدخل إدارة الوحدة" لهرم تدرّجي (شطر ← قسم
 /// علمي ← تفاصيل) بدل عرض أسماء الطلبة مباشرة بالصفحة الرئيسية.
 ///
-/// **جميع بيانات هذه الصفحة وهمية عمدًا (Mock Data)** بطلب سليمان صراحةً
-/// لتقييم التصميم قبل الربط الفعلي بـFirestore - لا يوجد أي ربط بقاعدة
-/// بيانات بعد.
+/// **رُبطت ببيانات Firestore الحقيقية (2026-08-20)** - كل الأقسام مربوطة
+/// بـ`FirestoreTicketService.watchAllTickets()` و`StageDownloadService.watchAll()`
+/// عدا "آخر النشاطات" (التبويب الثاني بالبطاقة اليمنى) الذي يبقى Mock مؤقتًا
+/// (بموافقة سليمان صراحةً) لأنه يحتاج سجل حركات لحظي غير موجود بالنظام بعد.
+/// بنية الـWidgets وتصميمها البصري **بلا أي تغيير** عن النسخة المعتمدة
+/// (UI Frozen) - التعديل يقتصر على مصدر الأرقام (`_DashboardData.compute`).
 class AdminExecutiveDashboardScreen extends StatelessWidget {
   const AdminExecutiveDashboardScreen({super.key});
 
@@ -27,33 +34,310 @@ class AdminExecutiveDashboardScreen extends StatelessWidget {
       title: 'لوحة الإدارة',
       showBackButton: false,
       navItems: buildAdminNavItems(context, current: 'dashboard'),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1600),
-              child: const Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+      body: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: FirestoreTicketService.watchAllTickets(),
+        builder: (context, ticketsSnap) {
+          return StreamBuilder<Map<String, Map<String, dynamic>>>(
+            stream: StageDownloadService.watchAll(),
+            builder: (context, downloadsSnap) {
+              if (!ticketsSnap.hasData) {
+                return const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator()));
+              }
+              final data = _DashboardData.compute(ticketsSnap.data!, downloadsSnap.data ?? const {});
+              return ListView(
+                padding: const EdgeInsets.all(16),
                 children: [
-                  _LastUpdateBar(),
-                  SizedBox(height: 14),
-                  _KpiRow(),
-                  SizedBox(height: 18),
-                  _WorkflowSection(),
-                  SizedBox(height: 18),
-                  _DepartmentPerformanceSection(),
-                  SizedBox(height: 18),
-                  _ActionTypeCompletionSection(),
-                  SizedBox(height: 18),
-                  _MainGrid(),
-                  SizedBox(height: 12),
+                  Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1600),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const _LastUpdateBar(),
+                          const SizedBox(height: 14),
+                          _KpiRow(data: data),
+                          const SizedBox(height: 18),
+                          _WorkflowSection(data: data),
+                          const SizedBox(height: 18),
+                          _DepartmentPerformanceSection(data: data),
+                          const SizedBox(height: 18),
+                          _ActionTypeCompletionSection(data: data),
+                          const SizedBox(height: 18),
+                          _MainGrid(data: data),
+                          const SizedBox(height: 12),
+                        ],
+                      ),
+                    ),
+                  ),
                 ],
-              ),
-            ),
-          ),
-        ],
+              );
+            },
+          );
+        },
       ),
+    );
+  }
+}
+
+/// الأقسام العلمية الخمسة بترتيبها المعتمَد الثابت (سليمان: "نبدأ بالإدارة
+/// وننتهي بنظم المعلومات") - مصدر واحد لهذا الترتيب يُستخدَم في حساب الأداء
+/// وفي فرز مستوى الأقسام بـ"تحتاج تدخل إدارة الوحدة" معًا.
+const _kCanonicalDepartmentOrder = [
+  'قسم الإدارة',
+  'قسم المحاسبة',
+  'قسم التسويق',
+  'قسم الاقتصاد والتمويل',
+  'قسم نظم المعلومات الإدارية',
+];
+
+/// أعلى أعمدة حالة (`advisor_status`/`coordinator_status`/`college_status`)
+/// عن "تم الإنجاز فعليًا" - نفس القيمة المعتمدة بـ`FirestoreTicketService`
+/// و`excel_export_service.dart`.
+const _kCompletedMarker = 'تم الإنجاز';
+
+enum _Stage { advisor, deptReview, collegeReview, closed }
+
+class _ActionCompute {
+  final String actionType;
+  final _Stage stage;
+  final bool overdue;
+  final bool advisorTouched;
+  const _ActionCompute({required this.actionType, required this.stage, required this.overdue, required this.advisorTouched});
+}
+
+class _MutableStats {
+  int total = 0;
+  int overdue = 0;
+  int completed = 0;
+  int get processing => total - overdue - completed;
+  _DeptShatrStats toStats() => _DeptShatrStats(total: total, processing: processing, overdue: overdue, completed: completed);
+}
+
+class _MutableActionType {
+  int total = 0;
+  int completed = 0;
+  int processing = 0;
+  int notStarted = 0;
+}
+
+/// يحوّل تذاكر Firestore الخام + سجلات تنزيل المراحل إلى كل الأرقام التي
+/// تحتاجها اللوحة دفعة واحدة - مصدر واحد يضمن اتساق كل الأرقام ببعضها
+/// (نفس الضمان الذي وفّرته `_kDepartmentPerf` سابقًا للبيانات الوهمية).
+class _DashboardData {
+  final List<_DepartmentPerf> departmentPerf;
+  final List<_WorkflowStage> workflowStages;
+  final List<_ActionTypeStats> actionTypeStats;
+  final List<_ManagementCase> managementCases;
+  final int totalRequests;
+  final int totalCompleted;
+  final int totalOverdue;
+
+  const _DashboardData({
+    required this.departmentPerf,
+    required this.workflowStages,
+    required this.actionTypeStats,
+    required this.managementCases,
+    required this.totalRequests,
+    required this.totalCompleted,
+    required this.totalOverdue,
+  });
+
+  static String _displayDepartment(String rawDepartment) {
+    final normalized = normalizeDepartmentName(rawDepartment);
+    switch (normalized) {
+      case 'قسم الادارة':
+        return 'قسم الإدارة';
+      case 'قسم الاقتصاد و التمويل':
+        return 'قسم الاقتصاد والتمويل';
+      case 'قسم نظم المعلومات الادارية':
+        return 'قسم نظم المعلومات الإدارية';
+      default:
+        return normalized;
+    }
+  }
+
+  /// يصنّف إجراءً واحدًا: أين هو الآن بمسار سير العمل، وهل تجاوز مهلته -
+  /// المهلة تُحسب من لحظة تنزيل الملف (بطلب سليمان صراحةً 2026-08-20: "من
+  /// تاريخ تنزيل الملف يبدأ العدّ") لا من تاريخ رفع ملف الفورمز، بيوم واحد
+  /// لكل من المرشد ومنسّق القسم (كلٌّ من تنزيله هو)، ومنسّق الكلية بلا مهلة
+  /// إطلاقًا ("ليس له وقت ولا تأخير").
+  static _ActionCompute _classifyAction(
+    Map<String, dynamic> action,
+    DateTime? advisorDownloadedAt,
+    DateTime? coordinatorDownloadedAt,
+    DateTime now,
+  ) {
+    final advisorStatus = (action['advisor_status'] ?? '').toString();
+    final coordinatorStatus = (action['coordinator_status'] ?? '').toString();
+    final collegeStatus = (action['college_status'] ?? '').toString();
+    final actionType = (action['action_type'] ?? '').toString();
+
+    final _Stage stage;
+    if (collegeStatus == _kCompletedMarker) {
+      stage = _Stage.closed;
+    } else if (coordinatorStatus == _kCompletedMarker) {
+      stage = _Stage.collegeReview;
+    } else if (advisorStatus == _kCompletedMarker) {
+      stage = _Stage.deptReview;
+    } else {
+      stage = _Stage.advisor;
+    }
+
+    var overdue = false;
+    if (stage == _Stage.advisor && advisorDownloadedAt != null) {
+      overdue = now.difference(advisorDownloadedAt).inHours >= 24;
+    } else if (stage == _Stage.deptReview && coordinatorDownloadedAt != null) {
+      overdue = now.difference(coordinatorDownloadedAt).inHours >= 24;
+    }
+
+    return _ActionCompute(actionType: actionType, stage: stage, overdue: overdue, advisorTouched: advisorStatus.isNotEmpty);
+  }
+
+  static String _formatWaiting(DateTime? advisorDl, DateTime? coordDl, DateTime now) {
+    final ref = coordDl ?? advisorDl;
+    if (ref == null) return 'غير محدَّد';
+    final diff = now.difference(ref);
+    if (diff.inDays >= 1) return '${diff.inDays} ${diff.inDays == 1 ? 'يوم' : 'أيام'}';
+    if (diff.inHours >= 1) return '${diff.inHours} ${diff.inHours == 1 ? 'ساعة' : 'ساعات'}';
+    return 'أقل من ساعة';
+  }
+
+  factory _DashboardData.compute(
+    List<Map<String, dynamic>> tickets,
+    Map<String, Map<String, dynamic>> downloads,
+  ) {
+    final now = DateTime.now();
+
+    DateTime? downloadTime(String shatr, String department, String field) {
+      final doc = downloads['${shatr}_$department'];
+      final ts = doc == null ? null : doc[field];
+      if (ts == null) return null;
+      try {
+        return (ts as dynamic).toDate() as DateTime;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    final deptTotals = <String, _MutableStats>{};
+    var stage3 = 0, stage4 = 0, stage5 = 0, stage6 = 0;
+    final actionTypeAcc = <String, _MutableActionType>{};
+    final cases = <_ManagementCase>[];
+    var totalOverdue = 0;
+
+    for (final ticket in tickets) {
+      final shatrRaw = (ticket['shatr'] ?? '').toString();
+      final shatrKey = shatrRaw == ExcelParserService.shatrMale ? 'male' : 'female';
+      final rawDept = (ticket['department'] ?? '').toString();
+      final displayDept = _displayDepartment(rawDept);
+      final studentName = (ticket['name'] ?? '').toString();
+      final hasDisability = ticket['has_disability'] == true;
+      final expectedGraduate = ticket['expected_graduate'] == true;
+
+      final advisorDl = downloadTime(shatrRaw, rawDept, 'advisor_downloaded_at');
+      final coordDl = downloadTime(shatrRaw, rawDept, 'coordinator_downloaded_at');
+
+      final actions = (ticket['actions'] as List?) ?? const [];
+      final statKey = '$displayDept|$shatrKey';
+      final stats = deptTotals.putIfAbsent(statKey, () => _MutableStats());
+      final ticketOverdueActions = <_ActionCompute>[];
+
+      for (final raw in actions) {
+        final action = Map<String, dynamic>.from(raw as Map);
+        final computed = _classifyAction(action, advisorDl, coordDl, now);
+
+        stats.total++;
+        switch (computed.stage) {
+          case _Stage.advisor:
+            stage3++;
+          case _Stage.deptReview:
+            stage4++;
+          case _Stage.collegeReview:
+            stage5++;
+          case _Stage.closed:
+            stage6++;
+            stats.completed++;
+        }
+        if (computed.stage != _Stage.closed && computed.overdue) {
+          stats.overdue++;
+          totalOverdue++;
+          ticketOverdueActions.add(computed);
+        }
+
+        final typeAcc = actionTypeAcc.putIfAbsent(computed.actionType, () => _MutableActionType());
+        typeAcc.total++;
+        if (computed.stage == _Stage.closed) {
+          typeAcc.completed++;
+        } else if (computed.stage == _Stage.advisor && !computed.advisorTouched) {
+          typeAcc.notStarted++;
+        } else {
+          typeAcc.processing++;
+        }
+      }
+
+      // "تحتاج تدخل إدارة الوحدة": أولوية عاجلة (ذوو إعاقة/متوقع تخرجه) بصرف
+      // النظر عن التأخر، وإلا فأي إجراء تجاوز مهلته فعليًا.
+      if (hasDisability || expectedGraduate) {
+        cases.add(_ManagementCase(
+          shatr: shatrKey,
+          department: displayDept,
+          student: studentName,
+          type: ticketOverdueActions.isNotEmpty
+              ? ticketOverdueActions.first.actionType
+              : (actions.isEmpty ? '' : (actions.first as Map)['action_type'].toString()),
+          status: 'مصعدة لإدارة الوحدة',
+          reason: hasDisability ? 'طالب من ذوي الإعاقة' : 'طالب متوقع تخرجه',
+          waiting: _formatWaiting(advisorDl, coordDl, now),
+          severity: _CaseSeverity.urgent,
+        ));
+      } else if (ticketOverdueActions.isNotEmpty) {
+        cases.add(_ManagementCase(
+          shatr: shatrKey,
+          department: displayDept,
+          student: studentName,
+          type: ticketOverdueActions.first.actionType,
+          status: 'متأخرة',
+          reason: 'تجاوزت مدة المعالجة',
+          waiting: _formatWaiting(advisorDl, coordDl, now),
+          severity: _CaseSeverity.overdue,
+        ));
+      }
+    }
+
+    final departmentPerf = _kCanonicalDepartmentOrder.map((name) {
+      final male = deptTotals['$name|male']?.toStats() ?? const _DeptShatrStats(total: 0, processing: 0, overdue: 0, completed: 0);
+      final female = deptTotals['$name|female']?.toStats() ?? const _DeptShatrStats(total: 0, processing: 0, overdue: 0, completed: 0);
+      return _DepartmentPerf(name: name, male: male, female: female);
+    }).toList();
+
+    final totalRequests = departmentPerf.fold<int>(0, (s, d) => s + d.male.total + d.female.total);
+    final totalCompleted = departmentPerf.fold<int>(0, (s, d) => s + d.male.completed + d.female.completed);
+
+    const typeLabels = {'إضافة': 'طلبات الإضافة', 'حذف': 'طلبات الحذف', 'تعديل': 'طلبات تعديل الشعبة'};
+    final actionTypeStats = typeLabels.entries.map((e) {
+      final acc = actionTypeAcc[e.key];
+      return _ActionTypeStats(label: e.value, completed: acc?.completed ?? 0, processing: acc?.processing ?? 0, notStarted: acc?.notStarted ?? 0);
+    }).toList();
+
+    final workflowStages = [
+      const _WorkflowStage(role: 'إدارة الوحدة', subtitle: 'توزيع الطلبات', value: 0, color: _WorkflowSection.neutral),
+      const _WorkflowStage(role: 'منسّق القسم العلمي', subtitle: 'إحالة للمرشد', value: 0, color: _WorkflowSection.neutral),
+      _WorkflowStage(role: 'المرشد الأكاديمي', subtitle: 'تنفيذ الإجراء', value: stage3, color: _WorkflowSection.neutral),
+      _WorkflowStage(role: 'منسّق القسم العلمي', subtitle: 'مراجعة الإجراء', value: stage4, color: _WorkflowSection.neutral),
+      _WorkflowStage(role: 'منسّق الكلية', subtitle: 'المراجعة والاعتماد', value: stage5, color: _WorkflowSection.neutral),
+      _WorkflowStage(role: 'إدارة الوحدة', subtitle: 'المراجعة والإغلاق', value: stage6, color: AppColors.green),
+    ];
+
+    cases.sort((a, b) => a.severity.index.compareTo(b.severity.index));
+
+    return _DashboardData(
+      departmentPerf: departmentPerf,
+      workflowStages: workflowStages,
+      actionTypeStats: actionTypeStats,
+      managementCases: cases,
+      totalRequests: totalRequests,
+      totalCompleted: totalCompleted,
+      totalOverdue: totalOverdue,
     );
   }
 }
@@ -134,9 +418,11 @@ class _MiniDonut extends StatelessWidget {
   }
 }
 
-/// شريط صغير هادئ: آخر تحديث للبيانات + رابط نصي خافت لصفحة "رفع ملفات"
+/// شريط صغير هادئ: مؤشر بيانات حيّة + رابط نصي خافت لصفحة "رفع ملفات"
 /// المستقلة (باسم "إدارة البيانات" لا تكرار اسمها هنا - موجودة أصلاً بشريط
-/// التنقّل العلوي).
+/// التنقّل العلوي). كان نص تاريخ ثابتًا وهميًا قبل الربط الفعلي بـFirestore
+/// (2026-08-20) - استبدل بمؤشر "حيّة" صادق بدل تاريخ مزيَّف لا معنى له بعد
+/// أن أصبحت الصفحة تُحدَّث لحظيًا مع أي تغيير بقاعدة البيانات.
 class _LastUpdateBar extends StatelessWidget {
   const _LastUpdateBar();
 
@@ -144,9 +430,9 @@ class _LastUpdateBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(Icons.update, size: 13, color: Colors.grey.shade400),
+        Container(width: 7, height: 7, decoration: const BoxDecoration(color: AppColors.green, shape: BoxShape.circle)),
         const SizedBox(width: 6),
-        Text('آخر تحديث للبيانات: 18 أغسطس 2026 – 10:35 ص', style: TextStyle(fontSize: 11.5, color: Colors.grey.shade500)),
+        Text('البيانات حيّة - تتحدّث تلقائيًا فور أي تغيير', style: TextStyle(fontSize: 11.5, color: Colors.grey.shade500)),
         Text('  |  ', style: TextStyle(fontSize: 11.5, color: Colors.grey.shade400)),
         InkWell(
           onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const UploadHubScreen())),
@@ -168,35 +454,37 @@ class _LastUpdateBar extends StatelessWidget {
 /// 4 بطاقات تشغيلية Compact - أصغر بنحو 20% من النسخة السابقة، مع مؤشر دائري
 /// مصغَّر لبطاقة نسبة الإنجاز بدل أيقونة ثابتة.
 class _KpiRow extends StatelessWidget {
-  const _KpiRow();
+  final _DashboardData data;
+  const _KpiRow({required this.data});
 
   @override
   Widget build(BuildContext context) {
-    // نسبة/عدد الإنجاز مُشتقّان من [_kDepartmentPerf] نفسها (المصدر المركزي)
-    // بدل رقم منفصل - يضمن اتساق "78%" مع مجموع أداء الأقسام العلمية دائمًا.
-    final total = _kTotalRequests;
-    final completed = _kTotalCompleted;
+    final total = data.totalRequests;
+    final completed = data.totalCompleted;
     final rate = total == 0 ? 0 : (completed / total * 100).round();
+    final pending = total - completed;
+    final escalated = data.managementCases.where((c) => c.severity == _CaseSeverity.urgent).length;
+    final overdue = data.totalOverdue;
 
     final cards = <Widget>[
-      const _KpiCard(
+      _KpiCard(
         title: 'طلبات تحتاج إجراء',
-        value: '12',
-        meta: '3 طلبات جديدة منذ آخر دخول',
+        value: '$pending',
+        meta: 'من إجمالي $total طلبًا',
         icon: Icons.pending_actions_outlined,
         accent: AppColors.green,
       ),
-      const _KpiCard(
+      _KpiCard(
         title: 'حالات مصعدة لإدارة الوحدة',
-        value: '4',
-        meta: 'تحتاج مراجعة عاجلة',
+        value: '$escalated',
+        meta: escalated == 0 ? 'لا توجد حالات حاليًا' : 'تحتاج مراجعة عاجلة',
         icon: Icons.priority_high_rounded,
         accent: AppColors.errorRed,
       ),
-      const _KpiCard(
+      _KpiCard(
         title: 'طلبات متأخرة',
-        value: '7',
-        meta: 'أقدم طلب منذ 3 أيام',
+        value: '$overdue',
+        meta: overdue == 0 ? 'لا توجد طلبات متأخرة' : 'يلزم متابعتها',
         icon: Icons.schedule_outlined,
         accent: AppColors.gold,
       ),
@@ -309,7 +597,9 @@ class _KpiCard extends StatelessWidget {
 /// لمنسّق القسم العلمي للمراجعة، ثم منسّق الكلية، وأخيرًا يعود لإدارة الوحدة
 /// (لا "مكتمل" منفصلة - العودة لإدارة الوحدة هي الإغلاق). الألوان تعبّر عن
 /// الحالة (محايد أثناء المعالجة، أخضر عند الإغلاق) لا عن الدور - بطلب سليمان
-/// صراحةً (2026-08-19).
+/// صراحةً (2026-08-19). المرحلتان 1 و2 (توزيع/إحالة) دائمًا صفر بالبيانات
+/// الحقيقية - النظام الحالي يوزّع/يحيل تلقائيًا فور رفع ملف الفورمز، فلا
+/// توجد حالة "قيد التوزيع" منفصلة تقنيًا.
 class _WorkflowStage {
   final String role;
   final String subtitle;
@@ -319,21 +609,14 @@ class _WorkflowStage {
 }
 
 class _WorkflowSection extends StatelessWidget {
-  const _WorkflowSection();
+  final _DashboardData data;
+  const _WorkflowSection({required this.data});
 
-  static const _neutral = Color(0xFF5B6B7C);
-
-  static const _stages = [
-    _WorkflowStage(role: 'إدارة الوحدة', subtitle: 'توزيع الطلبات', value: 10, color: _neutral),
-    _WorkflowStage(role: 'منسّق القسم العلمي', subtitle: 'إحالة للمرشد', value: 14, color: _neutral),
-    _WorkflowStage(role: 'المرشد الأكاديمي', subtitle: 'تنفيذ الإجراء', value: 9, color: _neutral),
-    _WorkflowStage(role: 'منسّق القسم العلمي', subtitle: 'مراجعة الإجراء', value: 8, color: _neutral),
-    _WorkflowStage(role: 'منسّق الكلية', subtitle: 'المراجعة والاعتماد', value: 6, color: _neutral),
-    _WorkflowStage(role: 'إدارة الوحدة', subtitle: 'المراجعة والإغلاق', value: 13, color: AppColors.green),
-  ];
+  static const neutral = Color(0xFF5B6B7C);
 
   @override
   Widget build(BuildContext context) {
+    final stages = data.workflowStages;
     // Process Stepper / Process Strip حقيقي - لا Cards كبيرة منفصلة بحدود
     // وخلفيات لكل مرحلة، بل عُقَد نصية مضغوطة داخل شريط أفقي واحد (بطلب
     // سليمان صراحةً 2026-08-19: تغيير نمط العرض نفسه لا تصغير البطاقات
@@ -360,9 +643,9 @@ class _WorkflowSection extends StatelessWidget {
             final strip = Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                for (var i = 0; i < _stages.length; i++) ...[
-                  _WorkflowStepNode(stage: _stages[i], isEdge: i == 0 || i == _stages.length - 1),
-                  if (i != _stages.length - 1)
+                for (var i = 0; i < stages.length; i++) ...[
+                  _WorkflowStepNode(stage: stages[i], isEdge: i == 0 || i == stages.length - 1),
+                  if (i != stages.length - 1)
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       child: Icon(Icons.arrow_back, size: 16, color: Colors.grey.shade400),
@@ -398,7 +681,7 @@ class _WorkflowStepNode extends StatelessWidget {
     // تحت الاسم - تمييز خفيف لبداية/نهاية الدورة بلا تحويلهما لبطاقتين.
     return InkWell(
       onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('عرض حالات مرحلة "${stage.role} - ${stage.subtitle}" (${stage.value}) - سيُفعَّل عند الربط الفعلي')),
+        SnackBar(content: Text('عرض حالات مرحلة "${stage.role} - ${stage.subtitle}" (${stage.value})')),
       ),
       borderRadius: BorderRadius.circular(8),
       hoverColor: stage.color.withValues(alpha: 0.06),
@@ -453,54 +736,14 @@ class _DepartmentPerf {
   const _DepartmentPerf({required this.name, required this.male, required this.female});
 }
 
-/// مصدر Mock Data مركزي واحد لأداء الأقسام العلمية - تُشتَق منه كل الأرقام
-/// المرتبطة بالإجمالي/المكتمل في بقية اللوحة (المؤشرات الرئيسية) بدل تكرار
-/// أرقام منفصلة قد تتعارض حسابيًا (سليمان 2026-08-19: "جميع الأرقام يجب أن
-/// تحكي نفس القصة" - إجمالي الطلبات 60، المكتمل 47، نسبة الإنجاز 78%).
-const _kDepartmentPerf = [
-  _DepartmentPerf(
-    name: 'قسم الإدارة',
-    male: _DeptShatrStats(total: 10, processing: 2, overdue: 1, completed: 7),
-    female: _DeptShatrStats(total: 8, processing: 3, overdue: 0, completed: 5),
-  ),
-  _DepartmentPerf(
-    name: 'قسم المحاسبة',
-    male: _DeptShatrStats(total: 7, processing: 1, overdue: 0, completed: 6),
-    female: _DeptShatrStats(total: 5, processing: 1, overdue: 0, completed: 4),
-  ),
-  _DepartmentPerf(
-    name: 'قسم التسويق',
-    male: _DeptShatrStats(total: 5, processing: 1, overdue: 0, completed: 4),
-    female: _DeptShatrStats(total: 4, processing: 0, overdue: 0, completed: 4),
-  ),
-  _DepartmentPerf(
-    name: 'قسم الاقتصاد والتمويل',
-    male: _DeptShatrStats(total: 4, processing: 1, overdue: 0, completed: 3),
-    female: _DeptShatrStats(total: 3, processing: 0, overdue: 0, completed: 3),
-  ),
-  // نظم المعلومات الإدارية آخر القائمة دائمًا (سليمان: "نبدأ بالإدارة
-  // وننتهي بنظم المعلومات") - الترتيب الكامل: الإدارة، المحاسبة، التسويق،
-  // الاقتصاد والتمويل، نظم المعلومات الإدارية. يُستخدَم بنفس الترتيب في كل
-  // مكان يُذكَر فيه أداء الأقسام أو حالاتها (لا فرز حسب الأداء أو الاسم).
-  _DepartmentPerf(
-    name: 'قسم نظم المعلومات الإدارية',
-    male: _DeptShatrStats(total: 8, processing: 1, overdue: 1, completed: 6),
-    female: _DeptShatrStats(total: 6, processing: 1, overdue: 0, completed: 5),
-  ),
-];
-
-/// إجمالي/مكتمل مشتقّان من [_kDepartmentPerf] نفسه - المرجع الوحيد لهذين
-/// الرقمين بكل اللوحة (تستهلكهما بطاقة "نسبة الإنجاز" بالمؤشرات الرئيسية).
-int get _kTotalRequests => _kDepartmentPerf.fold(0, (sum, d) => sum + d.male.total + d.female.total);
-int get _kTotalCompleted => _kDepartmentPerf.fold(0, (sum, d) => sum + d.male.completed + d.female.completed);
-
 enum _ShatrFilter { all, male, female }
 
 /// أداء الأقسام العلمية - نُقل مباشرة بعد "متابعة سير العمل" (بطلب سليمان:
 /// مدير الوحدة يحتاج معرفة أداء الأقسام العلمية مبكرًا)، مع فلتر شطر جديد
 /// (الكل/الطلاب/الطالبات) لمقارنة الأداء بحسب الشطر.
 class _DepartmentPerformanceSection extends StatefulWidget {
-  const _DepartmentPerformanceSection();
+  final _DashboardData data;
+  const _DepartmentPerformanceSection({required this.data});
 
   @override
   State<_DepartmentPerformanceSection> createState() => _DepartmentPerformanceSectionState();
@@ -532,8 +775,9 @@ class _DepartmentPerformanceSectionState extends State<_DepartmentPerformanceSec
           const _DepartmentGridHeader(),
           const Divider(height: 10, thickness: 1),
           // ترتيب الأقسام العلمية يبقى كما هو متّفَق عليه (لا فرز حسب الأداء
-          // أو الاسم) - نفس ترتيب [_kDepartmentPerf] دائمًا (سليمان 2026-08-19).
-          for (final d in _kDepartmentPerf) _DepartmentRow(name: d.name, stats: _statsFor(d)),
+          // أو الاسم) - نفس ترتيب [_kCanonicalDepartmentOrder] دائمًا (سليمان
+          // 2026-08-19).
+          for (final d in widget.data.departmentPerf) _DepartmentRow(name: d.name, stats: _statsFor(d)),
         ],
       ),
     );
@@ -613,7 +857,7 @@ class _DepartmentRow extends StatelessWidget {
     // بالرأس تمامًا حتى تتحاذى الأعمدة رأسيًا.
     return InkWell(
       onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('عرض تفاصيل "$name" - سيُفعَّل عند الربط الفعلي')),
+        SnackBar(content: Text('عرض تفاصيل "$name"')),
       ),
       borderRadius: BorderRadius.circular(10),
       hoverColor: AppColors.green.withValues(alpha: 0.05),
@@ -698,16 +942,8 @@ class _ActionTypeStats {
 }
 
 class _ActionTypeCompletionSection extends StatelessWidget {
-  const _ActionTypeCompletionSection();
-
-  // مجموع الإجمالي هنا (31+18+11=60) والمكتمل (24+15+8=47) يطابقان عمدًا
-  // إجمالي/مكتمل "أداء الأقسام العلمية" (_kTotalRequests/_kTotalCompleted) -
-  // نفس الـ60 طلبًا مصنَّفة بحسب القسم العلمي هنا، وبحسب نوع الإجراء هناك.
-  static const _types = [
-    _ActionTypeStats(label: 'طلبات الإضافة', completed: 24, processing: 4, notStarted: 3),
-    _ActionTypeStats(label: 'طلبات الحذف', completed: 15, processing: 2, notStarted: 1),
-    _ActionTypeStats(label: 'طلبات تعديل الشعبة', completed: 8, processing: 2, notStarted: 1),
-  ];
+  final _DashboardData data;
+  const _ActionTypeCompletionSection({required this.data});
 
   @override
   Widget build(BuildContext context) {
@@ -724,14 +960,14 @@ class _ActionTypeCompletionSection extends StatelessWidget {
           // الشاشات العريضة (سليمان 2026-08-19).
           LayoutBuilder(builder: (context, constraints) {
             if (constraints.maxWidth < 560) {
-              return Column(children: [for (final t in _types) Padding(padding: const EdgeInsets.only(bottom: 8), child: _ActionTypeCard(stats: t))]);
+              return Column(children: [for (final t in data.actionTypeStats) Padding(padding: const EdgeInsets.only(bottom: 8), child: _ActionTypeCard(stats: t))]);
             }
             return Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                for (var i = 0; i < _types.length; i++) ...[
+                for (var i = 0; i < data.actionTypeStats.length; i++) ...[
                   if (i != 0) const SizedBox(width: 10),
-                  Expanded(child: _ActionTypeCard(stats: _types[i])),
+                  Expanded(child: _ActionTypeCard(stats: data.actionTypeStats[i])),
                 ],
               ],
             );
@@ -805,176 +1041,32 @@ class _ManagementCase {
   });
 }
 
-/// 14 حالة وهمية (8 بشطر الطلاب، 6 بشطر الطالبات) - نفس توزيع الأمثلة التي
-/// طلبها سليمان بالضبط لشطر الطلاب.
-const _kManagementCases = <_ManagementCase>[
-  _ManagementCase(
-    shatr: 'male',
-    department: 'قسم الإدارة',
-    student: 'فهد ناصر المطيري',
-    type: 'إضافة وحذف',
-    status: 'أعيدت مرتين',
-    reason: 'تعارض في بيانات المقررات',
-    waiting: '6 ساعات',
-    severity: _CaseSeverity.review,
-  ),
-  _ManagementCase(
-    shatr: 'male',
-    department: 'قسم الإدارة',
-    student: 'عبدالرحمن سعيد الحارثي',
-    type: 'حالة إرشادية',
-    status: 'مصعدة لإدارة الوحدة',
-    reason: 'تجاوزت مدة المعالجة',
-    waiting: 'يوم واحد',
-    severity: _CaseSeverity.urgent,
-  ),
-  _ManagementCase(
-    shatr: 'male',
-    department: 'قسم الإدارة',
-    student: 'سلطان فهد العمري',
-    type: 'إضافة مقرر',
-    status: 'متأخرة',
-    reason: 'تجاوزت مدة المعالجة',
-    waiting: '4 أيام',
-    severity: _CaseSeverity.overdue,
-  ),
-  _ManagementCase(
-    shatr: 'male',
-    department: 'قسم المحاسبة',
-    student: 'تركي عبدالله الزهراني',
-    type: 'حذف مقرر',
-    status: 'تحتاج مراجعة',
-    reason: 'المرشد المختار غير مطابق',
-    waiting: '5 ساعات',
-    severity: _CaseSeverity.review,
-  ),
-  _ManagementCase(
-    shatr: 'male',
-    department: 'قسم التسويق',
-    student: 'محمد سالم الشهري',
-    type: 'حذف مقرر',
-    status: 'غير مسندة',
-    reason: 'طلب غير مسند لمرشد',
-    waiting: 'يوم واحد',
-    severity: _CaseSeverity.review,
-  ),
-  _ManagementCase(
-    shatr: 'male',
-    department: 'قسم التسويق',
-    student: 'خالد إبراهيم الغامدي',
-    type: 'إضافة وحذف',
-    status: 'مصعدة لإدارة الوحدة',
-    reason: 'طالب من ذوي الإعاقة',
-    waiting: '3 ساعات',
-    severity: _CaseSeverity.urgent,
-  ),
-  _ManagementCase(
-    shatr: 'male',
-    department: 'قسم نظم المعلومات الإدارية',
-    student: 'أحمد محمد العتيبي',
-    type: 'إضافة مقرر',
-    status: 'مصعدة لإدارة الوحدة',
-    reason: 'تجاوزت مدة المعالجة',
-    waiting: 'يومان',
-    severity: _CaseSeverity.urgent,
-  ),
-  _ManagementCase(
-    shatr: 'male',
-    department: 'قسم الاقتصاد والتمويل',
-    student: 'ياسر عبدالعزيز السبيعي',
-    type: 'حالة إرشادية',
-    status: 'تحتاج قرارًا من إدارة الوحدة',
-    reason: 'طالب متوقع تخرجه',
-    waiting: '4 ساعات',
-    severity: _CaseSeverity.review,
-  ),
-  _ManagementCase(
-    shatr: 'female',
-    department: 'قسم الإدارة',
-    student: 'ريم عبدالعزيز آل سعيد',
-    type: 'حالة إرشادية',
-    status: 'تحتاج قرارًا من إدارة الوحدة',
-    reason: 'طالبة متوقع تخرجها',
-    waiting: '4 ساعات',
-    severity: _CaseSeverity.review,
-  ),
-  _ManagementCase(
-    shatr: 'female',
-    department: 'قسم المحاسبة',
-    student: 'سارة عبدالله القحطاني',
-    type: 'حالة إرشادية',
-    status: 'تحتاج مراجعة',
-    reason: 'المرشد المختار غير مطابق',
-    waiting: '5 ساعات',
-    severity: _CaseSeverity.review,
-  ),
-  _ManagementCase(
-    shatr: 'female',
-    department: 'قسم المحاسبة',
-    student: 'لمياء خالد الدوسري',
-    type: 'إضافة مقرر',
-    status: 'متأخرة',
-    reason: 'تجاوزت مدة المعالجة',
-    waiting: '3 أيام',
-    severity: _CaseSeverity.overdue,
-  ),
-  _ManagementCase(
-    shatr: 'female',
-    department: 'قسم التسويق',
-    student: 'نورة فهد المالكي',
-    type: 'حذف مقرر',
-    status: 'مصعدة لإدارة الوحدة',
-    reason: 'طالبة من ذوي الإعاقة',
-    waiting: '3 ساعات',
-    severity: _CaseSeverity.urgent,
-  ),
-  _ManagementCase(
-    shatr: 'female',
-    department: 'قسم نظم المعلومات الإدارية',
-    student: 'هند سعد القرني',
-    type: 'تعديل شعبة',
-    status: 'تحتاج مراجعة',
-    reason: 'تعارض في بيانات الشعبة',
-    waiting: '6 ساعات',
-    severity: _CaseSeverity.review,
-  ),
-  _ManagementCase(
-    shatr: 'female',
-    department: 'قسم الاقتصاد والتمويل',
-    student: 'عبير ناصر الجهني',
-    type: 'إضافة وحذف',
-    status: 'مصعدة لإدارة الوحدة',
-    reason: 'تجاوزت مدة المعالجة',
-    waiting: 'يومان',
-    severity: _CaseSeverity.urgent,
-  ),
-];
-
 /// شبكة رئيسية: تحتاج تدخل إدارة الوحدة (70%) + النشاطات والتنبيهات (30%) -
 /// بلا فرض تساوي الارتفاع (كل قسم بارتفاعه الطبيعي، بطلب سليمان صراحةً).
 class _MainGrid extends StatelessWidget {
-  const _MainGrid();
+  final _DashboardData data;
+  const _MainGrid({required this.data});
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (context, constraints) {
       final stacked = constraints.maxWidth < 1000;
       if (stacked) {
-        return const Column(
+        return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _ManagementAttentionSection(),
-            SizedBox(height: 14),
-            _ActivityFeedSection(),
+            _ManagementAttentionSection(data: data),
+            const SizedBox(height: 14),
+            const _ActivityFeedSection(),
           ],
         );
       }
-      return const Row(
+      return Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(flex: 7, child: _ManagementAttentionSection()),
-          SizedBox(width: 14),
-          Expanded(flex: 3, child: _ActivityFeedSection()),
+          Expanded(flex: 7, child: _ManagementAttentionSection(data: data)),
+          const SizedBox(width: 14),
+          const Expanded(flex: 3, child: _ActivityFeedSection()),
         ],
       );
     });
@@ -986,7 +1078,8 @@ class _MainGrid extends StatelessWidget {
 /// صراحةً: Dashboard يعرض الصورة الإدارية العامة، وتفاصيل الحالات الفردية
 /// تظهر فقط بعد الدخول للقسم العلمي).
 class _ManagementAttentionSection extends StatefulWidget {
-  const _ManagementAttentionSection();
+  final _DashboardData data;
+  const _ManagementAttentionSection({required this.data});
 
   @override
   State<_ManagementAttentionSection> createState() => _ManagementAttentionSectionState();
@@ -999,7 +1092,8 @@ class _ManagementAttentionSectionState extends State<_ManagementAttentionSection
   String _shatr = 'male';
   String? _department;
 
-  List<_ManagementCase> get _casesInShatr => _kManagementCases.where((c) => c.shatr == _shatr).toList();
+  List<_ManagementCase> get _cases => widget.data.managementCases;
+  List<_ManagementCase> get _casesInShatr => _cases.where((c) => c.shatr == _shatr).toList();
   List<_ManagementCase> get _casesInDept => _casesInShatr.where((c) => c.department == _department).toList();
 
   String _severityLabel(_CaseSeverity s) => switch (s) {
@@ -1031,7 +1125,7 @@ class _ManagementAttentionSectionState extends State<_ManagementAttentionSection
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
                 decoration: BoxDecoration(color: AppColors.errorRed.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
-                child: Text('عدد الحالات: ${_kManagementCases.length}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.errorRed)),
+                child: Text('عدد الحالات: ${_cases.length}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.errorRed)),
               ),
             ],
           ),
@@ -1042,7 +1136,17 @@ class _ManagementAttentionSectionState extends State<_ManagementAttentionSection
             _buildBreadcrumb(),
             const SizedBox(height: 8),
           ],
-          if (_department == null) _buildDepartmentLevel() else _buildCaseLevel(),
+          if (_cases.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              child: Center(
+                child: Text('لا توجد حالات تحتاج تدخل إدارة الوحدة حاليًا', style: TextStyle(fontSize: 12.5, color: Colors.grey.shade500)),
+              ),
+            )
+          else if (_department == null)
+            _buildDepartmentLevel()
+          else
+            _buildCaseLevel(),
         ],
       ),
     );
@@ -1051,8 +1155,8 @@ class _ManagementAttentionSectionState extends State<_ManagementAttentionSection
   /// شريحتان صغيرتان (Segmented Control) بدل بطاقتين كبيرتين - توفّر مساحة
   /// كبيرة كانت تظهر فارغة أسفلهما (سليمان 2026-08-19).
   Widget _buildShatrTabs() {
-    final male = _kManagementCases.where((c) => c.shatr == 'male').length;
-    final female = _kManagementCases.where((c) => c.shatr == 'female').length;
+    final male = _cases.where((c) => c.shatr == 'male').length;
+    final female = _cases.where((c) => c.shatr == 'female').length;
 
     Widget tab(String label, String value, int count) {
       final selected = _shatr == value;
@@ -1102,13 +1206,20 @@ class _ManagementAttentionSectionState extends State<_ManagementAttentionSection
   /// (عاجلة/متأخرة/مراجعة) بدل نص حر متفرق (سليمان 2026-08-19).
   Widget _buildDepartmentLevel() {
     final cases = _casesInShatr;
-    // ترتيب الأقسام العلمية دائمًا حسب ترتيب [_kDepartmentPerf] المعتمد
-    // (الإدارة، المحاسبة، التسويق، الاقتصاد والتمويل، نظم المعلومات
+    // ترتيب الأقسام العلمية دائمًا حسب ترتيب [_kCanonicalDepartmentOrder]
+    // المعتمد (الإدارة، المحاسبة، التسويق، الاقتصاد والتمويل، نظم المعلومات
     // الإدارية) - لا حسب ترتيب ظهورها العرضي بقائمة الحالات (سليمان
     // 2026-08-19: "نبدأ بالإدارة وننتهي بنظم المعلومات").
-    final canonicalOrder = _kDepartmentPerf.map((d) => d.name).toList();
     final departments = cases.map((c) => c.department).toSet().toList()
-      ..sort((a, b) => canonicalOrder.indexOf(a).compareTo(canonicalOrder.indexOf(b)));
+      ..sort((a, b) => _kCanonicalDepartmentOrder.indexOf(a).compareTo(_kCanonicalDepartmentOrder.indexOf(b)));
+    if (departments.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        child: Center(
+          child: Text('لا توجد حالات بهذا الشطر حاليًا', style: TextStyle(fontSize: 12.5, color: Colors.grey.shade500)),
+        ),
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1224,7 +1335,7 @@ class _ManagementCaseRow extends StatelessWidget {
                   side: const BorderSide(color: AppColors.green),
                 ),
                 onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('عرض تفاصيل حالة "${item.student}" - سيُفعَّل عند الربط الفعلي')),
+                  SnackBar(content: Text('عرض تفاصيل حالة "${item.student}"')),
                 ),
                 child: const Text('عرض', style: TextStyle(fontSize: 10.5)),
               ),
@@ -1246,12 +1357,16 @@ class _ActivityItem {
 
 enum _FeedTab { alerts, activity }
 
-/// النشاطات والتنبيهات - أصبحت تبويبين مستقلّين ("التنبيهات" الافتراضي و
-/// "آخر النشاطات") بدل قائمة مختلطة، لأن التنبيه (يحتاج انتباهًا) والنشاط
-/// العادي (سجل لما حدث) ليسا بنفس الأهمية (سليمان 2026-08-19). قائمة العمل
-/// الفعلية تبقى حصرًا بقسم "تحتاج تدخل إدارة الوحدة" - التنبيه هنا إشعار
-/// فقط، لا قائمة عمل ثانية. ارتفاع القسم طبيعي (لا يُساوى بارتفاع القسم
-/// المجاور)، ويعرض 5 عناصر كحد أقصى + زر "عرض الكل" يتبع التبويب النشط.
+/// النشاطات والتنبيهات - **لا تزال Mock عمدًا** (بموافقة سليمان صراحةً
+/// 2026-08-20): تحتاج سجل حركات لحظي (متى/من/ماذا فعل) لا يحتفظ به النظام
+/// حاليًا - قاعدة البيانات تخزّن الحالة الأخيرة لكل تذكرة فقط، لا تاريخ
+/// التغييرات عليها. بقية أقسام اللوحة كلها مربوطة ببيانات حقيقية.
+/// أصبحت تبويبين مستقلّين ("التنبيهات" الافتراضي و"آخر النشاطات") بدل قائمة
+/// مختلطة، لأن التنبيه (يحتاج انتباهًا) والنشاط العادي (سجل لما حدث) ليسا
+/// بنفس الأهمية (سليمان 2026-08-19). قائمة العمل الفعلية تبقى حصرًا بقسم
+/// "تحتاج تدخل إدارة الوحدة" - التنبيه هنا إشعار فقط، لا قائمة عمل ثانية.
+/// ارتفاع القسم طبيعي (لا يُساوى بارتفاع القسم المجاور)، ويعرض 5 عناصر كحد
+/// أقصى + زر "عرض الكل" يتبع التبويب النشط.
 class _ActivityFeedSection extends StatefulWidget {
   const _ActivityFeedSection();
 
@@ -1295,7 +1410,7 @@ class _ActivityFeedSectionState extends State<_ActivityFeedSection> {
           Center(
             child: TextButton(
               onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(_tab == _FeedTab.alerts ? 'عرض جميع التنبيهات - سيُفعَّل عند الربط الفعلي' : 'عرض جميع النشاطات - سيُفعَّل عند الربط الفعلي')),
+                SnackBar(content: Text(_tab == _FeedTab.alerts ? 'عرض جميع التنبيهات - سيُفعَّل عند توفّر سجل حركات لحظي' : 'عرض جميع النشاطات - سيُفعَّل عند توفّر سجل حركات لحظي')),
               ),
               style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), minimumSize: const Size(0, 28)),
               child: Text(_tab == _FeedTab.alerts ? 'عرض جميع التنبيهات' : 'عرض جميع النشاطات', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
