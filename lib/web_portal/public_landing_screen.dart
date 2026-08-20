@@ -300,7 +300,7 @@ class ContactPage extends StatelessWidget {
               accent: AppColors.green,
               icon: Icons.mail_outline,
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 10),
             // بطاقات قيادة الوحدة (رئيس/نائب/أمين/منسّق الوحدة/سكرتير) - تُقرأ
             // حيًّا من "تشكيل الوحدة" بدل أسماء ثابتة بالكود، فتُحدَّث الصفحة
             // تلقائيًا عند اعتماد تشكيل جديد. تُستبعَد صراحةً بطاقات منسّقي
@@ -342,12 +342,12 @@ class ContactPage extends StatelessWidget {
                 );
               },
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 20),
             const Text(
               'الدعم الفني',
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.greenDark),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 10),
             const _UnitLeaderCard(
               role: 'الدعم الفني للموقع',
               name: 'سليمان مفوز سليم الفواز',
@@ -397,21 +397,21 @@ class _UnitLeaderCard extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(16),
         child: Column(
           children: [
             CircleAvatar(
-              radius: 28,
+              radius: 22,
               backgroundColor: Colors.white.withValues(alpha: 0.15),
-              child: Icon(icon, color: AppColors.goldLight, size: 28),
+              child: Icon(icon, color: AppColors.goldLight, size: 22),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             Text(
               role,
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 12, color: Colors.white70, fontWeight: FontWeight.w600),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 4),
             FittedBox(
               fit: BoxFit.scaleDown,
               child: Text(
@@ -421,7 +421,7 @@ class _UnitLeaderCard extends StatelessWidget {
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15.5, color: AppColors.goldLight),
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             InkWell(
               onTap: () => openMailto(email),
               child: Row(
@@ -793,7 +793,7 @@ class _CalendarTable extends StatelessWidget {
                 TableRow(
                   decoration: BoxDecoration(color: event.order.isEven ? const Color(0xFFF7F5EF) : Colors.white),
                   children: [
-                    _CalCell(Text('${event.order}', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12))),
+                    _CalCell(Text(event.order.toString().padLeft(2, '0'), textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12))),
                     _CalCell(_CategoryBadge(category: event.category)),
                     _CalCell(Text(event.title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12.5))),
                     _CalCell(Text(event.start, style: const TextStyle(fontSize: 11, color: Colors.black54))),
@@ -2723,7 +2723,7 @@ class _GuidesHubPageState extends State<GuidesHubPage> {
               'اختر الدليل المناسب لك وحمّله بصيغة PDF:',
               style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 12),
             _guideCard(
               icon: Icons.school_outlined,
               title: 'الدليل الإرشادي لطلاب وطالبات الكلية',
@@ -2732,7 +2732,7 @@ class _GuidesHubPageState extends State<GuidesHubPage> {
               onDownload: _downloadStudentGuide,
               onView: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const UnitGuidePage())),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             _guideCard(
               icon: Icons.groups_outlined,
               title: 'دليل استخدام البوابة لمنسّقي الأقسام',
@@ -2740,7 +2740,7 @@ class _GuidesHubPageState extends State<GuidesHubPage> {
               isDownloading: _isDownloadingCoordinator,
               onDownload: _downloadCoordinatorGuide,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             _guideCard(
               icon: Icons.computer_outlined,
               title: 'دليل استخدام المنظومة الداخلية للمرشد الأكاديمي',
@@ -2764,7 +2764,7 @@ class _GuidesHubPageState extends State<GuidesHubPage> {
   }) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -2792,26 +2792,36 @@ class _GuidesHubPageState extends State<GuidesHubPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppColors.greenDark)),
-                const SizedBox(height: 6),
-                Text(description, style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700, height: 1.6)),
-                const SizedBox(height: 14),
+                const SizedBox(height: 5),
+                Text(description, style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700, height: 1.5)),
+                const SizedBox(height: 10),
                 Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
+                  spacing: 8,
+                  runSpacing: 8,
                   children: [
                     ElevatedButton.icon(
                       onPressed: isDownloading ? null : onDownload,
-                      style: ElevatedButton.styleFrom(backgroundColor: AppColors.gold),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.gold,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
                       icon: isDownloading
                           ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                          : const Icon(Icons.download, size: 18),
-                      label: const Text('تنزيل PDF'),
+                          : const Icon(Icons.download, size: 16),
+                      label: const Text('تنزيل PDF', style: TextStyle(fontSize: 12.5)),
                     ),
                     if (onView != null)
                       OutlinedButton.icon(
                         onPressed: onView,
-                        icon: const Icon(Icons.visibility_outlined, size: 18),
-                        label: const Text('عرض على الموقع'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        icon: const Icon(Icons.visibility_outlined, size: 16),
+                        label: const Text('عرض على الموقع', style: TextStyle(fontSize: 12.5)),
                       ),
                   ],
                 ),
