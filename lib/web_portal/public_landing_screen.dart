@@ -1335,7 +1335,7 @@ class _BrandLogoState extends State<_BrandLogo> {
             constraints: const BoxConstraints(maxWidth: 210),
             child: Image.asset(
               'assets/images/unit_logo_final.png',
-              height: 44,
+              height: 48,
               fit: BoxFit.contain,
             ),
           ),
@@ -1812,15 +1812,15 @@ class _Footer extends StatelessWidget {
               Text(
                 'جامعة الطائف — كلية إدارة الأعمال — وحدة الإرشاد الأكاديمي والخريجين',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.78), fontSize: 12.5),
+                style: TextStyle(color: AppColors.goldLight.withValues(alpha: 0.95), fontSize: 12.5),
               ),
               const SizedBox(height: 8),
-              Container(height: 1, width: 50, color: Colors.white.withValues(alpha: 0.18)),
+              Container(height: 1, width: 48, color: AppColors.gold.withValues(alpha: 0.45)),
               const SizedBox(height: 8),
               Text(
                 '© 2026 سليمان الفواز. جميع الحقوق محفوظة.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.64), fontSize: 11),
+                style: TextStyle(color: AppColors.goldLight.withValues(alpha: 0.78), fontSize: 11),
               ),
             ],
           ),
@@ -2270,7 +2270,7 @@ class _MetricCard extends StatelessWidget {
                   children: [
                     Text(
                       value == null ? '—' : '$value',
-                      style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w800, color: AppColors.greenDark, height: 0.85),
+                      style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w800, color: AppColors.greenDark, height: 1),
                     ),
                     const SizedBox(height: 5),
                     Text(
@@ -2351,7 +2351,7 @@ class _MetricsSection extends StatelessWidget {
     // "school" (قبعة تخرّج فعلية) للخريجين.
     const metrics = [
       _MetricCard(icon: Icons.groups_outlined, label: 'الطلبة المستفيدون', tone: _MetricTone.green),
-      _MetricCard(icon: Icons.verified_user_outlined, label: 'المرشدون الأكاديميون', tone: _MetricTone.darkGreen),
+      _MetricCard(icon: Icons.badge_outlined, label: 'المرشدون الأكاديميون', tone: _MetricTone.darkGreen),
       _MetricCard(icon: Icons.school_outlined, label: 'الخريجون', tone: _MetricTone.gold),
       _MetricCard(icon: Icons.volunteer_activism_outlined, label: 'الخدمات والمبادرات', tone: _MetricTone.softGold),
     ];
