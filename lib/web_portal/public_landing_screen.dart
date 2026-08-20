@@ -2316,11 +2316,13 @@ class _MetricsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // أيقونات مختارة صراحةً لتمثيل المعنى الدقيق (بطلب سليمان 2026-08-20):
-    // "how_to_reg" (شخص + علامة اعتماد) للمرشدين بدل سماعة دعم فني لا تمثّل
-    // إرشادًا أكاديميًا إطلاقًا، و"school" (قبعة تخرّج فعلية) للخريجين.
+    // "verified_user" (شخص + علامة اعتماد) للمرشدين بدل سماعة دعم فني لا
+    // تمثّل إرشادًا أكاديميًا إطلاقًا (استُبدلت لاحقًا من "how_to_reg" الذي
+    // ظهر بلا رمز مرئي فعليًا رغم تصريف Dart له - سليمان 2026-08-20)، و
+    // "school" (قبعة تخرّج فعلية) للخريجين.
     const metrics = [
       _MetricCard(icon: Icons.groups_outlined, label: 'الطلبة المستفيدون', tone: _MetricTone.green),
-      _MetricCard(icon: Icons.how_to_reg_outlined, label: 'المرشدون الأكاديميون', tone: _MetricTone.darkGreen),
+      _MetricCard(icon: Icons.verified_user_outlined, label: 'المرشدون الأكاديميون', tone: _MetricTone.darkGreen),
       _MetricCard(icon: Icons.school_outlined, label: 'الخريجون', tone: _MetricTone.gold),
       _MetricCard(icon: Icons.volunteer_activism_outlined, label: 'الخدمات والمبادرات', tone: _MetricTone.softGold),
     ];
