@@ -114,6 +114,8 @@ class _TicketActionStatsPanelState extends State<TicketActionStatsPanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          _buildFilterBar(),
+          const SizedBox(height: 10),
           _buildToolbar(),
           const SizedBox(height: 8),
           if (stats.totalActions == 0)
@@ -168,51 +170,53 @@ class _TicketActionStatsPanelState extends State<TicketActionStatsPanel> {
     );
   }
 
-  Widget _buildToolbar() {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Row(
-          children: [
-            const Icon(Icons.query_stats_outlined, size: 19, color: _Tokens.green900),
-            const SizedBox(width: 7),
-            const Text(
-              'إحصائيات طلبات الحذف والإضافة',
-              style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700, color: _Tokens.textPrimary),
-            ),
-          ],
-        ),
-        const Spacer(),
-        _FilterField(
-          label: 'الشطر',
-          value: _shatr,
-          items: [ExcelParserService.shatrMale, ExcelParserService.shatrFemale],
-          itemLabel: _shatrShortLabel,
-          onChanged: (v) => setState(() => _shatr = v),
-        ),
-        const SizedBox(width: 10),
-        _FilterField(
-          label: 'القسم',
-          value: _department,
-          items: ExcelParserService.departments,
-          itemLabel: _deptShortLabel,
-          onChanged: (v) => setState(() => _department = v),
-        ),
-        if (_hasFilters) ...[
-          const SizedBox(width: 10),
-          Padding(
-            padding: const EdgeInsets.only(bottom: 2),
-            child: TextButton.icon(
-              onPressed: () => setState(() {
-                _shatr = null;
-                _department = null;
-              }),
-              icon: const Icon(Icons.refresh_rounded, size: 16),
-              label: const Text('إعادة ضبط الفلاتر'),
-              style: TextButton.styleFrom(foregroundColor: _Tokens.textSecondary, textStyle: const TextStyle(fontSize: 12)),
-            ),
+  /// شريط فلتر منفصل بنفس هوية شريط فلتر لوحة الإدارة (صندوق أبيض محدَّد +
+  /// شرائح دائرية: "الكل" أولاً ثم شرائح الفلاتر) بدل الحقول المكدَّسة
+  /// (تسمية فوق القائمة) السابقة - توحيد التنسيق بطلب سليمان 2026-08-21.
+  Widget _buildFilterBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(color: Colors.white, border: Border.all(color: _Tokens.border), borderRadius: BorderRadius.circular(14)),
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          _FilterResetChip(
+            active: !_hasFilters,
+            onTap: () => setState(() {
+              _shatr = null;
+              _department = null;
+            }),
+          ),
+          _FilterPill(
+            label: 'الشطر',
+            value: _shatr,
+            items: [ExcelParserService.shatrMale, ExcelParserService.shatrFemale],
+            itemLabel: _shatrShortLabel,
+            onChanged: (v) => setState(() => _shatr = v),
+          ),
+          _FilterPill(
+            label: 'القسم',
+            value: _department,
+            items: ExcelParserService.departments,
+            itemLabel: _deptShortLabel,
+            onChanged: (v) => setState(() => _department = v),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildToolbar() {
+    return const Row(
+      children: [
+        Icon(Icons.query_stats_outlined, size: 19, color: _Tokens.green900),
+        SizedBox(width: 7),
+        Text(
+          'إحصائيات طلبات الحذف والإضافة',
+          style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700, color: _Tokens.textPrimary),
+        ),
       ],
     );
   }
@@ -300,7 +304,7 @@ class _TicketActionStatsPanelState extends State<TicketActionStatsPanel> {
                   for (var i = 0; i < types.length; i++) ...[
                     Expanded(child: _StatusGauge(label: 'طلبات ${types[i]}', stats: stats.byActionType[types[i]]!)),
                     if (i < types.length - 1)
-                      Container(width: 1, height: 60, color: _Tokens.border, margin: const EdgeInsets.symmetric(horizontal: 6)),
+                      Container(width: 1, height: 85, color: _Tokens.border, margin: const EdgeInsets.symmetric(horizontal: 6)),
                   ],
                 ],
               );
@@ -341,14 +345,38 @@ class _TicketActionStatsPanelState extends State<TicketActionStatsPanel> {
   }
 }
 
-class _FilterField extends StatelessWidget {
+/// شريحة "الكل" (إعادة تعيين كل الفلاتر دفعة واحدة) - نفس تصميم
+/// [_ResetAllChip] بلوحة الإدارة (`admin_executive_dashboard_screen.dart`)
+/// حرفيًا لتوحيد الهوية بين الصفحتين (سليمان 2026-08-21).
+class _FilterResetChip extends StatelessWidget {
+  final bool active;
+  final VoidCallback onTap;
+  const _FilterResetChip({required this.active, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(color: active ? _Tokens.green900 : Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
+        child: Text('الكل', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: active ? Colors.white : Colors.grey.shade700)),
+      ),
+    );
+  }
+}
+
+/// شريحة فلتر دائرية (قائمة منسدلة داخل شريحة خضراء عند التفعيل) - نفس
+/// تصميم `_ShatrFilterDropdown`/`_DepartmentFilterDropdown` بلوحة الإدارة.
+class _FilterPill extends StatelessWidget {
   final String label;
   final String? value;
   final List<String> items;
   final String Function(String) itemLabel;
   final ValueChanged<String?> onChanged;
 
-  const _FilterField({
+  const _FilterPill({
     required this.label,
     required this.value,
     required this.items,
@@ -358,37 +386,24 @@ class _FilterField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: const TextStyle(fontSize: 10.5, color: _Tokens.textSecondary, fontWeight: FontWeight.w500)),
-        const SizedBox(height: 3),
-        Container(
-          height: 32,
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            border: Border.all(color: _Tokens.border),
-            borderRadius: BorderRadius.circular(9),
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String?>(
-              value: value,
-              isDense: true,
-              icon: const Icon(Icons.expand_more_rounded, size: 18, color: _Tokens.textSecondary),
-              style: const TextStyle(fontSize: 12.5, color: _Tokens.textPrimary, fontWeight: FontWeight.w500),
-              dropdownColor: Colors.white,
-              borderRadius: BorderRadius.circular(9),
-              items: [
-                const DropdownMenuItem(value: null, child: Padding(padding: EdgeInsets.only(right: 6), child: Text('الكل'))),
-                for (final item in items)
-                  DropdownMenuItem(value: item, child: Padding(padding: const EdgeInsets.only(right: 6), child: Text(itemLabel(item)))),
-              ],
-              onChanged: onChanged,
-            ),
-          ),
+    final active = value != null;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(color: active ? _Tokens.green900 : Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String?>(
+          value: value,
+          isDense: true,
+          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: active ? Colors.white : Colors.grey.shade700),
+          icon: Icon(Icons.expand_more, size: 16, color: active ? Colors.white : Colors.grey.shade600),
+          dropdownColor: Colors.white,
+          items: [
+            DropdownMenuItem(value: null, child: Text(label, style: const TextStyle(color: Colors.black87))),
+            for (final item in items) DropdownMenuItem(value: item, child: Text(itemLabel(item), style: const TextStyle(color: Colors.black87))),
+          ],
+          onChanged: onChanged,
         ),
-      ],
+      ),
     );
   }
 }
@@ -516,23 +531,23 @@ class _StatusGauge extends StatelessWidget {
       child: Column(
         children: [
           Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: _Tokens.textPrimary)),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           SizedBox(
-            width: 72,
-            height: 72,
+            width: 100,
+            height: 100,
             child: Stack(
               alignment: Alignment.center,
               children: [
                 PieChart(
                   PieChartData(
                     sectionsSpace: 2,
-                    centerSpaceRadius: 24,
+                    centerSpaceRadius: 32,
                     sections: [
-                      if (completed > 0) PieChartSectionData(value: completed.toDouble(), color: _Tokens.success, showTitle: false, radius: 11),
-                      if (progress > 0) PieChartSectionData(value: progress.toDouble(), color: _Tokens.warning, showTitle: false, radius: 11),
-                      if (notStarted > 0) PieChartSectionData(value: notStarted.toDouble(), color: _Tokens.danger, showTitle: false, radius: 11),
+                      if (completed > 0) PieChartSectionData(value: completed.toDouble(), color: _Tokens.success, showTitle: false, radius: 16),
+                      if (progress > 0) PieChartSectionData(value: progress.toDouble(), color: _Tokens.warning, showTitle: false, radius: 16),
+                      if (notStarted > 0) PieChartSectionData(value: notStarted.toDouble(), color: _Tokens.danger, showTitle: false, radius: 16),
                       if (completed == 0 && progress == 0 && notStarted == 0)
-                        PieChartSectionData(value: 1, color: _Tokens.track, showTitle: false, radius: 11),
+                        PieChartSectionData(value: 1, color: _Tokens.track, showTitle: false, radius: 16),
                     ],
                   ),
                 ),
@@ -541,11 +556,16 @@ class _StatusGauge extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          _legendLine('مكتمل', completed, _Tokens.success),
-          const SizedBox(height: 2),
-          _legendLine('قيد التنفيذ', progress, _Tokens.warning),
-          const SizedBox(height: 2),
-          _legendLine('لم يبدأ', notStarted, _Tokens.danger),
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 10,
+            runSpacing: 2,
+            children: [
+              _legendLine('مكتمل', completed, _Tokens.success),
+              _legendLine('قيد التنفيذ', progress, _Tokens.warning),
+              _legendLine('لم يبدأ', notStarted, _Tokens.danger),
+            ],
+          ),
         ],
       ),
     );
