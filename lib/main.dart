@@ -88,8 +88,19 @@ class _WebEntryGate extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // `authStateChanges()` يبعث حدثه الأول فورًا وبشكل متزامن (قراءة مباشرة
+    // لـ`currentUser` بلحظة الاشتراك بالستريم - انظر تطبيقها الفعلي بحزمة
+    // firebase_auth_web: `yield currentUser;` قبل الانضمام لستريم المستمِع
+    // الحقيقي)، أي **قبل** اكتمال قراءة الجلسة المحفوظة فعليًا من تخزين
+    // المتصفح - فيصل دائمًا `null` مهما كانت الجلسة نشطة، ثم يُصحَّح بحدث
+    // ثانٍ حقيقي من مستمِع Firebase الفعلي (JS) بعد ذلك مباشرة. الاعتماد
+    // على أول Snapshot فقط (كما بالمحاولة الأولى 2026-08-21) كان يستقر على
+    // هذا الحدث المضلِّل فيعرض الصفحة العامة دائمًا رغم وجود جلسة فعلية -
+    // `skip(1)` يتجاوز هذا الحدث الاصطناعي الأول ويعتمد فقط على الحدث
+    // الحقيقي التالي (مضمون الوصول دائمًا من Firebase، حتى لو كانت النتيجة
+    // "لا مستخدم" فعليًا).
     return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
+      stream: FirebaseAuth.instance.authStateChanges().skip(1),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
