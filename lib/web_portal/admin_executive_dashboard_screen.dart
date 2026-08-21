@@ -512,7 +512,22 @@ class _FilterableDashboardContentState extends State<_FilterableDashboardContent
         const SizedBox(height: 18),
         _WorkflowSection(roleProgress: roleProgress),
         const SizedBox(height: 18),
-        _MainGrid(advisorList: advisorAccountability, coordinatorList: coordinatorAccountability),
+        // TODO(معاينة مؤقتة سليمان 2026-08-21): بيانات وهمية لرؤية شكل الحالة
+        // غير الفارغة فقط - أزلها وأعد `advisorAccountability`/`coordinatorAccountability`
+        // الحقيقيتين قبل أي نشر.
+        _MainGrid(
+          advisorList: advisorAccountability.isNotEmpty
+              ? advisorAccountability
+              : const [
+                  _AdvisorAccountability(advisorName: 'أ. نموذج تجريبي', department: 'قسم الإدارة', shatrLabel: 'شطر الطلاب', skippedCount: 3),
+                  _AdvisorAccountability(advisorName: 'د. نموذج تجريبي 2', department: 'قسم المحاسبة', shatrLabel: 'شطر الطالبات', skippedCount: 1),
+                ],
+          coordinatorList: coordinatorAccountability.isNotEmpty
+              ? coordinatorAccountability
+              : const [
+                  _CoordinatorAccountability(department: 'قسم التسويق', shatrLabel: 'شطر الطلاب', skippedCount: 2),
+                ],
+        ),
       ],
     );
   }
@@ -544,7 +559,7 @@ class _KpiRow extends StatelessWidget {
       _KpiCard(
         title: 'طلاب تخطّى المرشد حالاتهم',
         value: '$skipped',
-        meta: skipped == 0 ? 'لا توجد حالات تخطّت المرشد - $scopeLabel' : 'أُنجزت لاحقًا عند منسّق القسم/الكلية ضمن $scopeLabel - راجع القائمة أدناه',
+        meta: skipped == 0 ? 'لا توجد حالات تخطّت المرشد - $scopeLabel' : 'أُنجزت لاحقًا عند منسّق القسم ضمن $scopeLabel - راجع القائمة أدناه',
         icon: Icons.person_off_outlined,
         accent: AppColors.errorRed,
       ),
@@ -631,37 +646,33 @@ class _KpiCard extends StatelessWidget {
               child: Container(width: 3, height: 30, decoration: BoxDecoration(color: AppColors.gold, borderRadius: BorderRadius.circular(3))),
             ),
           ),
-          Center(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                if (donutPercent != null)
-                  _MiniDonut(percent: donutPercent!, color: accent, size: 46, strokeWidth: 5.5)
-                else
-                  Container(
-                    width: 46,
-                    height: 46,
-                    decoration: BoxDecoration(color: accent.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(13)),
-                    child: Icon(icon, size: 23, color: accent),
-                  ),
-                const SizedBox(width: 14),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 230),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
-                      const SizedBox(height: 3),
-                      Text(value, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: AppColors.greenDark, height: 1)),
-                      const SizedBox(height: 3),
-                      Text(meta, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-                    ],
-                  ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              if (donutPercent != null)
+                _MiniDonut(percent: donutPercent!, color: accent, size: 46, strokeWidth: 5.5)
+              else
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(color: accent.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(13)),
+                  child: Icon(icon, size: 23, color: accent),
                 ),
-              ],
-            ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
+                    const SizedBox(height: 3),
+                    Text(value, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: AppColors.greenDark, height: 1)),
+                    const SizedBox(height: 3),
+                    Text(meta, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Colors.grey.shade600, height: 1.3)),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -975,6 +986,9 @@ class _ActionTypeStatsRow extends StatelessWidget {
   }
 }
 
+/// نفس هوية [_KpiCard] الأعلى بالضبط (حاوية بيضاء + إطار رمادي + لمسة ذهبية
+/// + نفس أحجام الخطوط) - كانتا بتصميمين مختلفين تمامًا قبل التوحيد (سليمان
+/// 2026-08-21: "لا يوجد شكل جمالي يناسب الهوية البصرية ولا توسيط للمحتوى").
 class _ActionTypeCard extends StatelessWidget {
   final _ActionTypeStats stats;
   const _ActionTypeCard({required this.stats});
@@ -988,24 +1002,45 @@ class _ActionTypeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
-      decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(12)),
-      child: Row(
+      constraints: const BoxConstraints(minHeight: 86),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: Colors.grey.shade200),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Stack(
         children: [
-          _MiniDonut(percent: stats.rate, color: _color, size: 39, strokeWidth: 5, centerText: '${(stats.rate * 100).round()}%'),
-          const SizedBox(width: 7),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('${stats.label} — ${stats.total} طلبًا', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11.5), maxLines: 1, overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 2),
-                Text(
-                  '${stats.completed} مكتمل • ${stats.processing} قيد المعالجة • ${stats.notStarted} لم يبدأ',
-                  style: TextStyle(fontSize: 9.5, color: Colors.grey.shade600),
-                ),
-              ],
+          Positioned.fill(
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: Container(width: 3, height: 30, decoration: BoxDecoration(color: AppColors.gold, borderRadius: BorderRadius.circular(3))),
             ),
+          ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              _MiniDonut(percent: stats.rate, color: _color, size: 46, strokeWidth: 5.5, centerText: '${(stats.rate * 100).round()}%'),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('${stats.label} — ${stats.total} طلبًا', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
+                    const SizedBox(height: 3),
+                    Text('${(stats.rate * 100).round()}%', style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: AppColors.greenDark, height: 1)),
+                    const SizedBox(height: 3),
+                    Text(
+                      '${stats.completed} مكتمل • ${stats.processing} قيد المعالجة • ${stats.notStarted} لم يبدأ',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600, height: 1.3),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -1013,8 +1048,9 @@ class _ActionTypeCard extends StatelessWidget {
   }
 }
 
-/// شبكة رئيسية: مساءلة من لم يعمل (70%) + النشاطات والتنبيهات (30%) -
-/// بلا فرض تساوي الارتفاع (كل قسم بارتفاعه الطبيعي، بطلب سليمان صراحةً).
+/// مساءلة من لم يعمل - عرض كامل (بلا "النشاطات والتنبيهات" المجاورة، أُزيلت
+/// مؤقتًا بطلب سليمان 2026-08-21 لأنها بلا فائدة فعلية حتى توفّر سجل حركات
+/// لحظي حقيقي؛ الكود [_ActivityFeedSection] بقي بالملف لإعادتها لاحقًا).
 class _MainGrid extends StatelessWidget {
   final List<_AdvisorAccountability> advisorList;
   final List<_CoordinatorAccountability> coordinatorList;
@@ -1022,28 +1058,7 @@ class _MainGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, constraints) {
-      final section = _AccountabilitySection(advisorList: advisorList, coordinatorList: coordinatorList);
-      final stacked = constraints.maxWidth < 1000;
-      if (stacked) {
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            section,
-            const SizedBox(height: 14),
-            const _ActivityFeedSection(),
-          ],
-        );
-      }
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(flex: 7, child: section),
-          const SizedBox(width: 14),
-          const Expanded(flex: 3, child: _ActivityFeedSection()),
-        ],
-      );
-    });
+    return _AccountabilitySection(advisorList: advisorList, coordinatorList: coordinatorList);
   }
 }
 
