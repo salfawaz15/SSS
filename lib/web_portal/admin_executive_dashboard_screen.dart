@@ -1111,19 +1111,31 @@ class _AccountabilitySection extends StatelessWidget {
                 child: Text('لا توجد حالات تخطّت المرشد أو منسّق القسم حاليًا', style: TextStyle(fontSize: 12.5, color: Colors.grey.shade500)),
               ),
             )
-          else ...[
-            if (advisorList.isNotEmpty) ...[
-              Text('مرشدون تخطّتهم حالات', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.grey.shade700)),
-              const SizedBox(height: 8),
-              for (final a in advisorList) _AccountabilityRow(primary: a.advisorName, secondary: '${a.department} - ${a.shatrLabel}', count: a.skippedCount),
-            ],
-            if (advisorList.isNotEmpty && coordinatorList.isNotEmpty) const SizedBox(height: 16),
-            if (coordinatorList.isNotEmpty) ...[
-              Text('أقسام تخطّى منسّقوها حالات', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.grey.shade700)),
-              const SizedBox(height: 8),
-              for (final c in coordinatorList) _AccountabilityRow(primary: '${c.department} - ${c.shatrLabel}', secondary: 'منسّق القسم', count: c.skippedCount),
-            ],
-          ],
+          else
+            // ارتفاع أقصى ثابت + تمرير داخلي - يمنع القسم من تمديد الصفحة كاملة
+            // نزولًا عند وجود حالات كثيرة (بطلب سليمان 2026-08-21: "أشاهد كل
+            // شيء دون تصغير الصفحة").
+            SizedBox(
+              height: 260,
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (advisorList.isNotEmpty) ...[
+                      Text('مرشدون تخطّتهم حالات', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.grey.shade700)),
+                      const SizedBox(height: 8),
+                      for (final a in advisorList) _AccountabilityRow(primary: a.advisorName, secondary: '${a.department} - ${a.shatrLabel}', count: a.skippedCount),
+                    ],
+                    if (advisorList.isNotEmpty && coordinatorList.isNotEmpty) const SizedBox(height: 16),
+                    if (coordinatorList.isNotEmpty) ...[
+                      Text('أقسام تخطّى منسّقوها حالات', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.grey.shade700)),
+                      const SizedBox(height: 8),
+                      for (final c in coordinatorList) _AccountabilityRow(primary: '${c.department} - ${c.shatrLabel}', secondary: 'منسّق القسم', count: c.skippedCount),
+                    ],
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );
