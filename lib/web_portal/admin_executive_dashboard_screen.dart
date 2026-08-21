@@ -7,7 +7,6 @@ import '../services/report_data_service.dart' show TicketAdvisorOutcome, ticketO
 import '../theme/app_theme.dart';
 import 'admin_nav.dart';
 import 'portal_header.dart';
-import 'upload_hub_screen.dart';
 
 /// لوحة الإدارة الرئيسية (Executive Dashboard) - أول ما يراه مدير الوحدة بعد
 /// الدخول. أُعيدت صياغتها مرتين بطلب سليمان (2026-08-19): الأولى تحويلها من
@@ -54,8 +53,6 @@ class AdminExecutiveDashboardScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const _LastUpdateBar(),
-                      const SizedBox(height: 14),
                       _FilterableDashboardContent(data: data),
                       const SizedBox(height: 12),
                     ],
@@ -383,39 +380,6 @@ class _MiniDonut extends StatelessWidget {
             Text(centerText!, style: TextStyle(fontSize: size * 0.27, fontWeight: FontWeight.bold, color: color)),
         ],
       ),
-    );
-  }
-}
-
-/// شريط صغير هادئ: مؤشر بيانات حيّة + رابط نصي خافت لصفحة "رفع ملفات"
-/// المستقلة (باسم "إدارة البيانات" لا تكرار اسمها هنا - موجودة أصلاً بشريط
-/// التنقّل العلوي). كان نص تاريخ ثابتًا وهميًا قبل الربط الفعلي بـFirestore
-/// (2026-08-20) - استبدل بمؤشر "حيّة" صادق بدل تاريخ مزيَّف لا معنى له بعد
-/// أن أصبحت الصفحة تُحدَّث لحظيًا مع أي تغيير بقاعدة البيانات.
-class _LastUpdateBar extends StatelessWidget {
-  const _LastUpdateBar();
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(width: 7, height: 7, decoration: const BoxDecoration(color: AppColors.green, shape: BoxShape.circle)),
-        const SizedBox(width: 6),
-        Text('البيانات حيّة - تتحدّث تلقائيًا فور أي تغيير', style: TextStyle(fontSize: 11.5, color: Colors.grey.shade500)),
-        Text('  |  ', style: TextStyle(fontSize: 11.5, color: Colors.grey.shade400)),
-        InkWell(
-          onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const UploadHubScreen())),
-          child: Text(
-            'إدارة البيانات',
-            style: TextStyle(
-              fontSize: 11.5,
-              color: Colors.grey.shade500,
-              decoration: TextDecoration.underline,
-              decorationColor: Colors.grey.shade400,
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

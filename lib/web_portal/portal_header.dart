@@ -32,9 +32,10 @@ class PortalNavItem {
 }
 
 /// شارة الهوية - نفس صورة الشعار المعتمدة بالضبط في الشريط العلوي للصفحة
-/// العامة (`assets/images/full_logo_green.png`، خلفية خضراء + TU بحلقة
-/// ذهبية + اسم الكلية والوحدة) بلا إعادة بنائها يدويًا بخط/تنسيق مختلف،
-/// حتى تكون بصمة الهوية مطابقة 100% سواء قبل تسجيل الدخول أو داخل البوابة.
+/// العامة (`assets/images/unit_logo_final.png`) بلا إعادة بنائها يدويًا
+/// بخط/تنسيق مختلف، حتى تكون بصمة الهوية مطابقة 100% سواء قبل تسجيل الدخول
+/// أو داخل البوابة (سليمان 2026-08-21: كان الهيدر يستخدم شعارًا مختلفًا
+/// `full_logo_green.png` عن شعار الصفحة العامة فعليًا).
 ///
 /// **داخل تطبيق الجوال فقط** (`!kIsWeb`) تُستبدَل بأيقونة التطبيق المصغَّرة
 /// نفسها الظاهرة خارجيًا على شاشة الجهاز (`assets/images/app_icon.png`) -
@@ -66,14 +67,17 @@ class _PortalBrandBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: AppColors.green,
+        color: AppColors.greenDark,
         borderRadius: BorderRadius.circular(10),
       ),
-      child: Image.asset(
-        'assets/images/full_logo_green.png',
-        height: 40,
-        fit: BoxFit.contain,
-        errorBuilder: (_, _, _) => Text('TU', style: AppTextStyles.caption(color: Colors.white)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 210),
+        child: Image.asset(
+          'assets/images/unit_logo_final.png',
+          height: 40,
+          fit: BoxFit.contain,
+          errorBuilder: (_, _, _) => Text('TU', style: AppTextStyles.caption(color: Colors.white)),
+        ),
       ),
     );
   }
