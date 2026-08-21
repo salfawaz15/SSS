@@ -55,6 +55,14 @@ class FilterPillDropdown<T> extends StatelessWidget {
           style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: active ? Colors.white : Colors.grey.shade700),
           icon: Icon(Icons.expand_more, size: 16, color: active ? Colors.white : Colors.grey.shade600),
           dropdownColor: Colors.white,
+          // نص الشريحة المغلقة أبيض دائمًا عند التفعيل (خلفية خضراء داكنة) -
+          // بلا selectedItemBuilder يظهر لون العنصر الثابت (أسود) فوق الخلفية
+          // الداكنة فيصبح غير مقروء (سليمان لاحظه فعليًا 2026-08-22).
+          selectedItemBuilder: (context) => [
+            Text(label, style: TextStyle(color: active ? Colors.white : Colors.grey.shade700, fontWeight: FontWeight.w700, fontSize: 10.5)),
+            for (final item in items)
+              Text(itemLabel(item), style: TextStyle(color: active ? Colors.white : Colors.grey.shade700, fontWeight: FontWeight.w700, fontSize: 10.5)),
+          ],
           items: [
             DropdownMenuItem(value: null, child: Text(label, style: const TextStyle(color: Colors.black87))),
             for (final item in items) DropdownMenuItem(value: item, child: Text(itemLabel(item), style: const TextStyle(color: Colors.black87))),

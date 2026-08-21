@@ -86,11 +86,13 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
   String _shatrFilter = _kAllShatr;
   String _deptFilter = _kAllDepartments;
   String _advisorFilter = _kAllAdvisors;
-  final _searchCtrl = TextEditingController();
+  final _studentSearchCtrl = TextEditingController();
+  final _advisorSearchCtrl = TextEditingController();
 
   @override
   void dispose() {
-    _searchCtrl.dispose();
+    _studentSearchCtrl.dispose();
+    _advisorSearchCtrl.dispose();
     super.dispose();
   }
 
@@ -574,15 +576,36 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
             }),
           ),
           SizedBox(
-            width: 220,
+            width: 200,
             height: 32,
             child: TextField(
-              controller: _searchCtrl,
+              controller: _studentSearchCtrl,
               style: const TextStyle(fontSize: 12.5, color: _FilterTokens.textPrimary, fontWeight: FontWeight.w500),
               decoration: InputDecoration(
-                hintText: 'بحث باسم/رقم الطالب أو المرشد',
+                hintText: 'بحث باسم/رقم الطالب',
                 hintStyle: TextStyle(fontSize: 12, color: _FilterTokens.textSecondary),
                 prefixIcon: const Icon(Icons.search, size: 18, color: _FilterTokens.textSecondary),
+                isDense: true,
+                filled: true,
+                fillColor: Colors.grey.shade100,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: const BorderSide(color: AppColors.gold, width: 1.4)),
+              ),
+              onChanged: (_) => setState(() => _resetTablePage()),
+            ),
+          ),
+          SizedBox(
+            width: 200,
+            height: 32,
+            child: TextField(
+              controller: _advisorSearchCtrl,
+              style: const TextStyle(fontSize: 12.5, color: _FilterTokens.textPrimary, fontWeight: FontWeight.w500),
+              decoration: InputDecoration(
+                hintText: 'بحث باسم/رقم المرشد',
+                hintStyle: TextStyle(fontSize: 12, color: _FilterTokens.textSecondary),
+                prefixIcon: const Icon(Icons.person_search_outlined, size: 18, color: _FilterTokens.textSecondary),
                 isDense: true,
                 filled: true,
                 fillColor: Colors.grey.shade100,
@@ -613,9 +636,10 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
   String _staffNumberFor(String advisorName) =>
       _facultyByKey[AdvisingCaseAnalyzer.nameKey(advisorName)]?.staffNumber ?? '';
 
-  /// خانة البحث الموحَّدة - بطلب سليمان الصريح (2026-08-14): يجب أن تشمل
-  /// المرشدين وأرقامهم، وكذلك الطلبة وأرقامهم، معًا، بغض النظر عن كون
-  /// التبويب الحالي يعرض طلابًا أم مرشدين.
+  /// خانتا بحث منفصلتان (طالب/مرشد) بدل خانة موحَّدة سابقة - بطلب سليمان
+  /// الصريح (2026-08-22): "لا يمكن البحث بالطالب والمرشد بنفس المكان"، أي
+  /// كل خانة تُفلتر مجالها فقط، والنتيجة تُطابق الخانتين معًا (AND) حين
+  /// تُملآن كلتاهما دفعة واحدة.
   /// توحيد صور الهمزة/التاء المربوطة قبل المقارنة - وإلا يفشل البحث بصمت لو
   /// كُتب الاستعلام بصورة مختلفة عن الصورة المخزَّنة لنفس الاسم (مثال: "احمد"
   /// المكتوبة بلا همزة لا تطابق "أحمد" المخزَّنة بها) - لاحظه سليمان صراحةً
@@ -623,13 +647,16 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
   static String _normalizeForSearch(String s) => s.replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ة', 'ه');
 
   bool _matchesSearch(String name, String id, {String advisorName = '', String advisorId = ''}) {
-    final q = _normalizeForSearch(_searchCtrl.text.trim());
-    if (q.isEmpty) return true;
-    return _normalizeForSearch(name).contains(q) ||
-        id.contains(q) ||
-        _normalizeForSearch(advisorName).contains(q) ||
-        advisorId.contains(q) ||
-        (advisorName.isNotEmpty && _staffNumberFor(advisorName).contains(q));
+    final studentQ = _normalizeForSearch(_studentSearchCtrl.text.trim());
+    final advisorQ = _normalizeForSearch(_advisorSearchCtrl.text.trim());
+    if (studentQ.isNotEmpty && !(_normalizeForSearch(name).contains(studentQ) || id.contains(studentQ))) return false;
+    if (advisorQ.isNotEmpty &&
+        !(_normalizeForSearch(advisorName).contains(advisorQ) ||
+            advisorId.contains(advisorQ) ||
+            (advisorName.isNotEmpty && _staffNumberFor(advisorName).contains(advisorQ)))) {
+      return false;
+    }
+    return true;
   }
 
   // ------------------------------- 12 تبويبًا -------------------------------

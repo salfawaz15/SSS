@@ -478,28 +478,26 @@ class BrandPanel extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 InkWell(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(14),
                   onTap: () => Navigator.of(context).maybePop(),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    // كل نسخ الشعار "الشفافة" المتوفرة (unit_logo_transparent،
-                    // unit_logo_light، unit_logo_dark) تبيّن أنها ملفات ذات
-                    // جودة رديئة فعليًا (تشويش/بكسلات ضبابية واضحة حول النص
-                    // عند التكبير - عيب بملف المصدر نفسه لا يُصلَح بالكود -
-                    // سليمان لاحظه صراحةً 2026-08-22). بدّلناها بـ
-                    // full_logo_green.png (نظيف تمامًا، نفس الصورة المعتمدة
-                    // فعليًا بشريط البوابة الداخلية `_PortalBrandBadge`
-                    // بportal_header.dart بلا أي شكوى سابقة). خلفيته الخضراء
-                    // مدمجة بالصورة نفسها (0xFF0A5545 تقريبًا بالمعاينة) لا
-                    // شفافة، فلوّنّا الحاوية بنفس اللون تقريبًا لإخفاء أي حافة
-                    // مربّعة ظاهرة بدل محاولة تطابق مستحيلة مع تدرّج اللوحة.
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0A5545),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
+                    constraints: BoxConstraints(maxWidth: compact ? 260 : 340),
+                    // شعار نظيف وفّره سليمان مباشرة (مُفرَّغ الخلفية فعليًا
+                    // بأداة إزالة خلفية حقيقية - RGBA شفافية صحيحة، لا كالملفات
+                    // السابقة التي بدت نظيفة على الأبيض فقط وتُظهر هالة على
+                    // الداكن). يندمج مباشرة بخلفية اللوحة الخضراء بلا أي بطاقة
+                    // أو حاوية لونية (سليمان 2026-08-22).
+                    //
+                    // الملف الأصلي (500×500) يحتوي هامشًا فارغًا ضخمًا حول
+                    // المحتوى الفعلي (المحتوى الحقيقي 368×112 فقط وسط اللوحة)
+                    // - هذا بالضبط سبب فشل كل محاولات التحجيم السابقة (أي حجم
+                    // بـ`height` كان يُطبَّق على اللوحة الكاملة ببياضها فيصغر
+                    // المحتوى الظاهر فعليًا لجزء يسير منه). فُرِّغ الهامش
+                    // بالكامل (قص فعلي للصورة عبر PowerShell) قبل استخدامها،
+                    // فأصبح أي `height` الآن يعكس الحجم الظاهر الحقيقي مباشرة.
                     child: Image.asset(
-                      'assets/images/full_logo_green.png',
-                      height: compact ? 36 : 46,
+                      'assets/images/unit_logo_clean_transparent_cropped.png',
+                      height: compact ? 70 : 90,
                       fit: BoxFit.contain,
                     ),
                   ),

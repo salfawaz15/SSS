@@ -748,6 +748,14 @@ class _DepartmentFilterDropdown extends StatelessWidget {
           style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: active ? Colors.white : Colors.grey.shade700),
           icon: Icon(Icons.expand_more, size: 16, color: active ? Colors.white : Colors.grey.shade600),
           dropdownColor: Colors.white,
+          // نص الشريحة المغلقة أبيض دائمًا عند التفعيل - بلا selectedItemBuilder
+          // يظهر لون العنصر الثابت (أسود) فوق الخلفية الخضراء الداكنة فيصبح
+          // غير مقروء (سليمان لاحظه فعليًا 2026-08-22).
+          selectedItemBuilder: (context) => [
+            Text('القسم العلمي', style: TextStyle(color: active ? Colors.white : Colors.grey.shade700, fontWeight: FontWeight.w700, fontSize: 10.5)),
+            for (final d in _kCanonicalDepartmentOrder)
+              Text(d.replaceFirst('قسم ', ''), style: TextStyle(color: active ? Colors.white : Colors.grey.shade700, fontWeight: FontWeight.w700, fontSize: 10.5)),
+          ],
           items: [
             const DropdownMenuItem(value: null, child: Text('القسم العلمي', style: TextStyle(color: Colors.black87))),
             for (final d in _kCanonicalDepartmentOrder)
@@ -778,6 +786,11 @@ class _ShatrFilterDropdown extends StatelessWidget {
           style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: active ? Colors.white : Colors.grey.shade700),
           icon: Icon(Icons.expand_more, size: 16, color: active ? Colors.white : Colors.grey.shade600),
           dropdownColor: Colors.white,
+          selectedItemBuilder: (context) => [
+            Text('الشطر', style: TextStyle(color: active ? Colors.white : Colors.grey.shade700, fontWeight: FontWeight.w700, fontSize: 10.5)),
+            Text('الطلاب', style: TextStyle(color: active ? Colors.white : Colors.grey.shade700, fontWeight: FontWeight.w700, fontSize: 10.5)),
+            Text('الطالبات', style: TextStyle(color: active ? Colors.white : Colors.grey.shade700, fontWeight: FontWeight.w700, fontSize: 10.5)),
+          ],
           items: const [
             DropdownMenuItem(value: _ShatrFilter.all, child: Text('الشطر', style: TextStyle(color: Colors.black87))),
             DropdownMenuItem(value: _ShatrFilter.male, child: Text('الطلاب', style: TextStyle(color: Colors.black87))),
@@ -808,6 +821,11 @@ class _PriorityFilterDropdown extends StatelessWidget {
           style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: active ? Colors.white : Colors.grey.shade700),
           icon: Icon(Icons.expand_more, size: 16, color: active ? Colors.white : Colors.grey.shade600),
           dropdownColor: Colors.white,
+          selectedItemBuilder: (context) => [
+            Text('الحالة', style: TextStyle(color: active ? Colors.white : Colors.grey.shade700, fontWeight: FontWeight.w700, fontSize: 10.5)),
+            Text('ذوي الإعاقة', style: TextStyle(color: active ? Colors.white : Colors.grey.shade700, fontWeight: FontWeight.w700, fontSize: 10.5)),
+            Text('المتوقع تخرجهم', style: TextStyle(color: active ? Colors.white : Colors.grey.shade700, fontWeight: FontWeight.w700, fontSize: 10.5)),
+          ],
           items: const [
             DropdownMenuItem(value: _PriorityFilter.all, child: Text('الحالة', style: TextStyle(color: Colors.black87))),
             DropdownMenuItem(value: _PriorityFilter.disability, child: Text('ذوي الإعاقة', style: TextStyle(color: Colors.black87))),
