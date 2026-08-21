@@ -168,7 +168,7 @@ List<_RoleProgress> _computeRoleProgress(List<Map<String, dynamic>> tickets) {
 class _KpiStats {
   final int totalRequests;
   final int totalCompleted;
-  // عدد الطلاب الذين تخطّى ملفهم المرشد كليًا (لم يعمل على أي إجراء له) لكن
+  // عدد الطلاب الذين تخطّى المرشد حالتهم كليًا (لم يعمل على أي إجراء لها) لكن
   // أُنجز لاحقًا عند منسّق القسم أو منسّق الكلية - المؤشر الفعلي المهم لإدارة
   // الوحدة (سليمان 2026-08-21: "دوري متابعة الحالات التي لم يتم عليها أي
   // إجراء" - لا "المتأخرة" بالوقت، فمنسّق الكلية بلا مهلة زمنية أصلًا).
@@ -211,7 +211,7 @@ bool _coordinatorSkippedTicket(Map<String, dynamic> ticket) {
   return ticketOutcomeForField(ticket, 'college_status') != TicketAdvisorOutcome.notStarted;
 }
 
-/// سجل مساءلة مرشد واحد بالاسم - كم طالبًا تخطّى ملفه المرشد كليًا فأُنجز
+/// سجل مساءلة مرشد واحد بالاسم - كم طالبًا تخطّى المرشد حالته كليًا فأُنجزت
 /// عند منسّق القسم/الكلية بدلًا عنه (سليمان 2026-08-21: هذا دور إدارة
 /// الوحدة الفعلي - متابعة من لم يعمل، لا من "تأخّر" بالوقت).
 class _AdvisorAccountability {
@@ -465,6 +465,18 @@ class _FilterableDashboardContentState extends State<_FilterableDashboardContent
         _priority = _PriorityFilter.all;
       });
 
+  /// نص وصف نطاق الفلتر الحالي - يُلحَق بنصوص بطاقات المؤشرات حتى لا يبقى
+  /// أي رقم مبهمًا بلا سياق (سليمان 2026-08-21: "إذا كان الفلتر عام يظهر
+  /// للكل أو حسب القسم وهكذا").
+  String _filterScopeLabel() {
+    final parts = <String>[];
+    if (_department != null) parts.add(_department!.replaceFirst('قسم ', ''));
+    if (_shatr != _ShatrFilter.all) parts.add(_shatr == _ShatrFilter.male ? 'شطر الطلاب' : 'شطر الطالبات');
+    if (_priority == _PriorityFilter.disability) parts.add('ذوي الإعاقة');
+    if (_priority == _PriorityFilter.graduate) parts.add('المتوقع تخرجهم');
+    return parts.isEmpty ? 'كل الأقسام والشطرين' : parts.join(' - ');
+  }
+
   @override
   Widget build(BuildContext context) {
     final filtered = _filteredTickets;
@@ -473,6 +485,7 @@ class _FilterableDashboardContentState extends State<_FilterableDashboardContent
     final roleProgress = _computeRoleProgress(filtered);
     final advisorAccountability = _computeAdvisorAccountability(filtered);
     final coordinatorAccountability = _computeCoordinatorAccountability(filtered);
+    final scopeLabel = _filterScopeLabel();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -493,7 +506,7 @@ class _FilterableDashboardContentState extends State<_FilterableDashboardContent
           ),
         ),
         const SizedBox(height: 18),
-        _KpiRow(kpi: kpi),
+        _KpiRow(kpi: kpi, scopeLabel: scopeLabel),
         const SizedBox(height: 18),
         _ActionTypeSection(stats: actionTypeStats),
         const SizedBox(height: 18),
@@ -509,7 +522,8 @@ class _FilterableDashboardContentState extends State<_FilterableDashboardContent
 /// مصغَّر لبطاقة نسبة الإنجاز بدل أيقونة ثابتة.
 class _KpiRow extends StatelessWidget {
   final _KpiStats kpi;
-  const _KpiRow({required this.kpi});
+  final String scopeLabel;
+  const _KpiRow({required this.kpi, required this.scopeLabel});
 
   @override
   Widget build(BuildContext context) {
@@ -523,21 +537,21 @@ class _KpiRow extends StatelessWidget {
       _KpiCard(
         title: 'طلبات تحتاج إجراء',
         value: '$pending',
-        meta: 'من إجمالي $total طلبًا ($completed منها أُغلق نهائيًا)',
+        meta: 'من إجمالي $total طلبًا ($completed منها أُغلق نهائيًا) - $scopeLabel',
         icon: Icons.pending_actions_outlined,
         accent: AppColors.green,
       ),
       _KpiCard(
-        title: 'طلاب تخطّى المرشد ملفاتهم',
+        title: 'طلاب تخطّى المرشد حالاتهم',
         value: '$skipped',
-        meta: skipped == 0 ? 'لا توجد حالات تخطّت المرشد' : 'أُنجزت لاحقًا عند منسّق القسم/الكلية - راجع القائمة أدناه',
+        meta: skipped == 0 ? 'لا توجد حالات تخطّت المرشد - $scopeLabel' : 'أُنجزت لاحقًا عند منسّق القسم/الكلية ضمن $scopeLabel - راجع القائمة أدناه',
         icon: Icons.person_off_outlined,
         accent: AppColors.errorRed,
       ),
       _KpiCard(
         title: 'نسبة الإغلاق النهائي',
         value: '$rate%',
-        meta: '$completed من أصل $total طلبًا',
+        meta: '$completed من أصل $total طلبًا - $scopeLabel',
         icon: Icons.donut_large_outlined,
         accent: AppColors.greenDark,
         donutPercent: rate / 100,
@@ -553,7 +567,7 @@ class _KpiRow extends StatelessWidget {
           const _SectionTitle(title: 'الإغلاق الإداري النهائي', icon: Icons.fact_check_outlined),
           const SizedBox(height: 4),
           Text(
-            'هذه الأرقام تقيس اكتمال إغلاق الملف إداريًا بكل المستويات (مرشد ← منسّق قسم ← منسّق كلية) - '
+            'هذه الأرقام تقيس اكتمال إغلاق الحالة إداريًا بكل المستويات (مرشد ← منسّق قسم ← منسّق كلية) - '
             'لا تنفيذ المرشد وحده. لتفاصيل الإنجاز حسب كل دور راجع "متابعة سير العمل" أدناه.',
             style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
           ),
