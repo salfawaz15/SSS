@@ -483,22 +483,11 @@ class BrandPanel extends StatelessWidget {
                   child: Container(
                     padding: EdgeInsets.symmetric(horizontal: compact ? 14 : 18, vertical: compact ? 10 : 14),
                     constraints: BoxConstraints(maxWidth: compact ? 210 : 260),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: AppColors.gold.withValues(alpha: 0.7),
-                        width: 1.4,
-                      ),
-                    ),
-                    // شعار الوحدة الرسمي المعتمد فعليًا بكل الموقع
-                    // (`unit_logo_final.png` - نفس الصورة المستخدمة بأعلى
-                    // الصفحة العامة، انظر public_landing_screen.dart) بدل
-                    // أيقونة "TU" العامة (`app_icon.png` كانت مجرد أيقونة
-                    // تطبيق مصغَّرة عامة، لا الشعار الرسمي المعتمد - سليمان
-                    // لاحظ ذلك صراحةً 2026-08-21).
+                    // بلا خلفية بيضاء ولا حدود - الشعار (نسخته الشفافة) يندمج
+                    // مباشرة بخلفية اللوحة الخضراء الغامقة بدل الظهور كبطاقة
+                    // منفصلة "فوق" شعار آخر (سليمان 2026-08-21).
                     child: Image.asset(
-                      'assets/images/unit_logo_final.png',
+                      'assets/images/unit_logo_transparent.png',
                       height: compact ? 34 : 44,
                       fit: BoxFit.contain,
                     ),
