@@ -64,8 +64,6 @@ class AdminExecutiveDashboardScreen extends StatelessWidget {
                           const SizedBox(height: 18),
                           _WorkflowSection(data: data),
                           const SizedBox(height: 18),
-                          _ActionTypeCompletionSection(data: data),
-                          const SizedBox(height: 18),
                           _MainGrid(data: data),
                           const SizedBox(height: 12),
                         ],
@@ -134,7 +132,6 @@ class _MutableActionType {
 class _DashboardData {
   final List<Map<String, dynamic>> tickets;
   final List<_DepartmentPerf> departmentPerf;
-  final List<_ActionTypeStats> actionTypeStats;
   final List<_ManagementCase> managementCases;
   final int totalRequests;
   final int totalCompleted;
@@ -143,7 +140,6 @@ class _DashboardData {
   const _DashboardData({
     required this.tickets,
     required this.departmentPerf,
-    required this.actionTypeStats,
     required this.managementCases,
     required this.totalRequests,
     required this.totalCompleted,
@@ -169,6 +165,20 @@ class _DashboardData {
   /// تاريخ تنزيل الملف يبدأ العدّ") لا من تاريخ رفع ملف الفورمز، بيوم واحد
   /// لكل من المرشد ومنسّق القسم (كلٌّ من تنزيله هو)، ومنسّق الكلية بلا مهلة
   /// إطلاقًا ("ليس له وقت ولا تأخير").
+  /// أين إجراء واحد الآن بمسار سير العمل - يعتمد فقط على نصوص الحالة الثلاث
+  /// (بلا توقيت)، فيصلح لإعادة الاستخدام في أي حساب لا يحتاج "التأخر" (مثل
+  /// [_computeActionTypeStats] المُفلتَر).
+  static _Stage _stageOf(Map<String, dynamic> action) {
+    final advisorStatus = (action['advisor_status'] ?? '').toString();
+    final coordinatorStatus = (action['coordinator_status'] ?? '').toString();
+    final collegeStatus = (action['college_status'] ?? '').toString();
+
+    if (collegeStatus == _kCompletedMarker) return _Stage.closed;
+    if (coordinatorStatus == _kCompletedMarker) return _Stage.collegeReview;
+    if (advisorStatus == _kAdvisorCompletedMarker || advisorStatus == _kCompletedMarker) return _Stage.deptReview;
+    return _Stage.advisor;
+  }
+
   static _ActionCompute _classifyAction(
     Map<String, dynamic> action,
     DateTime? advisorDownloadedAt,
@@ -176,20 +186,8 @@ class _DashboardData {
     DateTime now,
   ) {
     final advisorStatus = (action['advisor_status'] ?? '').toString();
-    final coordinatorStatus = (action['coordinator_status'] ?? '').toString();
-    final collegeStatus = (action['college_status'] ?? '').toString();
     final actionType = (action['action_type'] ?? '').toString();
-
-    final _Stage stage;
-    if (collegeStatus == _kCompletedMarker) {
-      stage = _Stage.closed;
-    } else if (coordinatorStatus == _kCompletedMarker) {
-      stage = _Stage.collegeReview;
-    } else if (advisorStatus == _kAdvisorCompletedMarker || advisorStatus == _kCompletedMarker) {
-      stage = _Stage.deptReview;
-    } else {
-      stage = _Stage.advisor;
-    }
+    final stage = _stageOf(action);
 
     var overdue = false;
     if (stage == _Stage.advisor && advisorDownloadedAt != null) {
@@ -228,7 +226,6 @@ class _DashboardData {
     }
 
     final deptTotals = <String, _MutableStats>{};
-    final actionTypeAcc = <String, _MutableActionType>{};
     final cases = <_ManagementCase>[];
     var totalOverdue = 0;
 
@@ -238,8 +235,6 @@ class _DashboardData {
       final rawDept = (ticket['department'] ?? '').toString();
       final displayDept = _displayDepartment(rawDept);
       final studentName = (ticket['name'] ?? '').toString();
-      final hasDisability = ticket['has_disability'] == true;
-      final expectedGraduate = ticket['expected_graduate'] == true;
 
       final advisorDl = downloadTime(shatrRaw, rawDept, 'advisor_downloaded_at');
       final coordDl = downloadTime(shatrRaw, rawDept, 'coordinator_downloaded_at');
@@ -263,33 +258,14 @@ class _DashboardData {
           ticketOverdueActions.add(computed);
         }
 
-        final typeAcc = actionTypeAcc.putIfAbsent(computed.actionType, () => _MutableActionType());
-        typeAcc.total++;
-        if (computed.stage == _Stage.closed) {
-          typeAcc.completed++;
-        } else if (computed.stage == _Stage.advisor && !computed.advisorTouched) {
-          typeAcc.notStarted++;
-        } else {
-          typeAcc.processing++;
-        }
       }
 
-      // "تحتاج تدخل إدارة الوحدة": أولوية عاجلة (ذوو إعاقة/متوقع تخرجه) بصرف
-      // النظر عن التأخر، وإلا فأي إجراء تجاوز مهلته فعليًا.
-      if (hasDisability || expectedGraduate) {
-        cases.add(_ManagementCase(
-          shatr: shatrKey,
-          department: displayDept,
-          student: studentName,
-          type: ticketOverdueActions.isNotEmpty
-              ? ticketOverdueActions.first.actionType
-              : (actions.isEmpty ? '' : (actions.first as Map)['action_type'].toString()),
-          status: 'مصعدة لإدارة الوحدة',
-          reason: hasDisability ? 'طالب من ذوي الإعاقة' : 'طالب متوقع تخرجه',
-          waiting: _formatWaiting(advisorDl, coordDl, now),
-          severity: _CaseSeverity.urgent,
-        ));
-      } else if (ticketOverdueActions.isNotEmpty) {
+      // "مصعدة لإدارة الوحدة" حُذفت كمعيار مستقل (كانت تعتمد على إعاقة/توقع
+      // تخرج بصرف النظر عن العمل الفعلي على الحالة - سليمان 2026-08-21: "لا
+      // يوجد حالات تطلب تدخل إدارة الوحدة" بهذا المعيار، ومنسّق الكلية بلا
+      // مهلة زمنية أصلًا فلا مؤشر تلقائي موضوعي لتدخل الوحدة على مستواه).
+      // يبقى "متأخرة" (تجاوزت مهلة المرشد/منسّق القسم فقط) المؤشر الوحيد.
+      if (ticketOverdueActions.isNotEmpty) {
         cases.add(_ManagementCase(
           shatr: shatrKey,
           department: displayDept,
@@ -312,18 +288,11 @@ class _DashboardData {
     final totalRequests = departmentPerf.fold<int>(0, (s, d) => s + d.male.total + d.female.total);
     final totalCompleted = departmentPerf.fold<int>(0, (s, d) => s + d.male.completed + d.female.completed);
 
-    const typeLabels = {'إضافة': 'طلبات الإضافة', 'حذف': 'طلبات الحذف', 'تعديل': 'طلبات تعديل الشعبة'};
-    final actionTypeStats = typeLabels.entries.map((e) {
-      final acc = actionTypeAcc[e.key];
-      return _ActionTypeStats(label: e.value, completed: acc?.completed ?? 0, processing: acc?.processing ?? 0, notStarted: acc?.notStarted ?? 0);
-    }).toList();
-
     cases.sort((a, b) => a.severity.index.compareTo(b.severity.index));
 
     return _DashboardData(
       tickets: tickets,
       departmentPerf: departmentPerf,
-      actionTypeStats: actionTypeStats,
       managementCases: cases,
       totalRequests: totalRequests,
       totalCompleted: totalCompleted,
@@ -355,6 +324,39 @@ List<_RoleProgress> _computeRoleProgress(List<Map<String, dynamic>> tickets) {
     _RoleProgress(role: 'منسّقو الأقسام العلمية', breakdown: coordinator),
     _RoleProgress(role: 'منسّقو الكلية', breakdown: college),
   ];
+}
+
+/// نفس فكرة [_computeRoleProgress] لكن لتوزيع نوع الإجراء (إضافة/حذف/تعديل) -
+/// يعتمد فقط على نصوص الحالة ([_DashboardData._stageOf]، بلا توقيت)، فيصلح
+/// لإعادة الحساب على أي مجموعة تذاكر مُفلترة محليًا.
+List<_ActionTypeStats> _computeActionTypeStats(List<Map<String, dynamic>> tickets) {
+  const typeLabels = {'إضافة': 'طلبات الإضافة', 'حذف': 'طلبات الحذف', 'تعديل': 'طلبات تعديل الشعبة'};
+  final acc = <String, _MutableActionType>{};
+
+  for (final ticket in tickets) {
+    final actions = (ticket['actions'] as List?) ?? const [];
+    for (final raw in actions) {
+      final action = Map<String, dynamic>.from(raw as Map);
+      final stage = _DashboardData._stageOf(action);
+      final actionType = (action['action_type'] ?? '').toString();
+      final advisorStatus = (action['advisor_status'] ?? '').toString();
+
+      final typeAcc = acc.putIfAbsent(actionType, () => _MutableActionType());
+      typeAcc.total++;
+      if (stage == _Stage.closed) {
+        typeAcc.completed++;
+      } else if (stage == _Stage.advisor && advisorStatus.isEmpty) {
+        typeAcc.notStarted++;
+      } else {
+        typeAcc.processing++;
+      }
+    }
+  }
+
+  return typeLabels.entries.map((e) {
+    final acc0 = acc[e.key];
+    return _ActionTypeStats(label: e.value, completed: acc0?.completed ?? 0, processing: acc0?.processing ?? 0, notStarted: acc0?.notStarted ?? 0);
+  }).toList();
 }
 
 class _SectionTitle extends StatelessWidget {
@@ -478,7 +480,6 @@ class _KpiRow extends StatelessWidget {
     final completed = data.totalCompleted;
     final rate = total == 0 ? 0 : (completed / total * 100).round();
     final pending = total - completed;
-    final escalated = data.managementCases.where((c) => c.severity == _CaseSeverity.urgent).length;
     final overdue = data.totalOverdue;
 
     final cards = <Widget>[
@@ -488,13 +489,6 @@ class _KpiRow extends StatelessWidget {
         meta: 'من إجمالي $total طلبًا',
         icon: Icons.pending_actions_outlined,
         accent: AppColors.green,
-      ),
-      _KpiCard(
-        title: 'حالات مصعدة لإدارة الوحدة',
-        value: '$escalated',
-        meta: escalated == 0 ? 'لا توجد حالات حاليًا' : 'تحتاج مراجعة عاجلة',
-        icon: Icons.priority_high_rounded,
-        accent: AppColors.errorRed,
       ),
       _KpiCard(
         title: 'طلبات متأخرة',
@@ -514,7 +508,7 @@ class _KpiRow extends StatelessWidget {
     ];
 
     return LayoutBuilder(builder: (context, constraints) {
-      final columns = constraints.maxWidth < 650 ? 1 : (constraints.maxWidth < 1100 ? 2 : 4);
+      final columns = constraints.maxWidth < 650 ? 1 : (constraints.maxWidth < 1100 ? 2 : 3);
       return Wrap(
         spacing: 12,
         runSpacing: 12,
@@ -633,10 +627,13 @@ class _WorkflowSection extends StatefulWidget {
   State<_WorkflowSection> createState() => _WorkflowSectionState();
 }
 
+enum _PriorityFilter { all, graduate, disability }
+
 class _WorkflowSectionState extends State<_WorkflowSection> {
   _ShatrFilter _shatr = _ShatrFilter.all;
   // null = "الكل" - نفس تمييز فلتر القسم بقية اللوحة.
   String? _department;
+  _PriorityFilter _priority = _PriorityFilter.all;
 
   List<Map<String, dynamic>> get _filteredTickets {
     return widget.data.tickets.where((t) {
@@ -650,14 +647,18 @@ class _WorkflowSectionState extends State<_WorkflowSection> {
         final dept = _DashboardData._displayDepartment((t['department'] ?? '').toString());
         if (dept != _department) return false;
       }
+      if (_priority == _PriorityFilter.graduate && t['expected_graduate'] != true) return false;
+      if (_priority == _PriorityFilter.disability && t['has_disability'] != true) return false;
       return true;
     }).toList();
   }
 
   @override
   Widget build(BuildContext context) {
-    final roleProgress = _computeRoleProgress(_filteredTickets);
-    final hasFilter = _shatr != _ShatrFilter.all || _department != null;
+    final filtered = _filteredTickets;
+    final roleProgress = _computeRoleProgress(filtered);
+    final actionTypeStats = _computeActionTypeStats(filtered);
+    final hasFilter = _shatr != _ShatrFilter.all || _department != null || _priority != _PriorityFilter.all;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
@@ -676,11 +677,13 @@ class _WorkflowSectionState extends State<_WorkflowSection> {
             children: [
               _ShatrFilterChips(value: _shatr, onChanged: (v) => setState(() => _shatr = v)),
               _DepartmentFilterDropdown(value: _department, onChanged: (v) => setState(() => _department = v)),
+              _PriorityFilterDropdown(value: _priority, onChanged: (v) => setState(() => _priority = v)),
               if (hasFilter)
                 TextButton(
                   onPressed: () => setState(() {
                     _shatr = _ShatrFilter.all;
                     _department = null;
+                    _priority = _PriorityFilter.all;
                   }),
                   child: const Text('إعادة الكل', style: TextStyle(fontSize: 12)),
                 ),
@@ -703,7 +706,41 @@ class _WorkflowSectionState extends State<_WorkflowSection> {
               ],
             );
           }),
+          const SizedBox(height: 20),
+          const Divider(height: 1),
+          const SizedBox(height: 16),
+          const _SectionTitle(title: 'حالة الإنجاز حسب نوع الإجراء', icon: Icons.pie_chart_outline_rounded),
+          const SizedBox(height: 10),
+          _ActionTypeStatsRow(stats: actionTypeStats),
         ],
+      ),
+    );
+  }
+}
+
+class _PriorityFilterDropdown extends StatelessWidget {
+  final _PriorityFilter value;
+  final ValueChanged<_PriorityFilter> onChanged;
+  const _PriorityFilterDropdown({required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<_PriorityFilter>(
+          value: value,
+          isDense: true,
+          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Colors.grey.shade700),
+          icon: Icon(Icons.expand_more, size: 16, color: Colors.grey.shade600),
+          items: const [
+            DropdownMenuItem(value: _PriorityFilter.all, child: Text('الحالة: الكل')),
+            DropdownMenuItem(value: _PriorityFilter.graduate, child: Text('الخريجون')),
+            DropdownMenuItem(value: _PriorityFilter.disability, child: Text('ذوو الإعاقة')),
+          ],
+          onChanged: (v) => onChanged(v ?? _PriorityFilter.all),
+        ),
       ),
     );
   }
@@ -877,40 +914,29 @@ class _ActionTypeStats {
   double get rate => total == 0 ? 0 : completed / total;
 }
 
-class _ActionTypeCompletionSection extends StatelessWidget {
-  final _DashboardData data;
-  const _ActionTypeCompletionSection({required this.data});
+/// نفس محتوى قسم "حالة الإنجاز حسب نوع الإجراء" السابق، بلا حاوية/عنوان
+/// خاصَّين به بعد أن رُفع ليشترك بنفس فلتر "متابعة سير العمل" (شطر/قسم/حالة)
+/// بلا تكرار الفلتر (سليمان 2026-08-21).
+class _ActionTypeStatsRow extends StatelessWidget {
+  final List<_ActionTypeStats> stats;
+  const _ActionTypeStatsRow({required this.stats});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(14)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+    return LayoutBuilder(builder: (context, constraints) {
+      if (constraints.maxWidth < 560) {
+        return Column(children: [for (final t in stats) Padding(padding: const EdgeInsets.only(bottom: 8), child: _ActionTypeCard(stats: t))]);
+      }
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _SectionTitle(title: 'حالة الإنجاز حسب نوع الإجراء', icon: Icons.pie_chart_outline_rounded),
-          const SizedBox(height: 8),
-          // توزيع العناصر الثلاثة بالتساوي على عرض الحاوية (Expanded) - بدل
-          // Wrap بعرض ثابت كان يجمّعها يسارًا ويترك فراغًا كبيرًا يمينًا على
-          // الشاشات العريضة (سليمان 2026-08-19).
-          LayoutBuilder(builder: (context, constraints) {
-            if (constraints.maxWidth < 560) {
-              return Column(children: [for (final t in data.actionTypeStats) Padding(padding: const EdgeInsets.only(bottom: 8), child: _ActionTypeCard(stats: t))]);
-            }
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (var i = 0; i < data.actionTypeStats.length; i++) ...[
-                  if (i != 0) const SizedBox(width: 10),
-                  Expanded(child: _ActionTypeCard(stats: data.actionTypeStats[i])),
-                ],
-              ],
-            );
-          }),
+          for (var i = 0; i < stats.length; i++) ...[
+            if (i != 0) const SizedBox(width: 10),
+            Expanded(child: _ActionTypeCard(stats: stats[i])),
+          ],
         ],
-      ),
-    );
+      );
+    });
   }
 }
 
