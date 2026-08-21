@@ -1,44 +1,45 @@
 import 'package:flutter/material.dart';
 
-/// هوية بصرية موحّدة لكل لوحات الإحصائيات بالبوابة - مستخرجة حرفيًا من
-/// التصميم المعتمَد فعليًا بلوحة "الحذف والإضافة" (`ticket_action_stats_panel`
-/// - كان `_Tokens` هناك موثَّقًا كنظام مستقل عمدًا عن `AppColors` العام،
-/// مقصورًا على تلك الصفحة فقط). سليمان طلب صراحةً (2026-08-20) توحيدها فعليًا
-/// كهوية واحدة بدل بقائها استثناءً محليًا - هذا الملف هو المرجع المشترك بدل
-/// تكرار القيم يدويًا بكل صفحة.
+import 'app_theme.dart';
+
+/// هوية بصرية موحّدة لكل لوحات الإحصائيات بالبوابة - أُعيد تعريفها لتستمَد
+/// مباشرة من `AppColors` (هوية لوحة الإدارة والصفحة العامة) بدل نظام ألوان
+/// مستقل خاص بها (سليمان 2026-08-22: "AppColors هي المرجع الوحيد لكل
+/// البوابة" - كان هذا الملف نسخة من `_Tokens` بلوحة الحذف والإضافة، مختلفة
+/// عمدًا عن AppColors، وقد عُمِّمت على 8 صفحات دون أن تُلاحَظ كهوية موازية
+/// حتى قارنها سليمان بصفحة "التقارير" فوجدها باهتة رمادية). بلا ظل ولا زوايا
+/// كبيرة - بطاقات مسطّحة بحدود رمادية خفيفة تطابق `_KpiCard` بلوحة الإدارة.
 class DashTokens {
-  static const green950 = Color(0xFF0B3B2E);
-  static const green900 = Color(0xFF104836);
-  static const green800 = Color(0xFF175B43);
+  static const green950 = AppColors.greenDark;
+  static const green900 = AppColors.greenDark;
+  static const green800 = AppColors.green;
 
-  static const gold600 = Color(0xFFC79A2B);
-  static const gold500 = Color(0xFFD5AA3B);
+  static const gold600 = AppColors.gold;
+  static const gold500 = AppColors.goldLight;
 
-  static const success = Color(0xFF378542);
-  static const successSoft = Color(0xFFEDF7EF);
-  static const danger = Color(0xFFC2392F);
-  static const dangerSoft = Color(0xFFFBEDEC);
-  static const warning = Color(0xFFC79A2B);
-  static const warningSoft = Color(0xFFFBF5E5);
+  static const success = AppColors.green;
+  static const successSoft = Color(0xFFEAF3EE);
+  static const danger = AppColors.errorRed;
+  static const dangerSoft = Color(0xFFF7E9E8);
+  static const warning = AppColors.gold;
+  static const warningSoft = Color(0xFFFBF3DE);
 
-  static const pageBg = Color(0xFFF4F7F5);
+  static const pageBg = AppColors.background;
   static const cardBg = Colors.white;
 
   static const textPrimary = Color(0xFF17352B);
   static const textSecondary = Color(0xFF66746F);
   static const textMuted = Color(0xFF8A9691);
 
-  static const border = Color(0xFFE4EAE7);
+  static const border = Color(0xFFE0E0E0);
   static const track = Color(0xFFEDF0EE);
 
   static const radiusSm = 8.0;
   static const radiusMd = 12.0;
-  static const radiusLg = 16.0;
+  static const radiusLg = 14.0;
 
-  static List<BoxShadow> get cardShadow => [
-        BoxShadow(color: green950.withValues(alpha: 0.03), blurRadius: 5, offset: const Offset(0, 2)),
-        BoxShadow(color: green950.withValues(alpha: 0.05), blurRadius: 20, offset: const Offset(0, 8)),
-      ];
+  // بلا ظل - بطاقات مسطّحة بحدود فقط (تطابق بطاقات لوحة الإدارة).
+  static List<BoxShadow> get cardShadow => const [];
 }
 
 /// بطاقة مؤشر رقمي (KPI) بشريط أعلى ملوَّن + أيقونة دائرية - نسخة قابلة

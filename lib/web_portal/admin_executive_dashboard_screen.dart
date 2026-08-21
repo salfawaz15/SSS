@@ -740,7 +740,7 @@ class _DepartmentFilterDropdown extends StatelessWidget {
     final active = value != null;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10),
-      decoration: BoxDecoration(color: active ? AppColors.green : Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
+      decoration: BoxDecoration(color: active ? AppColors.greenDark : Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String?>(
           value: value,
@@ -770,7 +770,7 @@ class _ShatrFilterDropdown extends StatelessWidget {
     final active = value != _ShatrFilter.all;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10),
-      decoration: BoxDecoration(color: active ? AppColors.green : Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
+      decoration: BoxDecoration(color: active ? AppColors.greenDark : Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<_ShatrFilter>(
           value: value,
@@ -800,7 +800,7 @@ class _PriorityFilterDropdown extends StatelessWidget {
     final active = value != _PriorityFilter.all;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10),
-      decoration: BoxDecoration(color: active ? AppColors.green : Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
+      decoration: BoxDecoration(color: active ? AppColors.greenDark : Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<_PriorityFilter>(
           value: value,
@@ -835,7 +835,7 @@ class _ResetAllChip extends StatelessWidget {
       borderRadius: BorderRadius.circular(20),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(color: active ? AppColors.green : Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
+        decoration: BoxDecoration(color: active ? AppColors.greenDark : Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
         child: Text('الكل', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: active ? Colors.white : Colors.grey.shade700)),
       ),
     );
