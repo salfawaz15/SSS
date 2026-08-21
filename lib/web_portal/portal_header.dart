@@ -108,15 +108,20 @@ class _PortalAccountMenu extends StatelessWidget {
         ),
         PopupMenuItem(
           value: () {
-            // تسجيل الخروج من صفحة مفتوحة فوق الشاشة الرئيسية (Push) كان لا
-            // يظهر أثره - الجذر يعيد بناء نفسه داخليًا لشاشة الدخول، لكن أي
-            // صفحة مفتوحة فوقه بمكدّس التنقّل تبقى ظاهرة تحجبها تمامًا (خلل
-            // أُبلِغ عنه من سليمان 2026-08-09). الحل: إغلاق كل الصفحات
-            // المفتوحة أولاً بالرجوع للجذر مباشرة عبر `rootNavigator: true`
-            // (يتجاوز أي Navigator متداخل داخل الصفحة الحالية نفسها)، فتظهر
-            // شاشة الدخول فورًا بعد تسجيل الخروج من أي مكان بالتطبيق.
-            Navigator.of(context, rootNavigator: true).popUntil((route) => route.isFirst);
+            // تسجيل الخروج ينقل مباشرة للصفحة العامة (لا لشاشة تسجيل
+            // الدخول) - قرار سليمان الصريح 2026-08-21: نهاية الجلسة تعني
+            // "زائر عادي" فورًا، بلا خطوة وسيطة تُعيد عرض نموذج الدخول قبل
+            // أن يقرر المستخدم إن كان يريد الدخول من جديد أصلاً. نستخدم
+            // `pushAndRemoveUntil` بدل `popUntil` (كانت المحاولة السابقة)
+            // لأنها تضمن تفريغ كل مكدّس التنقّل والوصول للصفحة العامة بشكل
+            // مؤكَّد بغض النظر عن نقطة الدخول الأصلية (رابط عادي أو رابط
+            // الدخول السرّي)، لا الاعتماد على افتراض أن أول صفحة بالمكدّس
+            // هي دائمًا الصفحة العامة.
             FirebaseAuth.instance.signOut();
+            Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (_) => const PublicLandingScreen()),
+              (route) => false,
+            );
           },
           child: PortalMenuRow(icon: Icons.logout, label: 'تسجيل خروج', color: Colors.red.shade700),
         ),

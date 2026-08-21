@@ -484,19 +484,29 @@ class BrandPanel extends StatelessWidget {
                     width: compact ? 52 : 78,
                     height: compact ? 52 : 78,
                     alignment: Alignment.center,
+                    clipBehavior: Clip.antiAlias,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
+                      color: Colors.white,
                       border: Border.all(
                         color: AppColors.gold.withValues(alpha: 0.7),
                         width: 1.6,
                       ),
                     ),
-                    child: Text(
-                      'TU',
-                      style: TextStyle(
-                        color: AppColors.goldLight,
-                        fontWeight: FontWeight.bold,
-                        fontSize: compact ? 18 : 26,
+                    // شعار الوحدة الرسمي المعتمد (نفس الصورة المستخدمة كأيقونة
+                    // شارة الهوية بالبوابة الداخلية - انظر
+                    // `_PortalBrandBadge` بportal_header.dart) بدل حرفي "TU"
+                    // النصيّين (بطلب سليمان 2026-08-21).
+                    child: Image.asset(
+                      'assets/images/app_icon.png',
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => Text(
+                        'TU',
+                        style: TextStyle(
+                          color: AppColors.goldLight,
+                          fontWeight: FontWeight.bold,
+                          fontSize: compact ? 18 : 26,
+                        ),
                       ),
                     ),
                   ),

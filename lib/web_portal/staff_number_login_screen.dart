@@ -1,12 +1,19 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../theme/app_theme.dart';
 import 'hidden_admin_login_screen.dart';
 import 'portal_footer.dart';
 import 'portal_login_screen.dart' show BrandPanel;
 import 'public_landing_screen.dart' show PortalAcademicCalendarPage;
+
+/// مفتاح تخزين محلي (متصفح المستخدم فقط) يُسجَّل بعد أول دخول ناجح على هذا
+/// الجهاز - يُستخدَم فقط لتخصيص نص الترحيب ("مرحبًا بعودتك" بدل "تسجيل
+/// الدخول") لمن يعود لهذه الشاشة بعد تسجيل خروج سابق، ولا علاقة له بحفظ أي
+/// بيانات دخول فعلية (بطلب سليمان 2026-08-21).
+const _kHasSignedInBeforeKey = 'portal_has_signed_in_before';
 
 /// شاشة الدخول الجديدة برقم المنسوب - المرحلة 3 من إعادة هيكلة الدخول
 /// والصلاحيات (2026-08-15). كل شخص له حساب فردي (بريد داخلي مبني على رقم
@@ -31,6 +38,19 @@ class _StaffNumberLoginScreenState extends State<StaffNumberLoginScreen> {
   bool _obscurePassword = true;
   bool _loading = false;
   String? _error;
+  bool _hasSignedInBefore = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadReturningVisitorFlag();
+  }
+
+  Future<void> _loadReturningVisitorFlag() async {
+    final prefs = await SharedPreferences.getInstance();
+    final hasSignedInBefore = prefs.getBool(_kHasSignedInBeforeKey) ?? false;
+    if (mounted && hasSignedInBefore) setState(() => _hasSignedInBefore = true);
+  }
 
   @override
   void dispose() {
@@ -64,6 +84,7 @@ class _StaffNumberLoginScreenState extends State<StaffNumberLoginScreen> {
         email: '$staffNumber@sss-advising-tu.internal',
         password: password,
       );
+      (await SharedPreferences.getInstance()).setBool(_kHasSignedInBeforeKey, true);
       // PortalRoot يعيد بناء نفسه تلقائيًا عند تغيّر حالة الدخول ويوجّه حسب
       // الدور - لكن هذه الشاشة نفسها مدفوعة (Navigator.push) فوقه في نفس
       // المكدّس، فتبقى ظاهرة تغطّيه ما لم نُرجِعها صراحةً (كانت هذه المشكلة
@@ -87,14 +108,14 @@ class _StaffNumberLoginScreenState extends State<StaffNumberLoginScreen> {
         children: [
           const Icon(Icons.badge_outlined, size: 40, color: AppColors.green),
           const SizedBox(height: 12),
-          const Text(
-            'تسجيل الدخول',
+          Text(
+            _hasSignedInBefore ? 'مرحبًا بعودتك' : 'تسجيل الدخول',
             textAlign: TextAlign.center,
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22),
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 22),
           ),
           const SizedBox(height: 6),
           Text(
-            'أدخل رقم المنسوب وكلمة المرور',
+            _hasSignedInBefore ? 'سجّل دخولك مجددًا للمتابعة' : 'أدخل رقم المنسوب وكلمة المرور',
             textAlign: TextAlign.center,
             style: TextStyle(color: Colors.grey.shade600, fontSize: 13.5),
           ),
