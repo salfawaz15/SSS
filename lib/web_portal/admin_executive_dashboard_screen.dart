@@ -4,7 +4,6 @@ import '../data/academic_department_names.dart';
 import '../services/excel_parser_service.dart';
 import '../services/firestore_ticket_service.dart';
 import '../services/report_data_service.dart' show TicketAdvisorOutcome, ticketOutcomeForField;
-import '../services/stage_download_service.dart';
 import '../theme/app_theme.dart';
 import 'admin_nav.dart';
 import 'portal_header.dart';
@@ -42,35 +41,28 @@ class AdminExecutiveDashboardScreen extends StatelessWidget {
       body: StreamBuilder<List<Map<String, dynamic>>>(
         stream: FirestoreTicketService.watchAllTickets(),
         builder: (context, ticketsSnap) {
-          return StreamBuilder<Map<String, Map<String, dynamic>>>(
-            stream: StageDownloadService.watchAll(),
-            builder: (context, downloadsSnap) {
-              if (!ticketsSnap.hasData) {
-                return const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator()));
-              }
-              final data = _DashboardData.compute(ticketsSnap.data!, downloadsSnap.data ?? const {});
-              return ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 1600),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          const _LastUpdateBar(),
-                          const SizedBox(height: 14),
-                          _FilterableDashboardContent(data: data),
-                          const SizedBox(height: 18),
-                          _MainGrid(data: data),
-                          const SizedBox(height: 12),
-                        ],
-                      ),
-                    ),
+          if (!ticketsSnap.hasData) {
+            return const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator()));
+          }
+          final data = _DashboardData.compute(ticketsSnap.data!);
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1600),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const _LastUpdateBar(),
+                      const SizedBox(height: 14),
+                      _FilterableDashboardContent(data: data),
+                      const SizedBox(height: 12),
+                    ],
                   ),
-                ],
-              );
-            },
+                ),
+              ),
+            ],
           );
         },
       ),
@@ -101,22 +93,6 @@ const _kAdvisorCompletedMarker = 'تم التنفيذ';
 
 enum _Stage { advisor, deptReview, collegeReview, closed }
 
-class _ActionCompute {
-  final String actionType;
-  final _Stage stage;
-  final bool overdue;
-  final bool advisorTouched;
-  const _ActionCompute({required this.actionType, required this.stage, required this.overdue, required this.advisorTouched});
-}
-
-class _MutableStats {
-  int total = 0;
-  int overdue = 0;
-  int completed = 0;
-  int get processing => total - overdue - completed;
-  _DeptShatrStats toStats() => _DeptShatrStats(total: total, processing: processing, overdue: overdue, completed: completed);
-}
-
 class _MutableActionType {
   int total = 0;
   int completed = 0;
@@ -129,22 +105,8 @@ class _MutableActionType {
 /// (نفس الضمان الذي وفّرته `_kDepartmentPerf` سابقًا للبيانات الوهمية).
 class _DashboardData {
   final List<Map<String, dynamic>> tickets;
-  final Map<String, Map<String, dynamic>> downloads;
-  final List<_DepartmentPerf> departmentPerf;
-  final List<_ManagementCase> managementCases;
-  final int totalRequests;
-  final int totalCompleted;
-  final int totalOverdue;
 
-  const _DashboardData({
-    required this.tickets,
-    required this.downloads,
-    required this.departmentPerf,
-    required this.managementCases,
-    required this.totalRequests,
-    required this.totalCompleted,
-    required this.totalOverdue,
-  });
+  const _DashboardData({required this.tickets});
 
   static String _displayDepartment(String rawDepartment) {
     final normalized = normalizeDepartmentName(rawDepartment);
@@ -160,14 +122,10 @@ class _DashboardData {
     }
   }
 
-  /// يصنّف إجراءً واحدًا: أين هو الآن بمسار سير العمل، وهل تجاوز مهلته -
-  /// المهلة تُحسب من لحظة تنزيل الملف (بطلب سليمان صراحةً 2026-08-20: "من
-  /// تاريخ تنزيل الملف يبدأ العدّ") لا من تاريخ رفع ملف الفورمز، بيوم واحد
-  /// لكل من المرشد ومنسّق القسم (كلٌّ من تنزيله هو)، ومنسّق الكلية بلا مهلة
-  /// إطلاقًا ("ليس له وقت ولا تأخير").
   /// أين إجراء واحد الآن بمسار سير العمل - يعتمد فقط على نصوص الحالة الثلاث
-  /// (بلا توقيت)، فيصلح لإعادة الاستخدام في أي حساب لا يحتاج "التأخر" (مثل
-  /// [_computeActionTypeStats] المُفلتَر).
+  /// (بلا توقيت، بعد إلغاء مفهوم "التأخر" الزمني - سليمان 2026-08-21: منسّق
+  /// الكلية جهة تنفيذية بلا مهلة، والمقياس الحقيقي هو "هل عُمل على الحالة
+  /// إطلاقًا" لا "كم استغرقت").
   static _Stage _stageOf(Map<String, dynamic> action) {
     final advisorStatus = (action['advisor_status'] ?? '').toString();
     final coordinatorStatus = (action['coordinator_status'] ?? '').toString();
@@ -179,127 +137,7 @@ class _DashboardData {
     return _Stage.advisor;
   }
 
-  static _ActionCompute _classifyAction(
-    Map<String, dynamic> action,
-    DateTime? advisorDownloadedAt,
-    DateTime? coordinatorDownloadedAt,
-    DateTime now,
-  ) {
-    final advisorStatus = (action['advisor_status'] ?? '').toString();
-    final actionType = (action['action_type'] ?? '').toString();
-    final stage = _stageOf(action);
-
-    var overdue = false;
-    if (stage == _Stage.advisor && advisorDownloadedAt != null) {
-      overdue = now.difference(advisorDownloadedAt).inHours >= 24;
-    } else if (stage == _Stage.deptReview && coordinatorDownloadedAt != null) {
-      overdue = now.difference(coordinatorDownloadedAt).inHours >= 24;
-    }
-
-    return _ActionCompute(actionType: actionType, stage: stage, overdue: overdue, advisorTouched: advisorStatus.isNotEmpty);
-  }
-
-  static String _formatWaiting(DateTime? advisorDl, DateTime? coordDl, DateTime now) {
-    final ref = coordDl ?? advisorDl;
-    if (ref == null) return 'غير محدَّد';
-    final diff = now.difference(ref);
-    if (diff.inDays >= 1) return '${diff.inDays} ${diff.inDays == 1 ? 'يوم' : 'أيام'}';
-    if (diff.inHours >= 1) return '${diff.inHours} ${diff.inHours == 1 ? 'ساعة' : 'ساعات'}';
-    return 'أقل من ساعة';
-  }
-
-  factory _DashboardData.compute(
-    List<Map<String, dynamic>> tickets,
-    Map<String, Map<String, dynamic>> downloads,
-  ) {
-    final now = DateTime.now();
-
-    DateTime? downloadTime(String shatr, String department, String field) {
-      final doc = downloads['${shatr}_$department'];
-      final ts = doc == null ? null : doc[field];
-      if (ts == null) return null;
-      try {
-        return (ts as dynamic).toDate() as DateTime;
-      } catch (_) {
-        return null;
-      }
-    }
-
-    final deptTotals = <String, _MutableStats>{};
-    final cases = <_ManagementCase>[];
-    var totalOverdue = 0;
-
-    for (final ticket in tickets) {
-      final shatrRaw = (ticket['shatr'] ?? '').toString();
-      final shatrKey = shatrRaw == ExcelParserService.shatrMale ? 'male' : 'female';
-      final rawDept = (ticket['department'] ?? '').toString();
-      final displayDept = _displayDepartment(rawDept);
-      final studentName = (ticket['name'] ?? '').toString();
-
-      final advisorDl = downloadTime(shatrRaw, rawDept, 'advisor_downloaded_at');
-      final coordDl = downloadTime(shatrRaw, rawDept, 'coordinator_downloaded_at');
-
-      final actions = (ticket['actions'] as List?) ?? const [];
-      final statKey = '$displayDept|$shatrKey';
-      final stats = deptTotals.putIfAbsent(statKey, () => _MutableStats());
-      final ticketOverdueActions = <_ActionCompute>[];
-
-      for (final raw in actions) {
-        final action = Map<String, dynamic>.from(raw as Map);
-        final computed = _classifyAction(action, advisorDl, coordDl, now);
-
-        stats.total++;
-        if (computed.stage == _Stage.closed) {
-          stats.completed++;
-        }
-        if (computed.stage != _Stage.closed && computed.overdue) {
-          stats.overdue++;
-          totalOverdue++;
-          ticketOverdueActions.add(computed);
-        }
-
-      }
-
-      // "مصعدة لإدارة الوحدة" حُذفت كمعيار مستقل (كانت تعتمد على إعاقة/توقع
-      // تخرج بصرف النظر عن العمل الفعلي على الحالة - سليمان 2026-08-21: "لا
-      // يوجد حالات تطلب تدخل إدارة الوحدة" بهذا المعيار، ومنسّق الكلية بلا
-      // مهلة زمنية أصلًا فلا مؤشر تلقائي موضوعي لتدخل الوحدة على مستواه).
-      // يبقى "متأخرة" (تجاوزت مهلة المرشد/منسّق القسم فقط) المؤشر الوحيد.
-      if (ticketOverdueActions.isNotEmpty) {
-        cases.add(_ManagementCase(
-          shatr: shatrKey,
-          department: displayDept,
-          student: studentName,
-          type: ticketOverdueActions.first.actionType,
-          status: 'متأخرة',
-          reason: 'تجاوزت مدة المعالجة',
-          waiting: _formatWaiting(advisorDl, coordDl, now),
-          severity: _CaseSeverity.overdue,
-        ));
-      }
-    }
-
-    final departmentPerf = _kCanonicalDepartmentOrder.map((name) {
-      final male = deptTotals['$name|male']?.toStats() ?? const _DeptShatrStats(total: 0, processing: 0, overdue: 0, completed: 0);
-      final female = deptTotals['$name|female']?.toStats() ?? const _DeptShatrStats(total: 0, processing: 0, overdue: 0, completed: 0);
-      return _DepartmentPerf(name: name, male: male, female: female);
-    }).toList();
-
-    final totalRequests = departmentPerf.fold<int>(0, (s, d) => s + d.male.total + d.female.total);
-    final totalCompleted = departmentPerf.fold<int>(0, (s, d) => s + d.male.completed + d.female.completed);
-
-    cases.sort((a, b) => a.severity.index.compareTo(b.severity.index));
-
-    return _DashboardData(
-      tickets: tickets,
-      downloads: downloads,
-      departmentPerf: departmentPerf,
-      managementCases: cases,
-      totalRequests: totalRequests,
-      totalCompleted: totalCompleted,
-      totalOverdue: totalOverdue,
-    );
-  }
+  factory _DashboardData.compute(List<Map<String, dynamic>> tickets) => _DashboardData(tickets: tickets);
 }
 
 /// نتيجة إجراءات دور واحد (مرشد/منسّق قسم/منسّق كلية) لمجموعة تذاكر معيّنة -
@@ -330,42 +168,114 @@ List<_RoleProgress> _computeRoleProgress(List<Map<String, dynamic>> tickets) {
 class _KpiStats {
   final int totalRequests;
   final int totalCompleted;
-  final int totalOverdue;
-  const _KpiStats({required this.totalRequests, required this.totalCompleted, required this.totalOverdue});
+  // عدد الطلاب الذين تخطّى ملفهم المرشد كليًا (لم يعمل على أي إجراء له) لكن
+  // أُنجز لاحقًا عند منسّق القسم أو منسّق الكلية - المؤشر الفعلي المهم لإدارة
+  // الوحدة (سليمان 2026-08-21: "دوري متابعة الحالات التي لم يتم عليها أي
+  // إجراء" - لا "المتأخرة" بالوقت، فمنسّق الكلية بلا مهلة زمنية أصلًا).
+  final int advisorSkippedCount;
+  const _KpiStats({required this.totalRequests, required this.totalCompleted, required this.advisorSkippedCount});
 }
 
-/// نفس مؤشرات "الإغلاق النهائي/المتأخر" الأصلية لكن قابلة لإعادة الحساب على
-/// أي مجموعة تذاكر مُفلترة - يحتاج [downloads] (بخلاف الدالتين الأخريين)
-/// لأن حساب "التأخر" يعتمد على توقيت التنزيل لا نصوص الحالة فقط.
-_KpiStats _computeKpiStats(List<Map<String, dynamic>> tickets, Map<String, Map<String, dynamic>> downloads) {
-  final now = DateTime.now();
-  DateTime? downloadTime(String shatr, String department, String field) {
-    final doc = downloads['${shatr}_$department'];
-    final ts = doc == null ? null : doc[field];
-    if (ts == null) return null;
-    try {
-      return (ts as dynamic).toDate() as DateTime;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  var total = 0, completed = 0, overdue = 0;
+/// نفس مؤشر "الإغلاق النهائي" الأصلي لكن قابل لإعادة الحساب على أي مجموعة
+/// تذاكر مُفلترة - يعتمد فقط على نصوص الحالة (`_DashboardData._stageOf`)
+/// بلا حاجة لتوقيت التنزيل، بعد إلغاء مفهوم "التأخر الزمني" (سليمان
+/// 2026-08-21: منسّق الكلية بلا مهلة، فلا معنى موضوعيًا لحساب تأخر بالساعات).
+_KpiStats _computeKpiStats(List<Map<String, dynamic>> tickets) {
+  var total = 0, completed = 0;
+  var advisorSkipped = 0;
   for (final ticket in tickets) {
-    final shatrRaw = (ticket['shatr'] ?? '').toString();
-    final rawDept = (ticket['department'] ?? '').toString();
-    final advisorDl = downloadTime(shatrRaw, rawDept, 'advisor_downloaded_at');
-    final coordDl = downloadTime(shatrRaw, rawDept, 'coordinator_downloaded_at');
     final actions = (ticket['actions'] as List?) ?? const [];
     for (final raw in actions) {
       final action = Map<String, dynamic>.from(raw as Map);
-      final computed = _DashboardData._classifyAction(action, advisorDl, coordDl, now);
       total++;
-      if (computed.stage == _Stage.closed) completed++;
-      if (computed.stage != _Stage.closed && computed.overdue) overdue++;
+      if (_DashboardData._stageOf(action) == _Stage.closed) completed++;
     }
+    if (_advisorSkippedTicket(ticket)) advisorSkipped++;
   }
-  return _KpiStats(totalRequests: total, totalCompleted: completed, totalOverdue: overdue);
+  return _KpiStats(totalRequests: total, totalCompleted: completed, advisorSkippedCount: advisorSkipped);
+}
+
+/// هل تخطَّى الطالب مرحلة المرشد كليًا؟ - المرشد لم يعمل على أي من إجراءات
+/// هذا الطالب إطلاقًا، لكن منسّق القسم أو منسّق الكلية أنجز شيئًا منها -
+/// يعني المرشد بالاسم (`ticket['advisor']`) هو من يحتاج متابعة، لا "التأخر".
+bool _advisorSkippedTicket(Map<String, dynamic> ticket) {
+  if (ticketOutcomeForField(ticket, 'advisor_status') != TicketAdvisorOutcome.notStarted) return false;
+  return ticketOutcomeForField(ticket, 'coordinator_status') != TicketAdvisorOutcome.notStarted ||
+      ticketOutcomeForField(ticket, 'college_status') != TicketAdvisorOutcome.notStarted;
+}
+
+/// نفس فكرة [_advisorSkippedTicket] لمنسّق القسم - لم يعمل على أي إجراء
+/// إطلاقًا، لكن منسّق الكلية أنجز شيئًا منها بدلًا عنه.
+bool _coordinatorSkippedTicket(Map<String, dynamic> ticket) {
+  if (ticketOutcomeForField(ticket, 'coordinator_status') != TicketAdvisorOutcome.notStarted) return false;
+  return ticketOutcomeForField(ticket, 'college_status') != TicketAdvisorOutcome.notStarted;
+}
+
+/// سجل مساءلة مرشد واحد بالاسم - كم طالبًا تخطّى ملفه المرشد كليًا فأُنجز
+/// عند منسّق القسم/الكلية بدلًا عنه (سليمان 2026-08-21: هذا دور إدارة
+/// الوحدة الفعلي - متابعة من لم يعمل، لا من "تأخّر" بالوقت).
+class _AdvisorAccountability {
+  final String advisorName;
+  final String department;
+  final String shatrLabel;
+  final int skippedCount;
+  const _AdvisorAccountability({
+    required this.advisorName,
+    required this.department,
+    required this.shatrLabel,
+    required this.skippedCount,
+  });
+}
+
+/// نفس الفكرة لمنسّق القسم - بلا اسم (لا يوجد حقل بالتذكرة يحدّد اسم منسّق
+/// القسم تحديدًا، بخلاف المرشد)، فتُجمَّع فقط بمستوى قسم-شطر.
+class _CoordinatorAccountability {
+  final String department;
+  final String shatrLabel;
+  final int skippedCount;
+  const _CoordinatorAccountability({required this.department, required this.shatrLabel, required this.skippedCount});
+}
+
+String _shatrDisplayLabel(String shatrRaw) => shatrRaw == ExcelParserService.shatrMale ? 'شطر الطلاب' : 'شطر الطالبات';
+
+List<_AdvisorAccountability> _computeAdvisorAccountability(List<Map<String, dynamic>> tickets) {
+  final counts = <String, int>{};
+  final meta = <String, ({String name, String dept, String shatr})>{};
+  for (final ticket in tickets) {
+    if (!_advisorSkippedTicket(ticket)) continue;
+    final name = (ticket['advisor'] ?? '').toString().trim();
+    if (name.isEmpty) continue;
+    final dept = _DashboardData._displayDepartment((ticket['department'] ?? '').toString());
+    final shatr = _shatrDisplayLabel((ticket['shatr'] ?? '').toString());
+    final key = '$name|$dept|$shatr';
+    counts[key] = (counts[key] ?? 0) + 1;
+    meta[key] = (name: name, dept: dept, shatr: shatr);
+  }
+  final list = counts.entries.map((e) {
+    final m = meta[e.key]!;
+    return _AdvisorAccountability(advisorName: m.name, department: m.dept, shatrLabel: m.shatr, skippedCount: e.value);
+  }).toList();
+  list.sort((a, b) => b.skippedCount.compareTo(a.skippedCount));
+  return list;
+}
+
+List<_CoordinatorAccountability> _computeCoordinatorAccountability(List<Map<String, dynamic>> tickets) {
+  final counts = <String, int>{};
+  final meta = <String, ({String dept, String shatr})>{};
+  for (final ticket in tickets) {
+    if (!_coordinatorSkippedTicket(ticket)) continue;
+    final dept = _DashboardData._displayDepartment((ticket['department'] ?? '').toString());
+    final shatr = _shatrDisplayLabel((ticket['shatr'] ?? '').toString());
+    final key = '$dept|$shatr';
+    counts[key] = (counts[key] ?? 0) + 1;
+    meta[key] = (dept: dept, shatr: shatr);
+  }
+  final list = counts.entries.map((e) {
+    final m = meta[e.key]!;
+    return _CoordinatorAccountability(department: m.dept, shatrLabel: m.shatr, skippedCount: e.value);
+  }).toList();
+  list.sort((a, b) => b.skippedCount.compareTo(a.skippedCount));
+  return list;
 }
 
 /// نفس فكرة [_computeRoleProgress] لكن لتوزيع نوع الإجراء (إضافة/حذف/تعديل) -
@@ -558,9 +468,11 @@ class _FilterableDashboardContentState extends State<_FilterableDashboardContent
   @override
   Widget build(BuildContext context) {
     final filtered = _filteredTickets;
-    final kpi = _computeKpiStats(filtered, widget.data.downloads);
+    final kpi = _computeKpiStats(filtered);
     final actionTypeStats = _computeActionTypeStats(filtered);
     final roleProgress = _computeRoleProgress(filtered);
+    final advisorAccountability = _computeAdvisorAccountability(filtered);
+    final coordinatorAccountability = _computeCoordinatorAccountability(filtered);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -586,6 +498,8 @@ class _FilterableDashboardContentState extends State<_FilterableDashboardContent
         _ActionTypeSection(stats: actionTypeStats),
         const SizedBox(height: 18),
         _WorkflowSection(roleProgress: roleProgress),
+        const SizedBox(height: 18),
+        _MainGrid(advisorList: advisorAccountability, coordinatorList: coordinatorAccountability),
       ],
     );
   }
@@ -603,22 +517,22 @@ class _KpiRow extends StatelessWidget {
     final completed = kpi.totalCompleted;
     final rate = total == 0 ? 0 : (completed / total * 100).round();
     final pending = total - completed;
-    final overdue = kpi.totalOverdue;
+    final skipped = kpi.advisorSkippedCount;
 
     final cards = <Widget>[
       _KpiCard(
         title: 'طلبات تحتاج إجراء',
         value: '$pending',
-        meta: 'من إجمالي $total طلبًا',
+        meta: 'من إجمالي $total طلبًا ($completed منها أُغلق نهائيًا)',
         icon: Icons.pending_actions_outlined,
         accent: AppColors.green,
       ),
       _KpiCard(
-        title: 'طلبات متأخرة',
-        value: '$overdue',
-        meta: overdue == 0 ? 'لا توجد طلبات متأخرة' : 'يلزم متابعتها',
-        icon: Icons.schedule_outlined,
-        accent: AppColors.gold,
+        title: 'طلاب تخطّى المرشد ملفاتهم',
+        value: '$skipped',
+        meta: skipped == 0 ? 'لا توجد حالات تخطّت المرشد' : 'أُنجزت لاحقًا عند منسّق القسم/الكلية - راجع القائمة أدناه',
+        icon: Icons.person_off_outlined,
+        accent: AppColors.errorRed,
       ),
       _KpiCard(
         title: 'نسبة الإغلاق النهائي',
@@ -630,16 +544,33 @@ class _KpiRow extends StatelessWidget {
       ),
     ];
 
-    return LayoutBuilder(builder: (context, constraints) {
-      final columns = constraints.maxWidth < 650 ? 1 : (constraints.maxWidth < 1100 ? 2 : 3);
-      return Wrap(
-        spacing: 12,
-        runSpacing: 12,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(14)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          for (final c in cards) SizedBox(width: (constraints.maxWidth - (columns - 1) * 12) / columns, child: c),
+          const _SectionTitle(title: 'الإغلاق الإداري النهائي', icon: Icons.fact_check_outlined),
+          const SizedBox(height: 4),
+          Text(
+            'هذه الأرقام تقيس اكتمال إغلاق الملف إداريًا بكل المستويات (مرشد ← منسّق قسم ← منسّق كلية) - '
+            'لا تنفيذ المرشد وحده. لتفاصيل الإنجاز حسب كل دور راجع "متابعة سير العمل" أدناه.',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+          ),
+          const SizedBox(height: 12),
+          LayoutBuilder(builder: (context, constraints) {
+            final columns = constraints.maxWidth < 650 ? 1 : (constraints.maxWidth < 1100 ? 2 : 3);
+            return Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                for (final c in cards) SizedBox(width: (constraints.maxWidth - (columns - 1) * 12) / columns, child: c),
+              ],
+            );
+          }),
         ],
-      );
-    });
+      ),
+    );
   }
 }
 
@@ -812,23 +743,21 @@ class _DepartmentFilterDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final active = value != null;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10),
-      decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
+      decoration: BoxDecoration(color: active ? AppColors.green : Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String?>(
           value: value,
           isDense: true,
-          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Colors.grey.shade700),
-          icon: Icon(Icons.expand_more, size: 16, color: Colors.grey.shade600),
-          selectedItemBuilder: (context) => [
-            const Text('القسم العلمي'),
-            for (final d in _kCanonicalDepartmentOrder)
-              Text(d.replaceFirst('قسم ', ''), style: const TextStyle(color: AppColors.green, fontWeight: FontWeight.w700)),
-          ],
+          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: active ? Colors.white : Colors.grey.shade700),
+          icon: Icon(Icons.expand_more, size: 16, color: active ? Colors.white : Colors.grey.shade600),
+          dropdownColor: Colors.white,
           items: [
-            const DropdownMenuItem(value: null, child: Text('القسم العلمي')),
-            for (final d in _kCanonicalDepartmentOrder) DropdownMenuItem(value: d, child: Text(d.replaceFirst('قسم ', ''))),
+            const DropdownMenuItem(value: null, child: Text('القسم العلمي', style: TextStyle(color: Colors.black87))),
+            for (final d in _kCanonicalDepartmentOrder)
+              DropdownMenuItem(value: d, child: Text(d.replaceFirst('قسم ', ''), style: const TextStyle(color: Colors.black87))),
           ],
           onChanged: onChanged,
         ),
@@ -844,24 +773,21 @@ class _ShatrFilterDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final active = value != _ShatrFilter.all;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10),
-      decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
+      decoration: BoxDecoration(color: active ? AppColors.green : Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<_ShatrFilter>(
           value: value,
           isDense: true,
-          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Colors.grey.shade700),
-          icon: Icon(Icons.expand_more, size: 16, color: Colors.grey.shade600),
-          selectedItemBuilder: (context) => const [
-            Text('الشطر'),
-            Text('الطلاب', style: TextStyle(color: AppColors.green, fontWeight: FontWeight.w700)),
-            Text('الطالبات', style: TextStyle(color: AppColors.green, fontWeight: FontWeight.w700)),
-          ],
+          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: active ? Colors.white : Colors.grey.shade700),
+          icon: Icon(Icons.expand_more, size: 16, color: active ? Colors.white : Colors.grey.shade600),
+          dropdownColor: Colors.white,
           items: const [
-            DropdownMenuItem(value: _ShatrFilter.all, child: Text('الشطر')),
-            DropdownMenuItem(value: _ShatrFilter.male, child: Text('الطلاب')),
-            DropdownMenuItem(value: _ShatrFilter.female, child: Text('الطالبات')),
+            DropdownMenuItem(value: _ShatrFilter.all, child: Text('الشطر', style: TextStyle(color: Colors.black87))),
+            DropdownMenuItem(value: _ShatrFilter.male, child: Text('الطلاب', style: TextStyle(color: Colors.black87))),
+            DropdownMenuItem(value: _ShatrFilter.female, child: Text('الطالبات', style: TextStyle(color: Colors.black87))),
           ],
           onChanged: (v) => onChanged(v ?? _ShatrFilter.all),
         ),
@@ -877,24 +803,21 @@ class _PriorityFilterDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final active = value != _PriorityFilter.all;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10),
-      decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
+      decoration: BoxDecoration(color: active ? AppColors.green : Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<_PriorityFilter>(
           value: value,
           isDense: true,
-          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Colors.grey.shade700),
-          icon: Icon(Icons.expand_more, size: 16, color: Colors.grey.shade600),
-          selectedItemBuilder: (context) => const [
-            Text('الحالة'),
-            Text('ذوي الإعاقة', style: TextStyle(color: AppColors.green, fontWeight: FontWeight.w700)),
-            Text('المتوقع تخرجهم', style: TextStyle(color: AppColors.green, fontWeight: FontWeight.w700)),
-          ],
+          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: active ? Colors.white : Colors.grey.shade700),
+          icon: Icon(Icons.expand_more, size: 16, color: active ? Colors.white : Colors.grey.shade600),
+          dropdownColor: Colors.white,
           items: const [
-            DropdownMenuItem(value: _PriorityFilter.all, child: Text('الحالة')),
-            DropdownMenuItem(value: _PriorityFilter.disability, child: Text('ذوي الإعاقة')),
-            DropdownMenuItem(value: _PriorityFilter.graduate, child: Text('المتوقع تخرجهم')),
+            DropdownMenuItem(value: _PriorityFilter.all, child: Text('الحالة', style: TextStyle(color: Colors.black87))),
+            DropdownMenuItem(value: _PriorityFilter.disability, child: Text('ذوي الإعاقة', style: TextStyle(color: Colors.black87))),
+            DropdownMenuItem(value: _PriorityFilter.graduate, child: Text('المتوقع تخرجهم', style: TextStyle(color: Colors.black87))),
           ],
           onChanged: (v) => onChanged(v ?? _PriorityFilter.all),
         ),
@@ -995,31 +918,6 @@ class _RoleProgressCard extends StatelessWidget {
   }
 }
 
-/// إحصائيات قسم علمي واحد لشطر واحد - تُجمَع (male+female) لعرض "الكل".
-class _DeptShatrStats {
-  final int total;
-  final int processing;
-  final int overdue;
-  final int completed;
-  const _DeptShatrStats({required this.total, required this.processing, required this.overdue, required this.completed});
-
-  int get rate => total == 0 ? 0 : (completed / total * 100).round();
-
-  _DeptShatrStats operator +(_DeptShatrStats other) => _DeptShatrStats(
-        total: total + other.total,
-        processing: processing + other.processing,
-        overdue: overdue + other.overdue,
-        completed: completed + other.completed,
-      );
-}
-
-class _DepartmentPerf {
-  final String name;
-  final _DeptShatrStats male;
-  final _DeptShatrStats female;
-  const _DepartmentPerf({required this.name, required this.male, required this.female});
-}
-
 enum _ShatrFilter { all, male, female }
 
 /// حالة الإنجاز حسب نوع الإجراء - قسم مستعاد من التصميم الأول (بطلب سليمان
@@ -1101,46 +999,23 @@ class _ActionTypeCard extends StatelessWidget {
   }
 }
 
-/// درجة أهمية الحالة (تُستخدم لتلوين وتصنيف الحالات ضمن "تحتاج تدخل إدارة
-/// الوحدة" - لا علاقة لها بالدور المسؤول، فقط بحالة الطلب نفسه).
-enum _CaseSeverity { urgent, overdue, review }
-
-class _ManagementCase {
-  final String shatr; // 'male' | 'female'
-  final String department;
-  final String student;
-  final String type;
-  final String status;
-  final String reason;
-  final String waiting;
-  final _CaseSeverity severity;
-  const _ManagementCase({
-    required this.shatr,
-    required this.department,
-    required this.student,
-    required this.type,
-    required this.status,
-    required this.reason,
-    required this.waiting,
-    required this.severity,
-  });
-}
-
-/// شبكة رئيسية: تحتاج تدخل إدارة الوحدة (70%) + النشاطات والتنبيهات (30%) -
+/// شبكة رئيسية: مساءلة من لم يعمل (70%) + النشاطات والتنبيهات (30%) -
 /// بلا فرض تساوي الارتفاع (كل قسم بارتفاعه الطبيعي، بطلب سليمان صراحةً).
 class _MainGrid extends StatelessWidget {
-  final _DashboardData data;
-  const _MainGrid({required this.data});
+  final List<_AdvisorAccountability> advisorList;
+  final List<_CoordinatorAccountability> coordinatorList;
+  const _MainGrid({required this.advisorList, required this.coordinatorList});
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (context, constraints) {
+      final section = _AccountabilitySection(advisorList: advisorList, coordinatorList: coordinatorList);
       final stacked = constraints.maxWidth < 1000;
       if (stacked) {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _ManagementAttentionSection(data: data),
+            section,
             const SizedBox(height: 14),
             const _ActivityFeedSection(),
           ],
@@ -1149,7 +1024,7 @@ class _MainGrid extends StatelessWidget {
       return Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(flex: 7, child: _ManagementAttentionSection(data: data)),
+          Expanded(flex: 7, child: section),
           const SizedBox(width: 14),
           const Expanded(flex: 3, child: _ActivityFeedSection()),
         ],
@@ -1158,232 +1033,86 @@ class _MainGrid extends StatelessWidget {
   }
 }
 
-/// "تحتاج تدخل إدارة الوحدة" - هرم تدرّجي (الشطر ← القسم العلمي ← تفاصيل
-/// الحالة) بدل عرض أسماء الطلبة مباشرة بالصفحة الرئيسية (بطلب سليمان
-/// صراحةً: Dashboard يعرض الصورة الإدارية العامة، وتفاصيل الحالات الفردية
-/// تظهر فقط بعد الدخول للقسم العلمي).
-class _ManagementAttentionSection extends StatefulWidget {
-  final _DashboardData data;
-  const _ManagementAttentionSection({required this.data});
-
-  @override
-  State<_ManagementAttentionSection> createState() => _ManagementAttentionSectionState();
-}
-
-class _ManagementAttentionSectionState extends State<_ManagementAttentionSection> {
-  // شطر الطلاب محدَّد افتراضيًا (لا يُترك الشطران مغلقين) - حتى يظهر
-  // المستوى الثاني (الأقسام العلمية) فورًا بدل مساحة فارغة كبيرة (سليمان
-  // 2026-08-19).
-  String _shatr = 'male';
-  String? _department;
-
-  List<_ManagementCase> get _cases => widget.data.managementCases;
-  List<_ManagementCase> get _casesInShatr => _cases.where((c) => c.shatr == _shatr).toList();
-  List<_ManagementCase> get _casesInDept => _casesInShatr.where((c) => c.department == _department).toList();
-
-  String _severityLabel(_CaseSeverity s) => switch (s) {
-        _CaseSeverity.urgent => 'عاجلة',
-        _CaseSeverity.overdue => 'متأخرة',
-        _CaseSeverity.review => 'مراجعة',
-      };
+/// "من لم يعمل على حالاته" - بديل "تحتاج تدخل إدارة الوحدة" القديم المبني
+/// على وقت/إعاقة. القاعدة الحقيقية (سليمان 2026-08-21): "دوري متابعة
+/// الحالات التي لم يتم عليها أي إجراء" - بالاسم للمرشد (تخطّاه القسم/الكلية
+/// وأنجزا بدلًا عنه)، وبمستوى القسم للمنسّق (لا يوجد اسم منسّق بالتذكرة).
+/// منسّق الكلية خارج أي مساءلة هنا عمدًا - بمجرد وصول الحالة إليه فهي
+/// "منجزة" من منظور الوحدة بصرف النظر متى/كيف ينفّذها فعليًا.
+class _AccountabilitySection extends StatelessWidget {
+  final List<_AdvisorAccountability> advisorList;
+  final List<_CoordinatorAccountability> coordinatorList;
+  const _AccountabilitySection({required this.advisorList, required this.coordinatorList});
 
   @override
   Widget build(BuildContext context) {
+    final totalSkipped = advisorList.fold<int>(0, (s, a) => s + a.skippedCount) + coordinatorList.fold<int>(0, (s, c) => s + c.skippedCount);
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(14)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Badge عدد الحالات مُلاصِق للعنوان مباشرةً - لا يُستخدَم trailing
-          // العام (_SectionTitle) الذي كان يدفعه لأقصى الطرف الآخر بعيدًا عن
-          // العنوان (سليمان 2026-08-19: "معلومتان مرتبطتان يجب أن تكونا
-          // متقاربتين").
           Row(
             children: [
               Container(width: 4, height: 20, decoration: BoxDecoration(color: AppColors.gold, borderRadius: BorderRadius.circular(2))),
               const SizedBox(width: 10),
-              const Icon(Icons.report_gmailerrorred_outlined, size: 19, color: AppColors.greenDark),
+              const Icon(Icons.person_off_outlined, size: 19, color: AppColors.greenDark),
               const SizedBox(width: 7),
-              const Text('تحتاج تدخل إدارة الوحدة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 19, color: AppColors.greenDark)),
+              const Text('من لم يعمل على حالاته', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 19, color: AppColors.greenDark)),
               const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
                 decoration: BoxDecoration(color: AppColors.errorRed.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
-                child: Text('عدد الحالات: ${_cases.length}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.errorRed)),
+                child: Text('$totalSkipped حالة', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.errorRed)),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          _buildShatrTabs(),
-          const SizedBox(height: 8),
-          if (_department != null) ...[
-            _buildBreadcrumb(),
-            const SizedBox(height: 8),
-          ],
-          if (_cases.isEmpty)
+          const SizedBox(height: 4),
+          Text(
+            'طلاب أُنجزت حالاتهم دون أن يعمل عليها المرشد/منسّق القسم إطلاقًا - أُنجزت لاحقًا عند من فوقه. '
+            'منسّق الكلية غير مُتابَع هنا (جهة تنفيذية بلا مهلة زمنية).',
+            style: TextStyle(fontSize: 11.5, color: Colors.grey.shade500),
+          ),
+          const SizedBox(height: 14),
+          if (totalSkipped == 0)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 20),
               child: Center(
-                child: Text('لا توجد حالات تحتاج تدخل إدارة الوحدة حاليًا', style: TextStyle(fontSize: 12.5, color: Colors.grey.shade500)),
+                child: Text('لا توجد حالات تخطّت المرشد أو منسّق القسم حاليًا', style: TextStyle(fontSize: 12.5, color: Colors.grey.shade500)),
               ),
             )
-          else if (_department == null)
-            _buildDepartmentLevel()
-          else
-            _buildCaseLevel(),
-        ],
-      ),
-    );
-  }
-
-  /// شريحتان صغيرتان (Segmented Control) بدل بطاقتين كبيرتين - توفّر مساحة
-  /// كبيرة كانت تظهر فارغة أسفلهما (سليمان 2026-08-19).
-  Widget _buildShatrTabs() {
-    final male = _cases.where((c) => c.shatr == 'male').length;
-    final female = _cases.where((c) => c.shatr == 'female').length;
-
-    Widget tab(String label, String value, int count) {
-      final selected = _shatr == value;
-      return InkWell(
-        onTap: () => setState(() {
-          _shatr = value;
-          _department = null;
-        }),
-        borderRadius: BorderRadius.circular(7),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 10),
-          decoration: BoxDecoration(color: selected ? AppColors.green : Colors.grey.shade100, borderRadius: BorderRadius.circular(7)),
-          child: Text(
-            '$label  $count',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: selected ? Colors.white : Colors.grey.shade700),
-          ),
-        ),
-      );
-    }
-
-    return Row(mainAxisSize: MainAxisSize.min, children: [
-      tab('شطر الطلاب', 'male', male),
-      const SizedBox(width: 6),
-      tab('شطر الطالبات', 'female', female),
-    ]);
-  }
-
-  Widget _buildBreadcrumb() {
-    return Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 4, children: [
-      _crumb(_shatr == 'male' ? 'شطر الطلاب' : 'شطر الطالبات', onTap: () => setState(() => _department = null)),
-      Icon(Icons.chevron_left, size: 14, color: Colors.grey.shade400),
-      _crumb(_department!, isCurrent: true),
-    ]);
-  }
-
-  Widget _crumb(String label, {VoidCallback? onTap, bool isCurrent = false}) {
-    final text = Text(
-      label,
-      style: TextStyle(fontSize: 11.5, fontWeight: isCurrent ? FontWeight.w800 : FontWeight.w600, color: isCurrent ? AppColors.greenDark : Colors.grey.shade500),
-    );
-    if (onTap == null || isCurrent) return text;
-    return InkWell(onTap: onTap, child: text);
-  }
-
-  /// Compact Structured Grid بدل صف بمعلومتين في طرفيه - عمود لكل تصنيف
-  /// (عاجلة/متأخرة/مراجعة) بدل نص حر متفرق (سليمان 2026-08-19).
-  Widget _buildDepartmentLevel() {
-    final cases = _casesInShatr;
-    // ترتيب الأقسام العلمية دائمًا حسب ترتيب [_kCanonicalDepartmentOrder]
-    // المعتمد (الإدارة، المحاسبة، التسويق، الاقتصاد والتمويل، نظم المعلومات
-    // الإدارية) - لا حسب ترتيب ظهورها العرضي بقائمة الحالات (سليمان
-    // 2026-08-19: "نبدأ بالإدارة وننتهي بنظم المعلومات").
-    final departments = cases.map((c) => c.department).toSet().toList()
-      ..sort((a, b) => _kCanonicalDepartmentOrder.indexOf(a).compareTo(_kCanonicalDepartmentOrder.indexOf(b)));
-    if (departments.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 20),
-        child: Center(
-          child: Text('لا توجد حالات بهذا الشطر حاليًا', style: TextStyle(fontSize: 12.5, color: Colors.grey.shade500)),
-        ),
-      );
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _buildDeptGridHeader(),
-        const Divider(height: 8, thickness: 1),
-        for (final dep in departments) _buildDeptRow(dep, cases.where((c) => c.department == dep).toList()),
-      ],
-    );
-  }
-
-  Widget _buildDeptGridHeader() {
-    TextStyle style = TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: Colors.grey.shade500);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      child: Row(
-        children: [
-          const Expanded(flex: 3, child: SizedBox()),
-          Expanded(flex: 2, child: Text('عاجلة', textAlign: TextAlign.center, style: style)),
-          Expanded(flex: 2, child: Text('متأخرة', textAlign: TextAlign.center, style: style)),
-          Expanded(flex: 2, child: Text('مراجعة', textAlign: TextAlign.center, style: style)),
-          Expanded(flex: 2, child: Text('الإجمالي', textAlign: TextAlign.center, style: style)),
-          const SizedBox(width: 19),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDeptRow(String dep, List<_ManagementCase> cases) {
-    final urgent = cases.where((c) => c.severity == _CaseSeverity.urgent).length;
-    final overdue = cases.where((c) => c.severity == _CaseSeverity.overdue).length;
-    final review = cases.where((c) => c.severity == _CaseSeverity.review).length;
-
-    Widget cell(int n, Color color) => Expanded(
-          flex: 2,
-          child: Text(n == 0 ? '—' : '$n', textAlign: TextAlign.center, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: n == 0 ? Colors.grey.shade400 : color)),
-        );
-
-    return InkWell(
-      onTap: () => setState(() => _department = dep),
-      borderRadius: BorderRadius.circular(8),
-      hoverColor: AppColors.green.withValues(alpha: 0.05),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        constraints: const BoxConstraints(minHeight: 38),
-        decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(8)),
-        child: Row(
-          children: [
-            Expanded(flex: 3, child: Text(dep, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11.5))),
-            cell(urgent, AppColors.errorRed),
-            cell(overdue, AppColors.gold),
-            cell(review, const Color(0xFF2563EB)),
-            Expanded(flex: 2, child: Text('${cases.length}', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5, color: AppColors.greenDark))),
-            SizedBox(width: 19, child: Icon(Icons.chevron_left, size: 15, color: Colors.grey.shade400)),
+          else ...[
+            if (advisorList.isNotEmpty) ...[
+              Text('مرشدون تخطّتهم حالات', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.grey.shade700)),
+              const SizedBox(height: 8),
+              for (final a in advisorList) _AccountabilityRow(primary: a.advisorName, secondary: '${a.department} - ${a.shatrLabel}', count: a.skippedCount),
+            ],
+            if (advisorList.isNotEmpty && coordinatorList.isNotEmpty) const SizedBox(height: 16),
+            if (coordinatorList.isNotEmpty) ...[
+              Text('أقسام تخطّى منسّقوها حالات', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.grey.shade700)),
+              const SizedBox(height: 8),
+              for (final c in coordinatorList) _AccountabilityRow(primary: '${c.department} - ${c.shatrLabel}', secondary: 'منسّق القسم', count: c.skippedCount),
+            ],
           ],
-        ),
+        ],
       ),
-    );
-  }
-
-  Widget _buildCaseLevel() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [for (final c in _casesInDept) _ManagementCaseRow(item: c, severityLabel: _severityLabel(c.severity))],
     );
   }
 }
 
-class _ManagementCaseRow extends StatelessWidget {
-  final _ManagementCase item;
-  final String severityLabel;
-  const _ManagementCaseRow({required this.item, required this.severityLabel});
+class _AccountabilityRow extends StatelessWidget {
+  final String primary;
+  final String secondary;
+  final int count;
+  const _AccountabilityRow({required this.primary, required this.secondary, required this.count});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
-      constraints: const BoxConstraints(minHeight: 58),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      constraints: const BoxConstraints(minHeight: 46),
       decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(10)),
       child: Row(
         children: [
@@ -1391,40 +1120,16 @@ class _ManagementCaseRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Expanded(child: Text(item.student, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5))),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.grey.shade300)),
-                      child: Text(item.status, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.errorRed)),
-                    ),
-                  ],
-                ),
+                Text(primary, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
                 const SizedBox(height: 2),
-                Text('${item.type} · ${item.reason}', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600)),
+                Text(secondary, style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600)),
               ],
             ),
           ),
-          const SizedBox(width: 8),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(item.waiting, style: TextStyle(fontSize: 10.5, color: Colors.grey.shade500)),
-              const SizedBox(height: 4),
-              OutlinedButton(
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-                  minimumSize: const Size(0, 26),
-                  foregroundColor: AppColors.green,
-                  side: const BorderSide(color: AppColors.green),
-                ),
-                onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('عرض تفاصيل حالة "${item.student}"')),
-                ),
-                child: const Text('عرض', style: TextStyle(fontSize: 10.5)),
-              ),
-            ],
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(color: AppColors.errorRed.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
+            child: Text('$count حالة', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.errorRed)),
           ),
         ],
       ),
