@@ -41,6 +41,12 @@ class ExcelProtectionService {
   static const String protectionPassword = 'Sulaiman';
   static const List<String> statusOptions = ['تم الإنجاز', 'جزئي', 'لم يتم'];
 
+  /// خياران فقط لعمود "حالة الإنجاز من قبل المرشد الأكاديمي" تحديدًا (بخلاف
+  /// [statusOptions] الثلاثي المستخدَم بمستويي مراجعة القسم/الكلية): المرشد
+  /// يقرّر لكل إجراء منفرد هل نُفِّذ أو لا فقط، بينما "تنفيذ جزئي" تُحسب لاحقًا
+  /// تلقائيًا على مستوى الطالب ككل من مجموع إجراءاته (وليست خيارًا يدويًا).
+  static const List<String> advisorActionStatusOptions = ['تم التنفيذ', 'لم يتم التنفيذ'];
+
   /// يقفل كل الأعمدة في الشيت الأول عدا [unlockedColumnIndexes] (صفر-فهرسة)،
   /// ويضيف قائمة منسدلة لكل عنصر في [dropdowns]، لعدد صفوف بيانات
   /// [dataRowCount] (بدون احتساب صف العناوين).
@@ -68,6 +74,17 @@ class ExcelProtectionService {
     final sheetXml = XmlDocument.parse(
       utf8.decode(sheetFile.content as List<int>),
     );
+    // حزمة `excel` قد تُصدر عنصر <drawing r:id="rId1"/> داخل sheet1.xml نفسه
+    // (لوحظ هذا لأول مرة هنا رغم أن ملاحظة سابقة افترضت أنه لا يحدث أبدًا) -
+    // بينما أجزاء الرسم الفعلية (drawing1.xml وعلاقاته) تُحذَف أدناه دومًا لأن
+    // [addLogoImage] غير مستخدَم بالمشروع. إبقاء هذا العنصر بلا حذف حالة
+    // الرابط اليتيم (Relationship مفقود) بالضبط ما يجعل إكسل يعرض "وجدنا
+    // مشكلة في المحتوى" ويطلب الإصلاح - فيجب حذفه دومًا هنا أيضًا.
+    sheetXml.rootElement.children
+        .whereType<XmlElement>()
+        .where((e) => e.name.local == 'drawing')
+        .toList()
+        .forEach((e) => e.parent?.children.remove(e));
     if (addProtection) {
       _unlockColumns(sheetXml, unlockedColumnIndexes, unlockedStyleIndex, headerRowCount);
       _unlockCells(sheetXml, unlockedCellRefs, unlockedStyleIndex);

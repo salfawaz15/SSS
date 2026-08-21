@@ -19,12 +19,14 @@ class StatusCounts {
     total++;
     switch (status) {
       case 'تم الإنجاز':
+      case 'تم التنفيذ':
         completed++;
         break;
       case 'جزئي':
         partial++;
         break;
       case 'لم يتم':
+      case 'لم يتم التنفيذ':
         notDone++;
         break;
       default:
@@ -114,6 +116,57 @@ class AdvisorProgress {
   }
 }
 
+/// هل قيمة حالة تعني "منجَز"؟ - يقبل كلا القيمتين: 'تم الإنجاز' (مستخدَمة
+/// بمستويي مراجعة القسم/الكلية) و'تم التنفيذ' (قيمة عمود المرشد الأكاديمي
+/// تحديدًا، قائمته المنسدلة ثنائية الخيار فقط).
+bool isCompletedStatus(String status) => status == 'تم الإنجاز' || status == 'تم التنفيذ';
+
+/// نتيجة إجراءات المرشد الأكاديمي على مستوى الطالب (التذكرة) ككل - وليس
+/// الإجراء المفرد. بطلب سليمان صراحةً (2026-08-21): لو طلب الطالب أكثر من
+/// إجراء (مثال: إضافة مادتين) ونُفِّذ بعضها ورُفض بعضها، يُصنَّف طلبه إجمالًا
+/// "تنفيذ جزئي" - هذا التصنيف لا يظهر أبدًا كخيار يدوي بملف المرشد (قائمته
+/// المنسدلة ثنائية فقط: تم التنفيذ/لم يتم التنفيذ لكل إجراء بمفرده)، بل يُحسب
+/// تلقائيًا هنا من مجموع حالات كل إجراءاته.
+enum TicketAdvisorOutcome { complete, partial, rejected, notStarted }
+
+/// نفس تصنيف [ticketAdvisorOutcome] لكن معمَّم لأي عمود حالة على مستوى
+/// الإجراء ('advisor_status'، 'coordinator_status'، أو 'college_status') -
+/// حتى تتابع الإدارة تقدّم المرشدين ومنسّقي الأقسام ومنسّقي الكلية معًا
+/// بنفس منطق المستوى الواحد (بطلب سليمان صراحةً 2026-08-21).
+TicketAdvisorOutcome ticketOutcomeForField(Map<String, dynamic> ticket, String statusField) {
+  final actions = (ticket['actions'] as List?) ?? const [];
+  if (actions.isEmpty) return TicketAdvisorOutcome.notStarted;
+
+  var done = 0;
+  var rejected = 0;
+  var untouched = 0;
+  for (final a in actions) {
+    final action = a as Map<String, dynamic>;
+    final status = (action[statusField] ?? '').toString().trim();
+    if (status.isEmpty) {
+      untouched++;
+    } else if (isCompletedStatus(status)) {
+      done++;
+    } else {
+      rejected++;
+    }
+  }
+
+  if (untouched == actions.length) return TicketAdvisorOutcome.notStarted;
+  if (untouched == 0 && rejected == 0) return TicketAdvisorOutcome.complete;
+  if (untouched == 0 && done == 0) return TicketAdvisorOutcome.rejected;
+  return TicketAdvisorOutcome.partial;
+}
+
+/// نتيجة إجراءات المرشد الأكاديمي على مستوى الطالب (التذكرة) ككل - وليس
+/// الإجراء المفرد. بطلب سليمان صراحةً (2026-08-21): لو طلب الطالب أكثر من
+/// إجراء (مثال: إضافة مادتين) ونُفِّذ بعضها ورُفض بعضها، يُصنَّف طلبه إجمالًا
+/// "تنفيذ جزئي" - هذا التصنيف لا يظهر أبدًا كخيار يدوي بملف المرشد (قائمته
+/// المنسدلة ثنائية فقط: تم التنفيذ/لم يتم التنفيذ لكل إجراء بمفرده)، بل يُحسب
+/// تلقائيًا هنا من مجموع حالات كل إجراءاته.
+TicketAdvisorOutcome ticketAdvisorOutcome(Map<String, dynamic> ticket) =>
+    ticketOutcomeForField(ticket, 'advisor_status');
+
 /// آخر حالة غير فارغة تصعيديًا (المرشد ← منسق القسم ← منسق الكلية) - تحدد
 /// هل الحالة محلولة فعليًا، بصرف النظر عمن أنجزها
 String effectiveStatus(Map<String, dynamic> action) {
@@ -127,7 +180,7 @@ String effectiveStatus(Map<String, dynamic> action) {
 /// اسم الجهة التي أنجزت الحالة فعليًا ('تم الإنجاز') - أول من كتبها تصعيديًا
 /// (المرشد ← منسق القسم ← منسق الكلية)، أو فارغ لو لم تُنجَز
 String effectiveCompletedBy(Map<String, dynamic> action) {
-  if ((action['advisor_status'] ?? '').toString().trim() == 'تم الإنجاز') {
+  if (isCompletedStatus((action['advisor_status'] ?? '').toString().trim())) {
     return 'المرشد الأكاديمي';
   }
   if ((action['coordinator_status'] ?? '').toString().trim() == 'تم الإنجاز') {
@@ -221,7 +274,7 @@ class ReportDataService {
           departmentReport.advisor(advisorName).counts.addWorked(action['advisor_status']?.toString());
         }
 
-        if (status == 'تم الإنجاز') {
+        if (isCompletedStatus(status)) {
           final bucket = effectiveCompletedBy(action);
           final key = bucket.isEmpty ? 'غير محدد' : bucket;
           data.completedByOverall[key] = (data.completedByOverall[key] ?? 0) + 1;

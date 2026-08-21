@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/academic_department_names.dart';
 import '../services/excel_parser_service.dart';
 import '../services/firestore_ticket_service.dart';
+import '../services/report_data_service.dart' show TicketAdvisorOutcome, ticketOutcomeForField;
 import '../services/stage_download_service.dart';
 import '../theme/app_theme.dart';
 import 'admin_nav.dart';
@@ -23,8 +24,12 @@ import 'upload_hub_screen.dart';
 /// بـ`FirestoreTicketService.watchAllTickets()` و`StageDownloadService.watchAll()`
 /// عدا "آخر النشاطات" (التبويب الثاني بالبطاقة اليمنى) الذي يبقى Mock مؤقتًا
 /// (بموافقة سليمان صراحةً) لأنه يحتاج سجل حركات لحظي غير موجود بالنظام بعد.
-/// بنية الـWidgets وتصميمها البصري **بلا أي تغيير** عن النسخة المعتمدة
-/// (UI Frozen) - التعديل يقتصر على مصدر الأرقام (`_DashboardData.compute`).
+/// بنية الـWidgets وتصميمها البصري **مجمَّدة (UI Frozen)** بشكل عام - أي
+/// تعديل بصري يحتاج طلبًا صريحًا من سليمان لكل حالة على حدة (لا يُفترَض
+/// تلقائيًا عند ربط بيانات جديدة). استثناء وحيد صريح: قسم "متابعة سير العمل"
+/// أُعيد تصميمه فعليًا (2026-08-21) من شريط 6 مراحل بأرقام مجردة إلى ثلاث
+/// بطاقات دور (مرشد/منسّق قسم/منسّق كلية) بطلب سليمان المباشر - راجع
+/// [_RoleProgress] و[_RoleProgressCard].
 class AdminExecutiveDashboardScreen extends StatelessWidget {
   const AdminExecutiveDashboardScreen({super.key});
 
@@ -95,6 +100,11 @@ const _kCanonicalDepartmentOrder = [
 /// و`excel_export_service.dart`.
 const _kCompletedMarker = 'تم الإنجاز';
 
+/// قيمة "تم" الخاصة بعمود المرشد الأكاديمي تحديدًا (قائمته المنسدلة ثنائية:
+/// تم التنفيذ/لم يتم التنفيذ، بخلاف عمودي منسق القسم/الكلية اللذين ما زالا
+/// يستخدمان [_kCompletedMarker]) - راجع [ExcelProtectionService.advisorActionStatusOptions]
+const _kAdvisorCompletedMarker = 'تم التنفيذ';
+
 enum _Stage { advisor, deptReview, collegeReview, closed }
 
 class _ActionCompute {
@@ -125,7 +135,7 @@ class _MutableActionType {
 /// (نفس الضمان الذي وفّرته `_kDepartmentPerf` سابقًا للبيانات الوهمية).
 class _DashboardData {
   final List<_DepartmentPerf> departmentPerf;
-  final List<_WorkflowStage> workflowStages;
+  final List<_RoleProgress> roleProgress;
   final List<_ActionTypeStats> actionTypeStats;
   final List<_ManagementCase> managementCases;
   final int totalRequests;
@@ -134,7 +144,7 @@ class _DashboardData {
 
   const _DashboardData({
     required this.departmentPerf,
-    required this.workflowStages,
+    required this.roleProgress,
     required this.actionTypeStats,
     required this.managementCases,
     required this.totalRequests,
@@ -177,7 +187,7 @@ class _DashboardData {
       stage = _Stage.closed;
     } else if (coordinatorStatus == _kCompletedMarker) {
       stage = _Stage.collegeReview;
-    } else if (advisorStatus == _kCompletedMarker) {
+    } else if (advisorStatus == _kAdvisorCompletedMarker || advisorStatus == _kCompletedMarker) {
       stage = _Stage.deptReview;
     } else {
       stage = _Stage.advisor;
@@ -220,12 +230,21 @@ class _DashboardData {
     }
 
     final deptTotals = <String, _MutableStats>{};
-    var stage3 = 0, stage4 = 0, stage5 = 0, stage6 = 0;
     final actionTypeAcc = <String, _MutableActionType>{};
     final cases = <_ManagementCase>[];
     var totalOverdue = 0;
+    final advisorOutcomeCounts = {for (final o in TicketAdvisorOutcome.values) o: 0};
+    final coordinatorOutcomeCounts = {for (final o in TicketAdvisorOutcome.values) o: 0};
+    final collegeOutcomeCounts = {for (final o in TicketAdvisorOutcome.values) o: 0};
 
     for (final ticket in tickets) {
+      final advisorOutcome = ticketOutcomeForField(ticket, 'advisor_status');
+      advisorOutcomeCounts[advisorOutcome] = (advisorOutcomeCounts[advisorOutcome] ?? 0) + 1;
+      final coordinatorOutcome = ticketOutcomeForField(ticket, 'coordinator_status');
+      coordinatorOutcomeCounts[coordinatorOutcome] = (coordinatorOutcomeCounts[coordinatorOutcome] ?? 0) + 1;
+      final collegeOutcome = ticketOutcomeForField(ticket, 'college_status');
+      collegeOutcomeCounts[collegeOutcome] = (collegeOutcomeCounts[collegeOutcome] ?? 0) + 1;
+
       final shatrRaw = (ticket['shatr'] ?? '').toString();
       final shatrKey = shatrRaw == ExcelParserService.shatrMale ? 'male' : 'female';
       final rawDept = (ticket['department'] ?? '').toString();
@@ -247,16 +266,8 @@ class _DashboardData {
         final computed = _classifyAction(action, advisorDl, coordDl, now);
 
         stats.total++;
-        switch (computed.stage) {
-          case _Stage.advisor:
-            stage3++;
-          case _Stage.deptReview:
-            stage4++;
-          case _Stage.collegeReview:
-            stage5++;
-          case _Stage.closed:
-            stage6++;
-            stats.completed++;
+        if (computed.stage == _Stage.closed) {
+          stats.completed++;
         }
         if (computed.stage != _Stage.closed && computed.overdue) {
           stats.overdue++;
@@ -319,20 +330,17 @@ class _DashboardData {
       return _ActionTypeStats(label: e.value, completed: acc?.completed ?? 0, processing: acc?.processing ?? 0, notStarted: acc?.notStarted ?? 0);
     }).toList();
 
-    final workflowStages = [
-      const _WorkflowStage(role: 'إدارة الوحدة', subtitle: 'توزيع الطلبات', value: 0, color: _WorkflowSection.neutral),
-      const _WorkflowStage(role: 'منسّق القسم العلمي', subtitle: 'إحالة للمرشد', value: 0, color: _WorkflowSection.neutral),
-      _WorkflowStage(role: 'المرشد الأكاديمي', subtitle: 'تنفيذ الإجراء', value: stage3, color: _WorkflowSection.neutral),
-      _WorkflowStage(role: 'منسّق القسم العلمي', subtitle: 'مراجعة الإجراء', value: stage4, color: _WorkflowSection.neutral),
-      _WorkflowStage(role: 'منسّق الكلية', subtitle: 'المراجعة والاعتماد', value: stage5, color: _WorkflowSection.neutral),
-      _WorkflowStage(role: 'إدارة الوحدة', subtitle: 'المراجعة والإغلاق', value: stage6, color: AppColors.green),
+    final roleProgress = [
+      _RoleProgress(role: 'المرشدون الأكاديميون', breakdown: advisorOutcomeCounts),
+      _RoleProgress(role: 'منسّقو الأقسام العلمية', breakdown: coordinatorOutcomeCounts),
+      _RoleProgress(role: 'منسّقو الكلية', breakdown: collegeOutcomeCounts),
     ];
 
     cases.sort((a, b) => a.severity.index.compareTo(b.severity.index));
 
     return _DashboardData(
       departmentPerf: departmentPerf,
-      workflowStages: workflowStages,
+      roleProgress: roleProgress,
       actionTypeStats: actionTypeStats,
       managementCases: cases,
       totalRequests: totalRequests,
@@ -592,73 +600,54 @@ class _KpiCard extends StatelessWidget {
   }
 }
 
-/// متابعة سير العمل - يمثّل المسار الإداري الحقيقي (6 مراحل، لا 5): إدارة
-/// الوحدة توزّع الطلب، منسّق القسم العلمي يحيله للمرشد، المرشد ينفّذ، يعود
-/// لمنسّق القسم العلمي للمراجعة، ثم منسّق الكلية، وأخيرًا يعود لإدارة الوحدة
-/// (لا "مكتمل" منفصلة - العودة لإدارة الوحدة هي الإغلاق). الألوان تعبّر عن
-/// الحالة (محايد أثناء المعالجة، أخضر عند الإغلاق) لا عن الدور - بطلب سليمان
-/// صراحةً (2026-08-19). المرحلتان 1 و2 (توزيع/إحالة) دائمًا صفر بالبيانات
-/// الحقيقية - النظام الحالي يوزّع/يحيل تلقائيًا فور رفع ملف الفورمز، فلا
-/// توجد حالة "قيد التوزيع" منفصلة تقنيًا.
-class _WorkflowStage {
+/// متابعة سير العمل - أُعيد تصميمها (سليمان 2026-08-21: "أريد فعلًا أتابع سير
+/// العمل للمرشدين والمنسّقين ومنسّقي الكلية") من شريط 6 مراحل بأرقام مجردة
+/// إلى ثلاث بطاقات دور واحدة لكل مستوى تصعيد (مرشد ← منسّق قسم ← منسّق كلية)،
+/// كل بطاقة تُظهر دائمًا وبلا حاجة لأي نقر تصنيف كل طالب من واقع البيانات
+/// الفعلية: منفَّذ بالكامل/تنفيذ جزئي/مرفوض بالكامل/لم يُعمَل عليه بعد -
+/// بنفس منطق [ticketOutcomeForField] لكل من الأعمدة الثلاثة.
+class _RoleProgress {
   final String role;
-  final String subtitle;
-  final int value;
-  final Color color;
-  const _WorkflowStage({required this.role, required this.subtitle, required this.value, required this.color});
+  final Map<TicketAdvisorOutcome, int> breakdown;
+  const _RoleProgress({required this.role, required this.breakdown});
+
+  int get total => breakdown.values.fold(0, (a, b) => a + b);
+  int get complete => breakdown[TicketAdvisorOutcome.complete] ?? 0;
+  int get partial => breakdown[TicketAdvisorOutcome.partial] ?? 0;
+  int get rejected => breakdown[TicketAdvisorOutcome.rejected] ?? 0;
+  int get notStarted => breakdown[TicketAdvisorOutcome.notStarted] ?? 0;
 }
 
 class _WorkflowSection extends StatelessWidget {
   final _DashboardData data;
   const _WorkflowSection({required this.data});
 
-  static const neutral = Color(0xFF5B6B7C);
-
   @override
   Widget build(BuildContext context) {
-    final stages = data.workflowStages;
-    // Process Stepper / Process Strip حقيقي - لا Cards كبيرة منفصلة بحدود
-    // وخلفيات لكل مرحلة، بل عُقَد نصية مضغوطة داخل شريط أفقي واحد (بطلب
-    // سليمان صراحةً 2026-08-19: تغيير نمط العرض نفسه لا تصغير البطاقات
-    // السابقة). ارتفاع القسم بالكامل (العنوان + الشريط) يبقى ضمن 110-120px.
-    // Padding مخفَّض (18×8 رأسيًا بدل 12) - رفع Typography بالمسار لا يعني
-    // تكبير الحاوية، بل العكس: خط أوضح + حاوية أقصر بنحو 15-20% (سليمان
-    // 2026-08-19).
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
       decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(14)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const _SectionTitle(title: 'متابعة سير العمل', icon: Icons.timeline_outlined),
           const SizedBox(height: 4),
-          Text('الأرقام تمثّل عدد الطلبات الموجودة حاليًا في كل مرحلة', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
-          const SizedBox(height: 4),
-          // المسار يُمركَز أفقيًا كوحدة واحدة (Center داخل ConstrainedBox
-          // بأقل عرض = عرض الحاوية) بدل الالتصاق بحافة البداية وترك فراغ
-          // كبير على الحافة الأخرى في الشاشات العريضة (سليمان 2026-08-19):
-          // "Process Strip نفسه يجب أن يكون Centered". يبقى قابلاً للتمرير
-          // أفقيًا لو ضاقت الشاشة عن احتواء المسار كاملاً.
+          Text('حالة الطلبات فعليًا عند كل مستوى - كل رقم من واقع ما أُدخِل بالملفات', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+          const SizedBox(height: 14),
           LayoutBuilder(builder: (context, constraints) {
-            final strip = Row(
-              mainAxisSize: MainAxisSize.min,
+            final narrow = constraints.maxWidth < 900;
+            final cards = data.roleProgress.map((r) => _RoleProgressCard(progress: r)).toList();
+            if (narrow) {
+              return Column(children: [for (var i = 0; i < cards.length; i++) ...[if (i > 0) const SizedBox(height: 10), cards[i]]]);
+            }
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                for (var i = 0; i < stages.length; i++) ...[
-                  _WorkflowStepNode(stage: stages[i], isEdge: i == 0 || i == stages.length - 1),
-                  if (i != stages.length - 1)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: Icon(Icons.arrow_back, size: 16, color: Colors.grey.shade400),
-                    ),
+                for (var i = 0; i < cards.length; i++) ...[
+                  Expanded(child: cards[i]),
+                  if (i != cards.length - 1) const SizedBox(width: 12),
                 ],
               ],
-            );
-            return SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minWidth: constraints.maxWidth),
-                child: Center(child: strip),
-              ),
             );
           }),
         ],
@@ -667,46 +656,72 @@ class _WorkflowSection extends StatelessWidget {
   }
 }
 
-class _WorkflowStepNode extends StatelessWidget {
-  final _WorkflowStage stage;
-  final bool isEdge;
-  const _WorkflowStepNode({required this.stage, this.isEdge = false});
+class _RoleProgressCard extends StatelessWidget {
+  final _RoleProgress progress;
+  const _RoleProgressCard({required this.progress});
+
+  static const _completeColor = AppColors.green;
+  static const _partialColor = AppColors.gold;
+  static const _rejectedColor = Color(0xFFD9534F);
+  static const _notStartedColor = Color(0xFF9AA5B1);
 
   @override
   Widget build(BuildContext context) {
-    // عقدة نصية بلا خلفية/حدود ثابتة - فقط Hover خفيف عند التفاعل، بما
-    // يطابق شكل "Stepper" لا "Cards". الخطوط رُفعت للحد المطلوب صراحةً (اسم
-    // الدور 14، الرقم 17، الوصف 12) - لا مزيد من التصغير (سليمان 2026-08-19).
-    // مرحلتا البداية/النهاية (إدارة الوحدة) تحملان خطًّا ذهبيًا رفيعًا مائزًا
-    // تحت الاسم - تمييز خفيف لبداية/نهاية الدورة بلا تحويلهما لبطاقتين.
-    return InkWell(
-      onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('عرض حالات مرحلة "${stage.role} - ${stage.subtitle}" (${stage.value})')),
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F9F8),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
       ),
-      borderRadius: BorderRadius.circular(8),
-      hoverColor: stage.color.withValues(alpha: 0.06),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            RichText(
-              textAlign: TextAlign.center,
-              text: TextSpan(children: [
-                TextSpan(text: stage.role, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.greenDark)),
-                TextSpan(text: '  |  ', style: TextStyle(fontSize: 12, color: Colors.grey.shade400)),
-                TextSpan(text: '${stage.value}', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: stage.color)),
-              ]),
-            ),
-            if (isEdge) ...[
-              const SizedBox(height: 2),
-              Container(width: 22, height: 2, decoration: BoxDecoration(color: AppColors.gold, borderRadius: BorderRadius.circular(2))),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(progress.role, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: AppColors.greenDark)),
+              ),
+              Text('${progress.total}', style: TextStyle(fontSize: 13, color: Colors.grey.shade500)),
             ],
-            const SizedBox(height: 1),
-            Text(stage.subtitle, style: TextStyle(fontSize: 12.5, color: Colors.grey.shade500)),
+          ),
+          const SizedBox(height: 12),
+          _outcomeRow('منفَّذ بالكامل', progress.complete, progress.total, _completeColor),
+          const SizedBox(height: 8),
+          _outcomeRow('تنفيذ جزئي', progress.partial, progress.total, _partialColor),
+          const SizedBox(height: 8),
+          _outcomeRow('مرفوض بالكامل', progress.rejected, progress.total, _rejectedColor),
+          const SizedBox(height: 8),
+          _outcomeRow('لم يُعمَل عليه بعد', progress.notStarted, progress.total, _notStartedColor),
+        ],
+      ),
+    );
+  }
+
+  Widget _outcomeRow(String label, int value, int total, Color color) {
+    final rate = total == 0 ? 0.0 : value / total;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(width: 9, height: 9, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+            const SizedBox(width: 6),
+            Expanded(child: Text(label, style: const TextStyle(fontSize: 12.5))),
+            Text('$value', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: color)),
           ],
         ),
-      ),
+        const SizedBox(height: 4),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: Stack(
+            children: [
+              Container(height: 6, color: Colors.grey.shade200),
+              FractionallySizedBox(widthFactor: rate.clamp(0.0, 1.0), child: Container(height: 6, color: color)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

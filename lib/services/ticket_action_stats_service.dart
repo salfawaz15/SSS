@@ -1,4 +1,4 @@
-import 'report_data_service.dart' show StatusCounts, effectiveStatus;
+import 'report_data_service.dart' show StatusCounts, effectiveStatus, isCompletedStatus;
 
 /// عدّادات نوع إجراء واحد (إضافة/حذف/تعديل): العدد الكلي + توزيع حالة
 /// الإنجاز (تصعيديًا مرشد ← منسق قسم ← منسق كلية، عبر effectiveStatus
@@ -71,7 +71,7 @@ class TicketActionStatsService {
         final coordinatorStatus = (action['coordinator_status'] ?? '').toString().trim();
         final collegeStatus = (action['college_status'] ?? '').toString().trim();
 
-        if (effectiveStatus(action) == 'تم الإنجاز') {
+        if (isCompletedStatus(effectiveStatus(action))) {
           stats.completed++;
         } else if (coordinatorStatus.isNotEmpty || collegeStatus.isNotEmpty) {
           stats.escalatedToCoordinator++;
@@ -111,7 +111,7 @@ class TicketActionStatsService {
         final deptCounts = byDepartmentShatr.putIfAbsent(key, () => {});
         deptCounts[type] = (deptCounts[type] ?? 0) + 1;
 
-        if (effectiveStatus(action) != 'تم الإنجاز') ticketHasPending = true;
+        if (!isCompletedStatus(effectiveStatus(action))) ticketHasPending = true;
       }
 
       final advisorCorrected = ticket['advisor_corrected'];

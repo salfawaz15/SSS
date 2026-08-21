@@ -1,4 +1,3 @@
-import 'package:fl_chart/fl_chart.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
@@ -7,6 +6,7 @@ import '../theme/dashboard_tokens.dart';
 import 'admin_nav.dart';
 import 'advising_cases_admin_screen.dart';
 import 'advising_schedule_admin_screen.dart';
+import 'advising_workspace.dart';
 import 'advisor_students_lookup_screen.dart';
 import 'hardship_cases_admin_screen.dart';
 import 'portal_accounts.dart';
@@ -83,105 +83,106 @@ class _AdvisingHubScreenState extends State<AdvisingHubScreen> {
     return PortalScaffold(
       title: 'لوحة الإرشاد',
       navItems: buildAdminNavItems(context, current: 'advising-hub'),
-      body: Container(
-        color: DashTokens.pageBg,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1400),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const DashSectionHeader(
-                    title: 'نظرة عامة على الإرشاد',
-                    subtitle: 'أرقام حيّة من آخر بيانات إرشاد مرفوعة',
-                    icon: Icons.query_stats_outlined,
+      body: Column(
+        children: [
+          AdvisingSubNavigation(current: AdvisingSection.overview, isSuperAdmin: isSuperAdmin),
+          Expanded(
+            child: Container(
+              color: DashTokens.pageBg,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: kAdvisingWorkspaceMaxWidth),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const AdvisingPageHeader(
+                          breadcrumbTrail: 'نظرة عامة',
+                          title: 'نظرة عامة على الإرشاد',
+                          description: 'أرقام حيّة من آخر بيانات إرشاد مرفوعة والخدمات السريعة لكل شاشات الإرشاد',
+                          icon: Icons.query_stats_outlined,
+                        ),
+                        const SizedBox(height: 20),
+                        const DashSectionHeader(title: 'أرقام ومؤشرات الإرشاد', icon: Icons.bar_chart_outlined),
+                        const SizedBox(height: 12),
+                        _buildMetricsGrid(context),
+                        const SizedBox(height: 28),
+                        const DashSectionHeader(title: 'الخدمات السريعة', icon: Icons.dashboard_customize_outlined),
+                        const SizedBox(height: 12),
+                        _buildActionsGrid(context, isSuperAdmin: isSuperAdmin),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 12),
-                  _buildOverviewRow(context),
-                  const SizedBox(height: 20),
-                  const DashSectionHeader(title: 'الخدمات السريعة', icon: Icons.dashboard_customize_outlined),
-                  const SizedBox(height: 12),
-                  _buildActionsGrid(context, isSuperAdmin: isSuperAdmin),
-                ],
+                ),
               ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
 
-  Widget _buildOverviewRow(BuildContext context) {
+  Widget _buildMetricsGrid(BuildContext context) {
+    final total = _studentsWithAdvisor + _studentsWithoutAdvisor;
+    final coveragePct = total == 0 ? 100 : ((_studentsWithAdvisor / total) * 100).round();
+
     final tiles = [
       (
-        label: 'مرشدون لديهم طلاب',
+        label: 'مرشدون لديهم طلبة',
         value: _loadingStats ? '...' : '$_advisorsWithStudents',
         note: 'من إجمالي المرشدين',
         icon: Icons.groups_outlined,
         color: DashTokens.green900,
       ),
       (
-        label: 'مرشدون بدون طلاب',
+        label: 'مرشدون دون طلبة',
         value: _loadingStats ? '...' : '$_advisorsWithoutStudents',
         note: 'معفَون أو بلا حالات',
         icon: Icons.person_off_outlined,
         color: DashTokens.gold600,
       ),
       (
-        label: 'طلاب لهم مرشد',
+        label: 'الطلبة لديهم مرشد',
         value: _loadingStats ? '...' : '$_studentsWithAdvisor',
         note: 'من إجمالي الطلبة',
         icon: Icons.school_outlined,
         color: DashTokens.success,
       ),
       (
-        label: 'طلاب بلا مرشد',
+        label: 'طلبة بلا مرشد',
         value: _loadingStats ? '...' : '$_studentsWithoutAdvisor',
-        note: 'يحتاجون تسكينًا',
+        note: _studentsWithoutAdvisor > 0 ? 'يحتاجون تسكينًا' : 'لا يوجد حاليًا',
         icon: Icons.person_search_outlined,
-        color: DashTokens.danger,
+        color: (_loadingStats || _studentsWithoutAdvisor == 0) ? DashTokens.success : DashTokens.danger,
+      ),
+      (
+        label: 'التغطية الإرشادية',
+        value: _loadingStats ? '...' : '$coveragePct%',
+        note: '$_studentsWithAdvisor لديهم مرشد',
+        icon: Icons.donut_large_outlined,
+        color: (_loadingStats || coveragePct >= 100) ? DashTokens.success : DashTokens.gold600,
       ),
     ];
 
-    final coverageCard = DashCardShell(
-      title: 'التغطية الإرشادية',
-      subtitle: 'نسبة الطلبة المسنَدين لمرشد',
-      icon: Icons.donut_large_outlined,
-      child: _CoverageGauge(withAdvisor: _studentsWithAdvisor, withoutAdvisor: _studentsWithoutAdvisor, loading: _loadingStats),
-    );
-
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isNarrow = constraints.maxWidth < 900;
-        final kpiGrid = GridView.builder(
+        final w = constraints.maxWidth;
+        final crossAxisCount = w >= 1200 ? 5 : (w >= 800 ? 3 : (w >= 520 ? 2 : 1));
+        return GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           itemCount: tiles.length,
-          gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-            maxCrossAxisExtent: isNarrow ? 500 : 260,
-            mainAxisExtent: 92,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            mainAxisExtent: 115,
+            crossAxisSpacing: 14,
+            mainAxisSpacing: 14,
           ),
           itemBuilder: (context, i) {
             final t = tiles[i];
-            return DashKpiCard(label: t.label, value: t.value, note: t.note, icon: t.icon, accent: t.color);
+            return AdvisingMetricCard(label: t.label, value: t.value, note: t.note, icon: t.icon, accent: t.color);
           },
-        );
-        if (isNarrow) {
-          return Column(children: [kpiGrid, const SizedBox(height: 12), coverageCard]);
-        }
-        return IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(flex: 160, child: kpiGrid),
-              const SizedBox(width: 12),
-              Expanded(flex: 100, child: coverageCard),
-            ],
-          ),
         );
       },
     );
@@ -195,7 +196,7 @@ class _AdvisingHubScreenState extends State<AdvisingHubScreen> {
           title: 'متابعة حالات الإرشاد',
           subtitle: 'كشف بيانات الطلبة، النصاب، إعادة التوزيع، والتقارير التفصيلية',
           accent: DashTokens.green900,
-          onTap: () => Navigator.of(context).push(
+          onTap: () => Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (_) => const AdvisingCasesAdminScreen()),
           ),
         ),
@@ -205,7 +206,7 @@ class _AdvisingHubScreenState extends State<AdvisingHubScreen> {
           title: 'بحث عن مرشد وقائمة طلابه',
           subtitle: 'ابحث باسم أو رقم المرشد لعرض كل طلابه دفعة واحدة',
           accent: DashTokens.green900,
-          onTap: () => Navigator.of(context).push(
+          onTap: () => Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (_) => const AdvisorStudentsLookupScreen()),
           ),
         ),
@@ -214,7 +215,7 @@ class _AdvisingHubScreenState extends State<AdvisingHubScreen> {
         title: 'متابعة حالات الظروف الخاصة',
         subtitle: 'متابعة الحالات المسجَّلة ذات الظروف الخاصة',
         accent: DashTokens.gold600,
-        onTap: () => Navigator.of(context).push(
+        onTap: () => Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const HardshipCasesAdminScreen()),
         ),
       ),
@@ -223,7 +224,7 @@ class _AdvisingHubScreenState extends State<AdvisingHubScreen> {
         title: 'متابعة حالات الدعم النفسي والاجتماعي',
         subtitle: 'متابعة طلبات الدعم النفسي والاجتماعي للطلبة',
         accent: DashTokens.success,
-        onTap: () => Navigator.of(context).push(
+        onTap: () => Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const SupportCasesAdminScreen()),
         ),
       ),
@@ -232,85 +233,32 @@ class _AdvisingHubScreenState extends State<AdvisingHubScreen> {
         title: 'توزيع فترات الإرشاد',
         subtitle: 'جدول فترات الإرشاد الرسمي لكل قسم وشطر',
         accent: DashTokens.gold500,
-        onTap: () => Navigator.of(context).push(
+        onTap: () => Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const AdvisingScheduleAdminScreen()),
         ),
       ),
     ];
 
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: tiles.length,
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 420,
-        mainAxisExtent: 108,
-        crossAxisSpacing: 14,
-        mainAxisSpacing: 14,
-      ),
-      itemBuilder: (context, i) {
-        final t = tiles[i];
-        return DashActionCard(icon: t.icon, title: t.title, subtitle: t.subtitle, accent: t.accent, onTap: t.onTap);
-      },
-    );
-  }
-}
-
-/// دائرة "التغطية الإرشادية" (نسبة الطلبة المسنَدين لمرشد) - بنفس أسلوب
-/// `_StatusGauge` بلوحة الحذف والإضافة حرفيًا.
-class _CoverageGauge extends StatelessWidget {
-  final int withAdvisor;
-  final int withoutAdvisor;
-  final bool loading;
-
-  const _CoverageGauge({required this.withAdvisor, required this.withoutAdvisor, required this.loading});
-
-  @override
-  Widget build(BuildContext context) {
-    final total = withAdvisor + withoutAdvisor == 0 ? 1 : withAdvisor + withoutAdvisor;
-    final pct = loading ? 0 : ((withAdvisor / total) * 100).round();
-
-    return Column(
-      children: [
-        SizedBox(
-          width: 108,
-          height: 108,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              PieChart(
-                PieChartData(
-                  sectionsSpace: 2,
-                  centerSpaceRadius: 38,
-                  sections: [
-                    if (withAdvisor > 0) PieChartSectionData(value: withAdvisor.toDouble(), color: DashTokens.success, showTitle: false, radius: 16),
-                    if (withoutAdvisor > 0) PieChartSectionData(value: withoutAdvisor.toDouble(), color: DashTokens.danger, showTitle: false, radius: 16),
-                    if (withAdvisor == 0 && withoutAdvisor == 0)
-                      PieChartSectionData(value: 1, color: DashTokens.track, showTitle: false, radius: 16),
-                  ],
-                ),
-              ),
-              Text(loading ? '...' : '$pct%', textDirection: TextDirection.ltr, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: DashTokens.textPrimary)),
-            ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth;
+        final crossAxisCount = w >= 1350 ? tiles.length : (w >= 850 ? 3 : (w >= 520 ? 2 : 1));
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: tiles.length,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            mainAxisExtent: 108,
+            crossAxisSpacing: 14,
+            mainAxisSpacing: 14,
           ),
-        ),
-        const SizedBox(height: 10),
-        _legendLine('لهم مرشد', withAdvisor, DashTokens.success),
-        const SizedBox(height: 4),
-        _legendLine('بلا مرشد', withoutAdvisor, DashTokens.danger),
-      ],
-    );
-  }
-
-  Widget _legendLine(String label, int value, Color color) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(width: 6, height: 6, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-        const SizedBox(width: 5),
-        Text('$label ', style: const TextStyle(fontSize: 11, color: DashTokens.textSecondary)),
-        Text('$value', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
-      ],
+          itemBuilder: (context, i) {
+            final t = tiles[i];
+            return DashActionCard(icon: t.icon, title: t.title, subtitle: t.subtitle, accent: t.accent, onTap: t.onTap);
+          },
+        );
+      },
     );
   }
 }

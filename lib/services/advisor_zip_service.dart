@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
+import 'package:excel/excel.dart' as xls;
 
 import '../models/advisor_roster_entry.dart';
 import 'advisor_name_matching.dart';
@@ -131,34 +132,62 @@ class AdvisorZipService {
 
     for (final entry in byAdvisor.entries) {
       final advisorTickets = entry.value;
-      final rawBytes = ExcelExportService.buildDepartmentWorkbook(advisorTickets);
+      final rawBytes = ExcelExportService.buildDepartmentWorkbook(advisorTickets, includeInstructions: true);
+      final withReasonsSheet = _addReasonsReferenceSheet(rawBytes);
       final dataRowCount = advisorTickets.fold<int>(0, (sum, t) {
         final actions = (t['actions'] as List?) ?? [];
         return sum + (actions.isEmpty ? 1 : actions.length);
       });
       final protectedBytes = ExcelProtectionService.protect(
-        rawBytes,
+        withReasonsSheet,
         dropdowns: [
           DropdownColumn(
             columnIndex: ExcelExportService.advisorStatusColumnIndex,
-            options: ExcelProtectionService.statusOptions,
+            options: ExcelProtectionService.advisorActionStatusOptions,
+          ),
+          DropdownColumn(
+            columnIndex: ExcelExportService.advisorNotesColumnIndex,
+            rangeFormula: "'$_reasonsSheetName'!\$A\$1:\$A\$${ExcelExportService.advisorReasonOptions.length}",
           ),
         ],
         unlockedColumnIndexes: [
           ExcelExportService.advisorStatusColumnIndex,
           ExcelExportService.advisorNotesColumnIndex,
+          ExcelExportService.advisorOtherReasonColumnIndex,
         ],
         dataRowCount: dataRowCount,
+        headerRowCount: 2,
+      );
+
+      final finalBytes = ExcelProtectionService.finalizeWorkbook(
+        protectedBytes,
+        hiddenSheetNames: [_reasonsSheetName],
       );
 
       final safeName = _sanitizeFileName(entry.key);
       archive.addFile(
-        ArchiveFile('$safeName.xlsx', protectedBytes.length, protectedBytes),
+        ArchiveFile('$safeName.xlsx', finalBytes.length, finalBytes),
       );
     }
 
     final zipBytes = ZipEncoder().encode(archive) ?? <int>[];
     return Uint8List.fromList(zipBytes);
+  }
+
+  static const String _reasonsSheetName = 'قائمة الأسباب';
+
+  /// يضيف ورقة مرجعية مخفية بأسباب عدم التنفيذ الاثني عشر - قائمة القيم
+  /// كاملة (468 حرفًا) تتجاوز حد الطول (~255 حرفًا) الذي يرفضه إكسل لقائمة
+  /// مكتوبة مباشرة داخل صيغة `dataValidation`، فيجب أن تكون مرجعًا لنطاق
+  /// خلايا بدل نص حرفي (نفس أسلوب [AdvisingScheduleExcelService]).
+  static Uint8List _addReasonsReferenceSheet(Uint8List rawBytes) {
+    final workbook = xls.Excel.decodeBytes(rawBytes);
+    final reasonsSheet = workbook[_reasonsSheetName];
+    for (var i = 0; i < ExcelExportService.advisorReasonOptions.length; i++) {
+      reasonsSheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: i)).value =
+          xls.TextCellValue(ExcelExportService.advisorReasonOptions[i]);
+    }
+    return Uint8List.fromList(workbook.encode()!);
   }
 
   static String _sanitizeFileName(String name) {

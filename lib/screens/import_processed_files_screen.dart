@@ -164,6 +164,15 @@ class _ImportProcessedFilesScreenState
                           style: TextStyle(color: Colors.orange.shade800),
                         ),
                       ),
+                    if (_lastResult!.missingReasonCount > 0)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          'تنبيه: ${_lastResult!.missingReasonCount} حالة اختار فيها المرشد '
+                          '"لم يتم التنفيذ" بلا تحديد السبب - يُرجى إعادتها له لتحديد السبب',
+                          style: TextStyle(color: Colors.orange.shade800),
+                        ),
+                      ),
                   ],
                 ),
               ),

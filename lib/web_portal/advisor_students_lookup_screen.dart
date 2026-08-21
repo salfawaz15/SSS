@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
 
@@ -9,7 +10,10 @@ import '../services/advising_report_repository.dart';
 import '../services/course_schedule_repository.dart' show Shatr;
 import '../services/web_download.dart';
 import '../theme/app_theme.dart';
+import '../theme/dashboard_tokens.dart';
 import 'admin_nav.dart';
+import 'advising_workspace.dart';
+import 'portal_accounts.dart';
 import 'portal_header.dart';
 
 class _AdvisorGroup {
@@ -116,34 +120,57 @@ class _AdvisorStudentsLookupScreenState extends State<AdvisorStudentsLookupScree
 
   @override
   Widget build(BuildContext context) {
+    final isSuperAdmin = FirebaseAuth.instance.currentUser?.email == PortalAccounts.superAdminEmail ||
+        PortalAccounts.isCurrentSessionSuperAdmin;
+
     return PortalScaffold(
       title: 'بحث عن مرشد وقائمة طلابه',
       navItems: buildAdminNavItems(context, current: 'advising-hub'),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1100),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _error != null
-                    ? Center(child: Text(_error!, style: TextStyle(color: Colors.red.shade700)))
-                    : _buildBody(),
+      body: Column(
+        children: [
+          AdvisingSubNavigation(current: AdvisingSection.lookup, isSuperAdmin: isSuperAdmin),
+          Expanded(
+            child: Container(
+              color: DashTokens.pageBg,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: kAdvisingWorkspaceMaxWidth),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const AdvisingPageHeader(
+                          breadcrumbTrail: 'بحث عن مرشد وقائمة طلبته',
+                          title: 'بحث عن مرشد وقائمة طلبته',
+                          description: 'ابحث باسم المرشد أو رقمه لعرض بياناته وقائمة الطلبة المرتبطين به.',
+                          icon: Icons.person_search_outlined,
+                        ),
+                        const SizedBox(height: 18),
+                        if (_loading)
+                          const Padding(padding: EdgeInsets.symmetric(vertical: 60), child: Center(child: CircularProgressIndicator()))
+                        else if (_error != null)
+                          AdvisingEmptyState(icon: Icons.error_outline, title: 'تعذّر تحميل البيانات', description: _error!)
+                        else
+                          _buildBody(),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
 
   Widget _buildBody() {
     if (_allGroups.isEmpty) {
-      return Center(
-        child: Text(
-          'لا توجد بيانات مرشدين بعد - ارفع ملف "كل الكليات" أولًا '
-          'من شاشة "متابعة حالات الإرشاد".',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.grey.shade600),
-        ),
+      return const AdvisingEmptyState(
+        icon: Icons.person_search_outlined,
+        title: 'لا توجد بيانات مرشدين بعد',
+        description: 'ارفع ملف "كل الكليات" أولًا من شاشة "متابعة حالات الإرشاد" لتصبح بيانات المرشدين متاحة هنا.',
       );
     }
 
@@ -162,63 +189,72 @@ class _AdvisorStudentsLookupScreenState extends State<AdvisorStudentsLookupScree
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Container(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(AppRadius.md),
-            border: Border.all(color: AppColors.gold.withValues(alpha: 0.35)),
+            color: DashTokens.cardBg,
+            border: Border.all(color: DashTokens.border),
+            borderRadius: BorderRadius.circular(DashTokens.radiusLg),
+            boxShadow: DashTokens.cardShadow,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
             children: [
-              TextField(
-                controller: _searchController,
-                decoration: InputDecoration(
-                  hintText: 'اكتب اسم المرشد (كل أو جزء من الاسم)',
-                  prefixIcon: const Icon(Icons.search),
-                  border: const OutlineInputBorder(),
-                  isDense: true,
-                  suffixIcon: _query.isEmpty
-                      ? null
-                      : IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() {
-                              _query = '';
-                              _selectedKey = null;
-                            });
-                          },
-                        ),
+              const Icon(Icons.search, size: 20, color: DashTokens.textMuted),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _searchController,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    border: InputBorder.none,
+                    hintText: 'ابحث باسم المرشد أو جزء من الاسم...',
+                  ),
+                  onChanged: (v) => setState(() {
+                    _query = v;
+                    _selectedKey = null;
+                  }),
                 ),
-                onChanged: (v) => setState(() {
-                  _query = v;
-                  _selectedKey = null;
-                }),
               ),
-              const SizedBox(height: 10),
-              if (_query.trim().isEmpty)
-                Text('إجمالي المرشدين المتاحين للبحث: ${_allGroups.length}', style: TextStyle(color: Colors.grey.shade600))
-              else if (results.isEmpty)
-                Text('لا يوجد مرشد مطابق لـ"$_query"', style: TextStyle(color: Colors.grey.shade600))
-              else
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final g in results)
-                      ChoiceChip(
-                        label: Text('${g.name} (${g.students.length})'),
-                        selected: '${g.name}|${g.shatr}' == _selectedKey,
-                        onSelected: (_) => setState(() => _selectedKey = '${g.name}|${g.shatr}'),
-                      ),
-                  ],
+              if (_query.isNotEmpty)
+                IconButton(
+                  icon: const Icon(Icons.clear, size: 18),
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() {
+                      _query = '';
+                      _selectedKey = null;
+                    });
+                  },
                 ),
             ],
           ),
         ),
+        const Padding(
+          padding: EdgeInsets.only(top: 6, right: 4),
+          child: Text('إجمالي المرشدين المتاحين للبحث', style: TextStyle(fontSize: 10.5, color: DashTokens.textMuted)),
+        ),
         const SizedBox(height: 16),
-        if (selected != null) Expanded(child: SingleChildScrollView(child: _buildAdvisorPanel(selected))),
+        if (_query.trim().isEmpty)
+          AdvisingEmptyState(
+            icon: Icons.search,
+            title: 'ابدأ بالبحث عن مرشد',
+            description: 'اكتب اسم المرشد أو جزءًا من الاسم لعرض بياناته وقائمة الطلبة المرتبطين به.\nإجمالي المرشدين المتاحين للبحث: ${_allGroups.length}',
+          )
+        else if (results.isEmpty)
+          AdvisingEmptyState(icon: Icons.search_off, title: 'لا يوجد مرشد مطابق', description: 'لم يُعثر على مرشد باسم "$_query" - جرّب تدقيق الاسم.')
+        else
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final g in results)
+                ChoiceChip(
+                  label: Text('${g.name} (${g.students.length})'),
+                  selected: '${g.name}|${g.shatr}' == _selectedKey,
+                  onSelected: (_) => setState(() => _selectedKey = '${g.name}|${g.shatr}'),
+                ),
+            ],
+          ),
+        if (selected != null) ...[const SizedBox(height: 16), _buildAdvisorPanel(selected)],
       ],
     );
   }

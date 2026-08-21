@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
 
@@ -14,6 +15,8 @@ import '../services/excel_parser_service.dart';
 import '../services/web_download.dart';
 import '../theme/app_theme.dart';
 import 'admin_nav.dart';
+import 'advising_workspace.dart';
+import 'portal_accounts.dart';
 import 'portal_header.dart';
 import 'upload_flows.dart';
 
@@ -225,11 +228,29 @@ class _AdvisingScheduleAdminScreenState extends State<AdvisingScheduleAdminScree
 
   @override
   Widget build(BuildContext context) {
+    final isSuperAdmin = FirebaseAuth.instance.currentUser?.email == PortalAccounts.superAdminEmail ||
+        PortalAccounts.isCurrentSessionSuperAdmin;
+
     return PortalScaffold(
       title: 'توزيع فترات الإرشاد',
-      navItems: buildAdminNavItems(context, current: 'tools'),
+      navItems: buildAdminNavItems(context, current: 'advising-hub'),
       body: Column(
         children: [
+          AdvisingSubNavigation(current: AdvisingSection.schedule, isSuperAdmin: isSuperAdmin),
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: kAdvisingWorkspaceMaxWidth),
+              child: const Padding(
+                padding: EdgeInsets.fromLTRB(18, 14, 18, 0),
+                child: AdvisingPageHeader(
+                  breadcrumbTrail: 'توزيع فترات الإرشاد',
+                  title: 'توزيع فترات الإرشاد',
+                  description: 'عرض وتصدير جداول فترات الإرشاد حسب الشطر والقسم.',
+                  icon: Icons.schedule_outlined,
+                ),
+              ),
+            ),
+          ),
           _buildToolbar(),
           _buildReportSection(),
           const Divider(height: 1),
@@ -364,7 +385,16 @@ class _AdvisingScheduleAdminScreenState extends State<AdvisingScheduleAdminScree
   Widget _buildPreview() {
     if (_isFiltered) return _buildFilteredPreview();
     if (_slots.isEmpty) {
-      return const Center(child: Text('لا يوجد جدول محفوظ لهذا القسم/الشطر - نزّل النموذج وارفعه بعد تعبئته'));
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: AdvisingEmptyState(
+            icon: Icons.event_busy_outlined,
+            title: 'لا يوجد جدول محفوظ',
+            description: 'لا يوجد جدول محفوظ لهذا القسم/الشطر بعد.\nنزّل النموذج وارفعه بعد تعبئته من شريط الأدوات أعلاه.',
+          ),
+        ),
+      );
     }
 
     final sortedSlots = [..._slots]
@@ -399,7 +429,7 @@ class _AdvisingScheduleAdminScreenState extends State<AdvisingScheduleAdminScree
                       spacing: 8,
                       runSpacing: 4,
                       children: slot.entries
-                          .map((e) => Chip(label: Text('${e.advisorName} (مكتب ${e.office})')))
+                          .map((e) => AdvisingAdvisorChip(label: '${e.advisorName} (مكتب ${e.office})'))
                           .toList(),
                     ),
                     const SizedBox(height: 10),
@@ -420,7 +450,16 @@ class _AdvisingScheduleAdminScreenState extends State<AdvisingScheduleAdminScree
   /// شطر) له بيانات فعلية بذلك اليوم.
   Widget _buildFilteredPreview() {
     if (_filteredData.isEmpty) {
-      return const Center(child: Text('لا يوجد أي جدول محفوظ ضمن هذا النطاق بعد - نزّل النموذج وارفعه بعد تعبئته'));
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: AdvisingEmptyState(
+            icon: Icons.event_busy_outlined,
+            title: 'لا يوجد جدول محفوظ',
+            description: 'لا يوجد أي جدول محفوظ ضمن هذا النطاق بعد.\nنزّل النموذج وارفعه بعد تعبئته من شريط الأدوات أعلاه.',
+          ),
+        ),
+      );
     }
 
     final byDay = <String, List<(String department, String shatr, AdvisingScheduleSlot slot)>>{};
@@ -479,7 +518,7 @@ class _AdvisingScheduleAdminScreenState extends State<AdvisingScheduleAdminScree
                         spacing: 8,
                         runSpacing: 4,
                         children: slot.entries
-                            .map((e) => Chip(label: Text('${e.advisorName} (مكتب ${e.office})')))
+                            .map((e) => AdvisingAdvisorChip(label: '${e.advisorName} (مكتب ${e.office})'))
                             .toList(),
                       ),
                       const SizedBox(height: 8),

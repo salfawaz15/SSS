@@ -65,7 +65,7 @@ class ReportFilterService {
       for (final a in actions) {
         final action = a as Map<String, dynamic>;
         final status = effectiveStatus(action);
-        if (status == 'تم الإنجاز') continue;
+        if (isCompletedStatus(status)) continue;
         rows.add({
           'shatr': t['shatr'],
           'department': t['department'],

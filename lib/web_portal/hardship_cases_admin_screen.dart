@@ -1,163 +1,81 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../models/hardship_case.dart';
 import '../services/hardship_case_service.dart';
-import '../theme/app_theme.dart';
+import '../theme/dashboard_tokens.dart';
 import 'admin_nav.dart';
+import 'advising_workspace.dart';
+import 'portal_accounts.dart';
 import 'portal_header.dart';
 
 /// شاشة "حالات الظروف الخاصة" لإدارة الوحدة - قسم منفصل تمامًا عن تقارير
 /// طلبات الإضافة/الحذف، يعرض كل الحالات من كل الأقسام مجتمعة، مع إمكانية
 /// فتح مسار المتابعة الكامل لأي حالة لمعرفة ماذا تم بشأنها بمرور الوقت.
+/// جزء من "لوحة الإرشاد" الموحَّدة - انظر `advising_workspace.dart` لهيدر
+/// الصفحة/التنقّل الداخلي/الحالة الفارغة/نافذة مسار المتابعة المشتركة.
 class HardshipCasesAdminScreen extends StatelessWidget {
   const HardshipCasesAdminScreen({super.key});
 
-  Color _statusColor(HardshipStatus s) {
-    switch (s) {
-      case HardshipStatus.newCase:
-        return Colors.blueGrey;
-      case HardshipStatus.underReview:
-        return AppColors.gold;
-      case HardshipStatus.contactedStudent:
-      case HardshipStatus.contactedFamily:
-        return Colors.teal;
-      case HardshipStatus.referred:
-        return Colors.deepOrange;
-      case HardshipStatus.improved:
-        return AppColors.green;
-      case HardshipStatus.needsOngoingFollowUp:
-        return Colors.redAccent;
-    }
-  }
-
-  void _showHistory(BuildContext context, HardshipCase c) {
-    showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('مسار المتابعة: ${c.studentName}'),
-        content: SizedBox(
-          width: 440,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: c.history.reversed.map((h) {
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(h.status.label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                      if (h.notes.isNotEmpty) Text(h.notes, style: const TextStyle(fontSize: 12.5)),
-                      Text(
-                        '${h.updatedBy} — ${h.updatedAt != null ? h.updatedAt.toString().substring(0, 16) : ''}',
-                        style: TextStyle(fontSize: 10.5, color: Colors.grey.shade500),
-                      ),
-                    ],
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('إغلاق')),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
+    final isSuperAdmin = FirebaseAuth.instance.currentUser?.email == PortalAccounts.superAdminEmail ||
+        PortalAccounts.isCurrentSessionSuperAdmin;
+
     return PortalScaffold(
       title: 'حالات الظروف الخاصة',
       navItems: buildAdminNavItems(context, current: 'hardship'),
-      body: StreamBuilder<List<HardshipCase>>(
-        stream: HardshipCaseService.watchAllCases(),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final cases = List<HardshipCase>.from(snapshot.data!)
-            ..sort((a, b) => (b.createdAt ?? DateTime(0)).compareTo(a.createdAt ?? DateTime(0)));
+      body: Column(
+        children: [
+          AdvisingSubNavigation(current: AdvisingSection.hardship, isSuperAdmin: isSuperAdmin),
+          Expanded(
+            child: Container(
+              color: DashTokens.pageBg,
+              child: StreamBuilder<List<HardshipCase>>(
+                stream: HardshipCaseService.watchAllCases(),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  final cases = List<HardshipCase>.from(snapshot.data!)
+                    ..sort((a, b) => (b.createdAt ?? DateTime(0)).compareTo(a.createdAt ?? DateTime(0)));
 
-          if (cases.isEmpty) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  'لا توجد حالات مسجَّلة بعد من أي قسم.',
-                  style: TextStyle(color: Colors.grey.shade600),
-                ),
-              ),
-            );
-          }
-
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              Text(
-                'إجمالي الحالات: ${cases.length}',
-                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey.shade700),
-              ),
-              const SizedBox(height: 12),
-              ...cases.map((c) => Card(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    child: Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  c.studentName,
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5),
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: _statusColor(c.status).withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(999),
-                                ),
-                                child: Text(
-                                  c.status.label,
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: _statusColor(c.status),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '${c.department} — ${c.shatr} — الرقم الجامعي: ${c.universityId}',
-                            style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
-                          ),
-                          if (c.description.isNotEmpty) ...[
-                            const SizedBox(height: 8),
-                            Text(c.description, style: const TextStyle(fontSize: 12.5)),
-                          ],
-                          const SizedBox(height: 8),
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: TextButton.icon(
-                              onPressed: () => _showHistory(context, c),
-                              icon: const Icon(Icons.history, size: 16),
-                              label: const Text('مسار المتابعة الكامل'),
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.all(16),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: kAdvisingWorkspaceMaxWidth),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            AdvisingPageHeader(
+                              breadcrumbTrail: 'متابعة حالات الظروف الخاصة',
+                              title: 'متابعة حالات الظروف الخاصة',
+                              description: 'كل الحالات المسجَّلة من كل الأقسام، مع مسار متابعة كامل لكل حالة.',
+                              icon: Icons.volunteer_activism_outlined,
                             ),
-                          ),
-                        ],
+                            const SizedBox(height: 18),
+                            if (cases.isEmpty)
+                              const AdvisingEmptyState(
+                                icon: Icons.inbox_outlined,
+                                title: 'لا توجد حالات مسجَّلة',
+                                description: 'لا توجد حاليًا حالات ظروف خاصة واردة من الأقسام.\nستظهر الحالات هنا تلقائيًا عند تسجيلها.',
+                              )
+                            else ...[
+                              Text('إجمالي الحالات: ${cases.length}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: DashTokens.textSecondary)),
+                              const SizedBox(height: 12),
+                              for (final c in cases) AdvisingCaseCard(hardshipCase: c),
+                            ],
+                          ],
+                        ),
                       ),
                     ),
-                  )),
-            ],
-          );
-        },
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

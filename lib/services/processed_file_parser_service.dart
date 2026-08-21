@@ -18,12 +18,24 @@ class ProcessedFileParserService {
 
     if (sheet.maxRows < 2) return [];
 
-    final headerRow = sheet.row(0);
-    final columnIndex = <String, int>{};
-    for (var i = 0; i < headerRow.length; i++) {
-      final header = headerRow[i]?.value?.toString().trim();
-      if (header != null && header.isNotEmpty) {
-        columnIndex[header] = i;
+    // صف العناوين عادة أول صف، لكن ملف المرشد قد يحتوي صف تعليمات مدمَج
+    // فوقه - نبحث عن الصف الذي يحمل فعليًا عمود "الرقم الجامعي" بدل افتراض
+    // أنه الصف صفر دومًا.
+    var headerRowIndex = 0;
+    var columnIndex = <String, int>{};
+    for (var r = 0; r < sheet.maxRows && r < 5; r++) {
+      final candidate = sheet.row(r);
+      final candidateIndex = <String, int>{};
+      for (var i = 0; i < candidate.length; i++) {
+        final header = candidate[i]?.value?.toString().trim();
+        if (header != null && header.isNotEmpty) {
+          candidateIndex[header] = i;
+        }
+      }
+      if (candidateIndex.containsKey(ExcelExportService.universityIdHeader)) {
+        headerRowIndex = r;
+        columnIndex = candidateIndex;
+        break;
       }
     }
 
@@ -33,6 +45,7 @@ class ProcessedFileParserService {
     final sectionCol = columnIndex[ExcelExportService.requiredSectionHeader];
     final advisorStatusCol = columnIndex[ExcelExportService.advisorStatusHeader];
     final advisorNotesCol = columnIndex[ExcelExportService.advisorNotesHeader];
+    final advisorOtherReasonCol = columnIndex[ExcelExportService.advisorOtherReasonHeader];
     final coordinatorStatusCol = columnIndex[ExcelExportService.coordinatorStatusHeader];
     final coordinatorNotesCol = columnIndex[ExcelExportService.coordinatorNotesHeader];
     final collegeStatusCol = columnIndex[ExcelExportService.collegeStatusHeader];
@@ -55,7 +68,7 @@ class ProcessedFileParserService {
 
     final rows = <Map<String, dynamic>>[];
 
-    for (var rowIndex = 1; rowIndex < sheet.maxRows; rowIndex++) {
+    for (var rowIndex = headerRowIndex + 1; rowIndex < sheet.maxRows; rowIndex++) {
       final row = sheet.row(rowIndex);
       if (row.isEmpty) continue;
 
@@ -69,6 +82,7 @@ class ProcessedFileParserService {
         'section': _cellText(row, sectionCol),
         'advisor_status': _cellText(row, advisorStatusCol),
         'advisor_notes': _cellText(row, advisorNotesCol),
+        if (advisorOtherReasonCol != null) 'advisor_other_reason': _cellText(row, advisorOtherReasonCol),
         'coordinator_status': _cellText(row, coordinatorStatusCol),
         'coordinator_notes': _cellText(row, coordinatorNotesCol),
         'college_status': _cellText(row, collegeStatusCol),

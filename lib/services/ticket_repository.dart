@@ -5,8 +5,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 class MergeResult {
   final int matchedCount;
   final int unmatchedCount;
+  final int missingReasonCount;
 
-  const MergeResult({required this.matchedCount, required this.unmatchedCount});
+  const MergeResult({
+    required this.matchedCount,
+    required this.unmatchedCount,
+    this.missingReasonCount = 0,
+  });
 }
 
 /// يخزّن تذاكر الدفعة اليومية الحالية (طلاب/طالبات كلا الشطرين) بشكل دائم،
@@ -80,6 +85,7 @@ class TicketRepository {
 
     var matched = 0;
     var unmatched = 0;
+    var missingReason = 0;
 
     for (final row in processedRows) {
       final key = _actionKey(
@@ -94,8 +100,16 @@ class TicketRepository {
         continue;
       }
 
+      final rowAdvisorStatus = (row['advisor_status'] ?? '').toString().trim();
+      final rowAdvisorNotes = (row['advisor_notes'] ?? '').toString().trim();
+      final rowAdvisorOtherReason = (row['advisor_other_reason'] ?? '').toString().trim();
+      if (rowAdvisorStatus == 'لم يتم التنفيذ' && rowAdvisorNotes.isEmpty && rowAdvisorOtherReason.isEmpty) {
+        missingReason++;
+      }
+
       action['advisor_status'] = row['advisor_status'];
       action['advisor_notes'] = row['advisor_notes'];
+      action['advisor_other_reason'] = row['advisor_other_reason'];
       action['coordinator_status'] = row['coordinator_status'];
       action['coordinator_notes'] = row['coordinator_notes'];
       action['college_status'] = row['college_status'];
@@ -105,6 +119,6 @@ class TicketRepository {
 
     await saveAll(tickets);
 
-    return MergeResult(matchedCount: matched, unmatchedCount: unmatched);
+    return MergeResult(matchedCount: matched, unmatchedCount: unmatched, missingReasonCount: missingReason);
   }
 }

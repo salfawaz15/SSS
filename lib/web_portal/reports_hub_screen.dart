@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -35,6 +37,20 @@ extension on ReportHubCategory {
       };
 }
 
+/// تطبيع مبسّط للنص العربي للبحث: إزالة التشكيل، توحيد أشكال الألف/الهمزة
+/// والياء/التاء المربوطة، وخفض الحالة - حتى تُطابق كلمات مثل "الاعاقة" بحث
+/// "الإعاقة" بلا حاجة لمطابقة حرفية.
+String _normalizeArabic(String input) {
+  var s = input.trim().toLowerCase();
+  s = s.replaceAll(RegExp(r'[ً-ْٰ]'), ''); // تشكيل
+  s = s.replaceAll(RegExp('[إأآا]'), 'ا');
+  s = s.replaceAll('ى', 'ي');
+  s = s.replaceAll('ة', 'ه');
+  s = s.replaceAll('ؤ', 'و');
+  s = s.replaceAll('ئ', 'ي');
+  return s;
+}
+
 /// بند واحد في "مركز التقارير" - يجمع عنوانًا ووصفًا مختصرًا (للبحث)
 /// ونوعًا فرعيًا (للفلترة) وإجراء فتح الشاشة/الحوار الأصلي بلا أي إعادة
 /// بناء لمنطقه.
@@ -45,6 +61,7 @@ class _ReportEntry {
   final String subtype;
   final IconData icon;
   final void Function(BuildContext context) onOpen;
+  final List<String> keywords;
 
   const _ReportEntry({
     required this.title,
@@ -53,12 +70,14 @@ class _ReportEntry {
     required this.subtype,
     required this.icon,
     required this.onOpen,
+    this.keywords = const [],
   });
 
   bool matches(String query) {
-    final q = query.trim();
+    final q = _normalizeArabic(query);
     if (q.isEmpty) return true;
-    return title.contains(q) || description.contains(q) || subtype.contains(q);
+    final haystack = _normalizeArabic('$title $description $subtype ${category.label} ${keywords.join(' ')}');
+    return haystack.contains(q);
   }
 }
 
@@ -87,11 +106,34 @@ class _ReportsHubScreenState extends State<ReportsHubScreen> {
   final _searchCtrl = TextEditingController();
   ReportHubCategory? _categoryFilter;
   String? _subtypeFilter;
+  String _searchQuery = '';
+  Timer? _debounce;
+
+  bool get _hasActiveFilters => _categoryFilter != null || _subtypeFilter != null || _searchQuery.trim().isNotEmpty;
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _searchCtrl.dispose();
     super.dispose();
+  }
+
+  void _onSearchChanged(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 200), () {
+      if (!mounted) return;
+      setState(() => _searchQuery = value);
+    });
+  }
+
+  void _clearFilters() {
+    _debounce?.cancel();
+    setState(() {
+      _searchCtrl.clear();
+      _searchQuery = '';
+      _categoryFilter = null;
+      _subtypeFilter = null;
+    });
   }
 
   void _openScreen(BuildContext context, Widget screen) {
@@ -119,6 +161,7 @@ class _ReportsHubScreenState extends State<ReportsHubScreen> {
           category: ReportHubCategory.report,
           subtype: 'تقرير إرشاد',
           icon: Icons.summarize_outlined,
+          keywords: const ['مرشد', 'المرشد الأكاديمي', 'المرشدين', 'قسم', 'شطر', 'كلية'],
           onOpen: (c) => _openScreen(c, const AdminReportsScreen()),
         ),
         _ReportEntry(
@@ -135,6 +178,7 @@ class _ReportsHubScreenState extends State<ReportsHubScreen> {
           category: ReportHubCategory.report,
           subtype: 'حالات خاصة',
           icon: Icons.accessible_outlined,
+          keywords: const ['اعاقة', 'ذوي الاعاقة'],
           onOpen: (c) => _openScreen(c, const AdminReportsScreen()),
         ),
         _ReportEntry(
@@ -143,6 +187,7 @@ class _ReportsHubScreenState extends State<ReportsHubScreen> {
           category: ReportHubCategory.report,
           subtype: 'تقرير إرشاد',
           icon: Icons.groups_outlined,
+          keywords: const ['مرشد', 'المرشد الأكاديمي', 'المرشدين'],
           onOpen: (c) => _openScreen(c, const AdvisingCasesAdminScreen()),
         ),
         _ReportEntry(
@@ -328,8 +373,10 @@ class _ReportsHubScreenState extends State<ReportsHubScreen> {
       final filtered = entries.where((e) {
         if (_categoryFilter != null && e.category != _categoryFilter) return false;
         if (_subtypeFilter != null && e.subtype != _subtypeFilter) return false;
-        return e.matches(_searchCtrl.text);
+        return e.matches(_searchQuery);
       }).toList();
+
+      final resultLabel = filtered.length == 1 ? 'نتيجة واحدة' : '${filtered.length} نتيجة';
 
       return Container(
         color: DashTokens.pageBg,
@@ -341,91 +388,169 @@ class _ReportsHubScreenState extends State<ReportsHubScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const DashSectionHeader(
-                    title: 'مركز التقارير',
-                    subtitle: 'كل مخرجات البوابة القابلة للطباعة/التصدير بمكان واحد',
-                    icon: Icons.summarize_outlined,
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.summarize_outlined, size: 20, color: DashTokens.green900),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('مركز التقارير', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: DashTokens.textPrimary)),
+                            const SizedBox(height: 2),
+                            Text('كل مخرجات البوابة القابلة للطباعة/التصدير بمكان واحد', style: TextStyle(fontSize: 11.5, color: DashTokens.textSecondary.withValues(alpha: 0.9))),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 14),
                   Container(
-                    padding: const EdgeInsets.all(14),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                     decoration: BoxDecoration(
                       color: DashTokens.cardBg,
                       border: Border.all(color: DashTokens.border),
                       borderRadius: BorderRadius.circular(DashTokens.radiusLg),
                       boxShadow: DashTokens.cardShadow,
                     ),
-                    child: TextField(
-                      controller: _searchCtrl,
-                      onChanged: (_) => setState(() {}),
-                      decoration: InputDecoration(
-                        hintText: 'ابحث عن تقرير (مثال: جدول، إرشاد، نصاب، إعاقة...)',
-                        prefixIcon: const Icon(Icons.search),
-                        filled: true,
-                        fillColor: Colors.white,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: DashTokens.border)),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: DashTokens.border)),
-                      ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.search, size: 20, color: DashTokens.textMuted),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextField(
+                            controller: _searchCtrl,
+                            onChanged: _onSearchChanged,
+                            textInputAction: TextInputAction.search,
+                            decoration: const InputDecoration(
+                              isDense: true,
+                              border: InputBorder.none,
+                              hintText: 'ابحث في مركز التقارير...',
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 14),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    ChoiceChip(
-                      label: const Text('الكل'),
-                      selected: _categoryFilter == null,
-                      onSelected: (_) => setState(() => _categoryFilter = null),
-                    ),
-                    for (final cat in ReportHubCategory.values)
-                      ChoiceChip(
-                        label: Text(cat.label),
-                        selected: _categoryFilter == cat,
-                        selectedColor: cat.color.withValues(alpha: 0.2),
-                        onSelected: (_) => setState(() => _categoryFilter = cat),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    ChoiceChip(
-                      label: const Text('كل الأنواع'),
-                      selected: _subtypeFilter == null,
-                      onSelected: (_) => setState(() => _subtypeFilter = null),
-                    ),
-                    for (final s in _kAllSubtypes)
-                      ChoiceChip(
-                        label: Text(s),
-                        selected: _subtypeFilter == s,
-                        onSelected: (_) => setState(() => _subtypeFilter = s),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                if (filtered.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 40),
-                    child: Center(
-                      child: Text('لا توجد نتائج مطابقة', style: TextStyle(color: Colors.grey.shade600)),
-                    ),
-                  )
-                else
-                  GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: filtered.length,
-                    gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                      maxCrossAxisExtent: 420,
-                      mainAxisExtent: 108,
-                      crossAxisSpacing: 14,
-                      mainAxisSpacing: 14,
-                    ),
-                    itemBuilder: (context, i) => _ReportCard(entry: filtered[i], onTap: () => filtered[i].onOpen(context)),
+                  const Padding(
+                    padding: EdgeInsets.only(top: 6, right: 4),
+                    child: Text('مثال: إرشاد، جدول، نصاب، إعاقة، مرشد', style: TextStyle(fontSize: 10.5, color: DashTokens.textMuted)),
                   ),
+                  const SizedBox(height: 16),
+                  _FilterGroup(
+                    label: 'التصنيف',
+                    children: [
+                      _FilterChip(
+                        label: 'الكل',
+                        selected: _categoryFilter == null,
+                        level: _FilterLevel.primary,
+                        onSelected: () => setState(() => _categoryFilter = null),
+                      ),
+                      for (final cat in ReportHubCategory.values)
+                        _FilterChip(
+                          label: cat.label,
+                          selected: _categoryFilter == cat,
+                          level: _FilterLevel.primary,
+                          accent: cat.color,
+                          onSelected: () => setState(() => _categoryFilter = cat),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  _FilterGroup(
+                    label: 'نوع المحتوى',
+                    children: [
+                      _FilterChip(
+                        label: 'كل الأنواع',
+                        selected: _subtypeFilter == null,
+                        level: _FilterLevel.secondary,
+                        onSelected: () => setState(() => _subtypeFilter = null),
+                      ),
+                      for (final s in _kAllSubtypes)
+                        _FilterChip(
+                          label: s,
+                          selected: _subtypeFilter == s,
+                          level: _FilterLevel.secondary,
+                          onSelected: () => setState(() => _subtypeFilter = s),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Text(resultLabel, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: DashTokens.textSecondary)),
+                      if (_categoryFilter != null || _subtypeFilter != null) ...[
+                        const SizedBox(width: 8),
+                        Text('•', style: TextStyle(color: DashTokens.textMuted)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            [?_categoryFilter?.label, ?_subtypeFilter].join(' • '),
+                            style: const TextStyle(fontSize: 12, color: DashTokens.textMuted),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ] else
+                        const Spacer(),
+                      if (_hasActiveFilters)
+                        TextButton.icon(
+                          onPressed: _clearFilters,
+                          icon: const Icon(Icons.close, size: 15),
+                          label: const Text('مسح الفلاتر', style: TextStyle(fontSize: 12.5)),
+                          style: TextButton.styleFrom(
+                            foregroundColor: DashTokens.green900,
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  if (filtered.isEmpty)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 36),
+                      decoration: BoxDecoration(
+                        color: DashTokens.cardBg,
+                        border: Border.all(color: DashTokens.border),
+                        borderRadius: BorderRadius.circular(DashTokens.radiusLg),
+                      ),
+                      child: Column(
+                        children: [
+                          Icon(Icons.search_off, size: 28, color: DashTokens.textMuted),
+                          const SizedBox(height: 10),
+                          const Text('لا توجد نتائج مطابقة', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: DashTokens.textPrimary)),
+                          const SizedBox(height: 4),
+                          Text('جرّب تغيير كلمات البحث أو تعديل التصنيف.', style: TextStyle(fontSize: 12, color: DashTokens.textMuted)),
+                          if (_hasActiveFilters) ...[
+                            const SizedBox(height: 12),
+                            TextButton(onPressed: _clearFilters, child: const Text('مسح الفلاتر')),
+                          ],
+                        ],
+                      ),
+                    )
+                  else
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final w = constraints.maxWidth;
+                        final crossAxisCount = w >= 1400 ? 4 : (w >= 1000 ? 3 : (w >= 640 ? 2 : 1));
+                        return GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: filtered.length,
+                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: crossAxisCount,
+                            mainAxisExtent: 108,
+                            crossAxisSpacing: 14,
+                            mainAxisSpacing: 14,
+                          ),
+                          itemBuilder: (context, i) => _ReportCard(entry: filtered[i], onTap: () => filtered[i].onOpen(context)),
+                        );
+                      },
+                    ),
                 ],
               ),
             ),
@@ -463,24 +588,182 @@ class _ReportsHubScreenState extends State<ReportsHubScreen> {
   }
 }
 
+/// مستوى وزن الفلتر البصري: أساسي (تصنيف رئيسي) أثقل قليلًا من فرعي (نوع
+/// المحتوى) - فرق خفيف يكفي لتمييز الصفّين بلا مبالغة.
+enum _FilterLevel { primary, secondary }
+
+/// عنوان مجموعة فلاتر صغير وخافت فوق صفّ الشرائح - يوضّح الفرق بين "التصنيف"
+/// و"نوع المحتوى" دون إضافة عنوان قسم كبير.
+class _FilterGroup extends StatelessWidget {
+  final String label;
+  final List<Widget> children;
+
+  const _FilterGroup({required this.label, required this.children});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(right: 2, bottom: 6),
+          child: Text(label, style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: DashTokens.textMuted)),
+        ),
+        Wrap(spacing: 8, runSpacing: 8, children: children),
+      ],
+    );
+  }
+}
+
+/// شريحة فلتر واحدة - حالة الاختيار لا تعتمد على اللون وحده (خلفية + حدّ +
+/// وزن خط + علامة صح)، والوزن البصري (primary/secondary) يميّز صفّي الفلاتر.
+class _FilterChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final _FilterLevel level;
+  final Color? accent;
+  final VoidCallback onSelected;
+
+  const _FilterChip({
+    required this.label,
+    required this.selected,
+    required this.level,
+    required this.onSelected,
+    this.accent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = accent ?? DashTokens.green900;
+    final isPrimary = level == _FilterLevel.primary;
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: InkWell(
+        onTap: onSelected,
+        borderRadius: BorderRadius.circular(999),
+        focusColor: color.withValues(alpha: 0.08),
+        child: Focus(
+          child: Builder(
+            builder: (context) {
+              final hasFocus = Focus.of(context).hasFocus;
+              return Container(
+                constraints: BoxConstraints(minHeight: isPrimary ? 38 : 34),
+                padding: EdgeInsets.symmetric(horizontal: isPrimary ? 14 : 12, vertical: isPrimary ? 8 : 6),
+                decoration: BoxDecoration(
+                  color: selected ? color.withValues(alpha: 0.12) : DashTokens.cardBg,
+                  border: Border.all(color: selected ? color.withValues(alpha: 0.55) : DashTokens.border, width: selected ? 1.4 : 1),
+                  borderRadius: BorderRadius.circular(999),
+                  boxShadow: hasFocus ? [BoxShadow(color: color.withValues(alpha: 0.35), blurRadius: 0, spreadRadius: 2)] : null,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (selected) ...[
+                      Icon(Icons.check, size: isPrimary ? 15 : 13, color: color),
+                      const SizedBox(width: 5),
+                    ],
+                    Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: isPrimary ? 12.5 : 11.5,
+                        fontWeight: selected ? FontWeight.w700 : (isPrimary ? FontWeight.w600 : FontWeight.w500),
+                        color: selected ? color : DashTokens.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// بطاقة تقرير بهوية "لوحة الإدارة" (بطاقة بيضاء بحدّ رمادي فاتح + أيقونة
 /// ملوَّنة بخلفية شفافة 10%) بدل التدرّج اللوني الكامل السابق - بطلب سليمان
 /// الصريح (2026-08-20): هذه الصفحة كانت "لا تطابق الهوية" مقارنة بلوحة
-/// الإدارة ولوحة الحذف والإضافة.
-class _ReportCard extends StatelessWidget {
+/// الإدارة ولوحة الحذف والإضافة. البطاقة كاملةً عنصر تفاعلي واحد (InkWell)
+/// مع حالتَي hover/focus صريحتين وسهم اتجاه خفيف يوضّح أنها تفتح شيئًا.
+class _ReportCard extends StatefulWidget {
   final _ReportEntry entry;
   final VoidCallback onTap;
 
   const _ReportCard({required this.entry, required this.onTap});
 
   @override
+  State<_ReportCard> createState() => _ReportCardState();
+}
+
+class _ReportCardState extends State<_ReportCard> {
+  bool _hovered = false;
+
+  @override
   Widget build(BuildContext context) {
-    return DashActionCard(
-      icon: entry.icon,
-      title: entry.title,
-      subtitle: entry.description,
-      accent: entry.category.color,
-      onTap: onTap,
+    final accent = widget.entry.category.color;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      cursor: SystemMouseCursors.click,
+      child: Material(
+        color: DashTokens.cardBg,
+        borderRadius: BorderRadius.circular(DashTokens.radiusLg),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(DashTokens.radiusLg),
+          onTap: widget.onTap,
+          focusColor: accent.withValues(alpha: 0.06),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            transform: Matrix4.translationValues(0, _hovered ? -2 : 0, 0),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              border: Border.all(color: _hovered ? accent.withValues(alpha: 0.45) : DashTokens.border),
+              borderRadius: BorderRadius.circular(DashTokens.radiusLg),
+              boxShadow: _hovered
+                  ? [BoxShadow(color: Colors.black.withValues(alpha: 0.065), blurRadius: 26, offset: const Offset(0, 10))]
+                  : DashTokens.cardShadow,
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(color: accent.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(12)),
+                  alignment: Alignment.center,
+                  child: Icon(widget.entry.icon, size: 22, color: accent),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.entry.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: DashTokens.textPrimary),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        widget.entry.description,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 11.5, color: DashTokens.textSecondary, height: 1.3),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Icon(Icons.arrow_back_ios_new, size: 12, color: _hovered ? accent : DashTokens.textMuted),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

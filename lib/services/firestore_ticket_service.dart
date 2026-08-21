@@ -3,8 +3,16 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class MergeResult {
   final int matchedCount;
   final int unmatchedCount;
+  // عدد الصفوف التي اختار فيها المرشد "لم يتم التنفيذ" لكن نسي تحديد السبب
+  // (لا عمود الأسباب الجاهزة ولا "يرجى كتابة السبب الآخر") - تنبيه لمنسّق
+  // القسم قبل اعتماد الملف بدل مرور الرفض بلا سبب بصمت.
+  final int missingReasonCount;
 
-  const MergeResult({required this.matchedCount, required this.unmatchedCount});
+  const MergeResult({
+    required this.matchedCount,
+    required this.unmatchedCount,
+    this.missingReasonCount = 0,
+  });
 }
 
 /// طبقة وصول Firestore الخاصة ببوابة الويب فقط (إدارة + منسقين) - منفصلة
@@ -189,6 +197,7 @@ class FirestoreTicketService {
 
     var matched = 0;
     var unmatched = 0;
+    var missingReason = 0;
     final changedDocIds = <String>{};
 
     for (final row in processedRows) {
@@ -204,6 +213,13 @@ class FirestoreTicketService {
         continue;
       }
 
+      final rowAdvisorStatus = (row['advisor_status'] ?? '').toString().trim();
+      final rowAdvisorNotes = (row['advisor_notes'] ?? '').toString().trim();
+      final rowAdvisorOtherReason = (row['advisor_other_reason'] ?? '').toString().trim();
+      if (rowAdvisorStatus == 'لم يتم التنفيذ' && rowAdvisorNotes.isEmpty && rowAdvisorOtherReason.isEmpty) {
+        missingReason++;
+      }
+
       // الأعمدة الثلاثة (مرشد/منسّق قسم/منسّق كلية) منفصلة الآن بالملف -
       // كانت هذه الدالة لا تزال تكتب لحقول قديمة (status/notes/completed_by)
       // غير موجودة أصلًا بالصف المُستخرَج (parseProcessedRows يُرجِع
@@ -211,7 +227,7 @@ class FirestoreTicketService {
       // البيانات المرفوعة فعليًا بصمت بلا أي أثر (خلل جذري، سليمان
       // 2026-08-09). يُحدَّث كل حقل فقط لو أُدخِلت له قيمة فعلية بالملف
       // المرفوع (بلا مسح حقل جهة أخرى لم تُملَأ بهذا الملف تحديدًا).
-      for (final field in ['advisor_status', 'advisor_notes', 'coordinator_status', 'coordinator_notes', 'college_status', 'college_notes']) {
+      for (final field in ['advisor_status', 'advisor_notes', 'advisor_other_reason', 'coordinator_status', 'coordinator_notes', 'college_status', 'college_notes']) {
         final value = (row[field] ?? '').toString();
         if (value.isNotEmpty) action[field] = value;
       }
@@ -226,7 +242,7 @@ class FirestoreTicketService {
     }
     await batch.commit();
 
-    return MergeResult(matchedCount: matched, unmatchedCount: unmatched);
+    return MergeResult(matchedCount: matched, unmatchedCount: unmatched, missingReasonCount: missingReason);
   }
 
   /// يفرّغ حالة الإنجاز/الملاحظات/جهة الإنجاز لكل حالات قسم/شطر واحد (تراجع

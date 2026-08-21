@@ -464,13 +464,16 @@ class _CoordinatorBodyState extends State<_CoordinatorBody> {
       // الرسالة النصية بالبطاقة قد تكون خارج نطاق الرؤية الحالي (سليمان
       // 2026-08-20: "رفعت الملف ولم تظهر أي رسالة" رغم نجاح الدمج فعليًا).
       if (mounted) {
+        final hasMissingReason = mergeResult.missingReasonCount > 0;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
+            backgroundColor: hasMissingReason ? Colors.orange.shade800 : null,
             content: Text(
               'تم الدمج: ${mergeResult.matchedCount} حالة مطابَقة'
-              '${mergeResult.unmatchedCount > 0 ? '، ${mergeResult.unmatchedCount} غير مطابَقة' : ''}',
+              '${mergeResult.unmatchedCount > 0 ? '، ${mergeResult.unmatchedCount} غير مطابَقة' : ''}'
+              '${hasMissingReason ? '\nتنبيه: ${mergeResult.missingReasonCount} حالة اختار فيها المرشد "لم يتم التنفيذ" بلا تحديد السبب - يُرجى إعادتها له لتحديد السبب' : ''}',
             ),
-            duration: const Duration(seconds: 6),
+            duration: Duration(seconds: hasMissingReason ? 10 : 6),
           ),
         );
       }

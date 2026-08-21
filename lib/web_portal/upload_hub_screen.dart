@@ -373,10 +373,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
         _uploadingProcessedAll = false;
         _processedAllLastUpload = DateTime.now();
       });
-      _showSuccessSnackBar(
-        'تم الدمج: ${mergeResult.matchedCount} حالة مطابَقة'
-        '${mergeResult.unmatchedCount > 0 ? '، ${mergeResult.unmatchedCount} غير مطابَقة' : ''}',
-      );
+      _showMergeResultSnackBar(mergeResult);
     } catch (e) {
       if (!mounted) return;
       setState(() => _uploadingProcessedAll = false);
@@ -427,10 +424,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
         _uploadingCoordinatorAll = false;
         _coordinatorAllLastUpload = DateTime.now();
       });
-      _showSuccessSnackBar(
-        'تم الدمج: ${mergeResult.matchedCount} حالة مطابَقة'
-        '${mergeResult.unmatchedCount > 0 ? '، ${mergeResult.unmatchedCount} غير مطابَقة' : ''}',
-      );
+      _showMergeResultSnackBar(mergeResult);
     } catch (e) {
       if (!mounted) return;
       setState(() => _uploadingCoordinatorAll = false);
@@ -477,10 +471,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
         _uploadingCollegeAll = false;
         _collegeAllLastUpload = DateTime.now();
       });
-      _showSuccessSnackBar(
-        'تم الدمج: ${mergeResult.matchedCount} حالة مطابَقة'
-        '${mergeResult.unmatchedCount > 0 ? '، ${mergeResult.unmatchedCount} غير مطابَقة' : ''}',
-      );
+      _showMergeResultSnackBar(mergeResult);
     } catch (e) {
       if (!mounted) return;
       setState(() => _uploadingCollegeAll = false);
@@ -589,10 +580,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
         onTimeout: () => throw Exception('انتهت مهلة الاتصال بالخادم (25 ثانية بلا استجابة) - تأكد من اتصال الإنترنت وحاول مرة أخرى'),
       );
       if (mounted) {
-        _showSuccessSnackBar(
-          'تم الدمج نيابةً عن "$department - $shatr": ${mergeResult.matchedCount} حالة مطابَقة'
-          '${mergeResult.unmatchedCount > 0 ? '، ${mergeResult.unmatchedCount} غير مطابَقة' : ''}',
-        );
+        _showMergeResultSnackBar(mergeResult, prefix: 'تم الدمج نيابةً عن "$department - $shatr"');
       }
     } catch (e) {
       if (mounted) showUploadErrorDialog(context, 'تعذّر رفع الملف', '$e');
@@ -637,10 +625,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
         onTimeout: () => throw Exception('انتهت مهلة الاتصال بالخادم (25 ثانية بلا استجابة) - تأكد من اتصال الإنترنت وحاول مرة أخرى'),
       );
       if (mounted) {
-        _showSuccessSnackBar(
-          'تم الدمج نيابةً عن منسّق الكلية "$shatr": ${mergeResult.matchedCount} حالة مطابَقة'
-          '${mergeResult.unmatchedCount > 0 ? '، ${mergeResult.unmatchedCount} غير مطابَقة' : ''}',
-        );
+        _showMergeResultSnackBar(mergeResult, prefix: 'تم الدمج نيابةً عن منسّق الكلية "$shatr"');
       }
     } catch (e) {
       if (mounted) showUploadErrorDialog(context, 'تعذّر رفع الملف', '$e');
@@ -743,6 +728,45 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
         ),
       ),
     );
+  }
+
+  /// ملخّص نتيجة الدمج كنص - يضيف تنبيهًا لو رفض المرشد إجراءً ("لم يتم
+  /// التنفيذ") بلا تحديد سبب، حتى لا يمر ذلك بصمت لمنسّق القسم/الكلية.
+  String _mergeResultMessage(dynamic mergeResult, {String prefix = 'تم الدمج'}) {
+    final base = '$prefix: ${mergeResult.matchedCount} حالة مطابَقة'
+        '${mergeResult.unmatchedCount > 0 ? '، ${mergeResult.unmatchedCount} غير مطابَقة' : ''}';
+    if (mergeResult.missingReasonCount > 0) {
+      return '$base\nتنبيه: ${mergeResult.missingReasonCount} حالة اختار فيها المرشد "لم يتم التنفيذ" بلا تحديد السبب - يُرجى إعادتها له لتحديد السبب';
+    }
+    return base;
+  }
+
+  /// نفس [_showSuccessSnackBar] لكن بلون تنبيه (لا أخضر) ومدة أطول - تُستخدَم
+  /// عند وجود حالات "لم يتم التنفيذ" بلا سبب محدَّد ضمن نتيجة الدمج.
+  void _showWarningSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 10),
+        backgroundColor: Colors.orange.shade800,
+        behavior: SnackBarBehavior.floating,
+        content: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 20),
+            const SizedBox(width: 10),
+            Expanded(child: Text(message, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600))),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showMergeResultSnackBar(dynamic mergeResult, {String prefix = 'تم الدمج'}) {
+    final message = _mergeResultMessage(mergeResult, prefix: prefix);
+    if (mergeResult.missingReasonCount > 0) {
+      _showWarningSnackBar(message);
+    } else {
+      _showSuccessSnackBar(message);
+    }
   }
 
   @override

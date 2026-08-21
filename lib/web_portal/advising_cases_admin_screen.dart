@@ -1,4 +1,5 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
 
@@ -12,8 +13,11 @@ import '../services/advisor_movement_repository.dart';
 import '../services/web_download.dart';
 import '../services/course_schedule_repository.dart' show Shatr, ShatrLabel;
 import '../theme/app_theme.dart';
+import '../theme/dashboard_tokens.dart';
 import '../utils/name_display.dart';
 import 'admin_nav.dart';
+import 'advising_workspace.dart';
+import 'portal_accounts.dart';
 import 'portal_header.dart';
 import 'upload_dialogs.dart';
 
@@ -293,31 +297,54 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       ('إحصائيات الإرشاد', _tabAdvisorStatistics),
       ('حركات الإرشاد', _tabMovements),
     ];
+    final isSuperAdmin = FirebaseAuth.instance.currentUser?.email == PortalAccounts.superAdminEmail ||
+        PortalAccounts.isCurrentSessionSuperAdmin;
+
     return PortalScaffold(
       title: 'متابعة حالات الإرشاد',
       navItems: buildAdminNavItems(context, current: 'advising-cases'),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                  child: Column(
-                    children: [
-                      _buildStatsGrid(tabs),
-                      const SizedBox(height: 16),
-                      _buildFilterBar(),
-                    ],
+      body: Column(
+        children: [
+          AdvisingSubNavigation(current: AdvisingSection.cases, isSuperAdmin: isSuperAdmin),
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: kAdvisingWorkspaceMaxWidth),
+                      child: Column(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                const AdvisingPageHeader(
+                                  breadcrumbTrail: 'متابعة حالات الإرشاد',
+                                  title: 'متابعة حالات الإرشاد',
+                                  description: 'كشف بيانات الطلبة، النصاب، إعادة التوزيع، والتقارير التفصيلية.',
+                                  icon: Icons.fact_check_outlined,
+                                ),
+                                const SizedBox(height: 16),
+                                _buildStatsGrid(tabs),
+                                const SizedBox(height: 16),
+                                _buildFilterBar(),
+                              ],
+                            ),
+                          ),
+                          Expanded(
+                            child: ListView(
+                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                              children: [tabs[_sectionIndex].$2()],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                    children: [tabs[_sectionIndex].$2()],
-                  ),
-                ),
-              ],
-            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -420,21 +447,73 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
     // التوزيع العادل"، "إحصائيات الإرشاد"، "حركات الإرشاد") صارت غير قابلة
     // للوصول إطلاقًا بعد حذف قائمة "عرض" المنسدلة التي كانت الوسيلة الوحيدة
     // للوصول إليها.
-    final cards = [
-      for (var i = 0; i < tabs.length; i++)
-        _CompactStatTile(
+    //
+    // مفصولة بصريًا (2026-08-21) لـ5 مؤشرات أساسية (أول 5 تبويبات بترتيب
+    // سليمان نفسه - الأهم تشغيليًا: الكل/تابعين لمرشد/ذوي إعاقة/بلا مرشد/على
+    // غير مرشدهم) بوزن أقوى، والباقي مؤشرات تشغيلية ثانوية بحجم أصغر - بدل
+    // حائط 14 بطاقة متساوية الوزن.
+    Widget tile(int i, {required bool compact}) => _CompactStatTile(
           icon: icons[i],
           value: '${counts[i]}',
           label: tabs[i].$1,
           color: colors[i],
-          onTap: () => setState(() => _sectionIndex = i),
-        ),
-    ];
+          selected: _sectionIndex == i,
+          compact: compact,
+          onTap: () => setState(() {
+            _sectionIndex = i;
+            _resetTablePage();
+          }),
+        );
 
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [for (final c in cards) SizedBox(width: 190, child: c)],
+    const primaryCount = 5;
+    final secondaryCount = tabs.length - primaryCount;
+
+    // شبكة ثابتة الأعمدة (بدل `Wrap` بعرض بطاقة ثابت) - `Wrap` كان يترك
+    // أحيانًا بطاقة واحدة معزولة بسطر ثالث حسب عرض الحاوية الدقيق (لاحظه
+    // سليمان 2026-08-21: "بطاقة واحدة معزولة بسطر ثالث"). عدد أعمدة المؤشرات
+    // الثانوية يبقى دومًا قاسمًا لعددها (9 = 3×3 أو 1×9) فلا تنتج بطاقة يتيمة
+    // مهما كان عرض الشاشة.
+    Widget grid({required int start, required int count, required bool compact, required int Function(double width) columnsFor}) {
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final cols = columnsFor(constraints.maxWidth).clamp(1, count);
+          return GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: count,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: cols,
+              mainAxisExtent: compact ? 64 : 66,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 8,
+            ),
+            itemBuilder: (context, i) => tile(start + i, compact: compact),
+          );
+        },
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('مؤشرات أساسية', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Colors.grey.shade600)),
+        const SizedBox(height: 6),
+        grid(
+          start: 0,
+          count: primaryCount,
+          compact: false,
+          columnsFor: (w) => w >= 1150 ? 5 : (w >= 700 ? 3 : (w >= 460 ? 2 : 1)),
+        ),
+        const SizedBox(height: 12),
+        Text('مؤشرات تشغيلية', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Colors.grey.shade600)),
+        const SizedBox(height: 6),
+        grid(
+          start: primaryCount,
+          count: secondaryCount,
+          compact: true,
+          columnsFor: (w) => w >= 520 ? 3 : 1,
+        ),
+      ],
     );
   }
 
@@ -457,6 +536,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
             onChanged: (v) => setState(() {
               _shatrFilter = v ?? _kAllShatr;
               _advisorFilter = _kAllAdvisors;
+              _resetTablePage();
             }),
           ),
         ),
@@ -470,6 +550,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
             onChanged: (v) => setState(() {
               _deptFilter = v ?? _kAllDepartments;
               _advisorFilter = _kAllAdvisors;
+              _resetTablePage();
             }),
           ),
         ),
@@ -481,7 +562,10 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
             value: _advisorFilter == _kAllAdvisors ? null : _advisorFilter,
             items: _advisorFilterOptions,
             itemLabel: displayName,
-            onChanged: (v) => setState(() => _advisorFilter = v ?? _kAllAdvisors),
+            onChanged: (v) => setState(() {
+              _advisorFilter = v ?? _kAllAdvisors;
+              _resetTablePage();
+            }),
           ),
         ),
         SizedBox(
@@ -502,7 +586,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
               enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(9), borderSide: const BorderSide(color: _FilterTokens.border)),
               focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(9), borderSide: const BorderSide(color: AppColors.gold, width: 1.4)),
             ),
-            onChanged: (_) => setState(() {}),
+            onChanged: (_) => setState(() => _resetTablePage()),
           ),
         ),
       ],
@@ -1108,12 +1192,21 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
   int? _tableSortColumnIndex;
   bool _tableSortAscending = true;
 
+  /// ترقيم صفحات احترافي بديل عن قصّ الصفوف بلا تنقّل - يعرض [_kPageSize]
+  /// صفٍّ فقط في كل مرة (يحلّ أيضًا مشكلة تجميد `DataTable` عند آلاف
+  /// الصفوف)، مع إتاحة كل الصفحات حتى [_kMaxTableRows] الأول (التصدير يبقى
+  /// كاملاً دومًا بلا أي حد). تُصفَّر عند تغيير التبويب أو أي فلتر.
+  static const int _kPageSize = 100;
+  int _tablePage = 0;
+
+  void _resetTablePage() => _tablePage = 0;
+
   /// جدول عام من نصوص جاهزة (بلا نوع بيانات محدَّد) - يُبنى مرة واحدة فقط
   /// لكل التبويبات الاثني عشر بدل تكرار كود `DataTable` لكل نوع سجل. يُقلَّص
   /// للعرض المرئي فقط عند تجاوز [_kMaxTableRows] (التصدير يبقى كاملاً دومًا).
   Widget _dataTableFromRows(List<String> columns, List<List<String>> allRows, {required String emptyMessage}) {
     if (allRows.isEmpty) {
-      return Center(child: Padding(padding: const EdgeInsets.all(20), child: Text(emptyMessage, style: TextStyle(color: Colors.grey.shade600))));
+      return AdvisingEmptyState(icon: Icons.inbox_outlined, title: 'لا توجد بيانات', description: emptyMessage);
     }
     var sortedRows = allRows;
     final sortIndex = _tableSortColumnIndex;
@@ -1128,19 +1221,46 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
           return _tableSortAscending ? cmp : -cmp;
         });
     }
-    final truncated = sortedRows.length > _kMaxTableRows;
-    final visible = truncated ? sortedRows.sublist(0, _kMaxTableRows) : sortedRows;
+    // حد أقصى [_kMaxTableRows] للبيانات المتاحة للعرض/التنقّل بالصفحات (يحمي
+    // من تجميد `DataTable` مع آلاف الصفوف) - داخله ترقيم صفحات حقيقي بحجم
+    // [_kPageSize] بدل قصّ صامت لأول 300 صف بلا تنقّل. التصدير (Excel/PDF)
+    // يبقى بلا أي حد دومًا، يشمل كل السجلات.
+    final capped = sortedRows.length > _kMaxTableRows ? sortedRows.sublist(0, _kMaxTableRows) : sortedRows;
+    final totalPages = (capped.length / _kPageSize).ceil().clamp(1, 1 << 30);
+    final page = _tablePage.clamp(0, totalPages - 1);
+    final pageStart = page * _kPageSize;
+    final pageEnd = (pageStart + _kPageSize).clamp(0, capped.length);
+    final visible = capped.sublist(pageStart, pageEnd);
     return Column(
       children: [
-        if (truncated)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Text(
-              'يُعرض هنا أول $_kMaxTableRows من ${allRows.length} سجلًا فقط - '
-              'استخدم Excel أو PDF أعلاه لعرض/طباعة كل السجلات.',
-              style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.bold, fontSize: 12),
-            ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  capped.isEmpty
+                      ? 'لا توجد سجلات'
+                      : 'عرض ${pageStart + 1}–$pageEnd من ${allRows.length}${sortedRows.length > _kMaxTableRows ? ' (الحد الأقصى للعرض/التنقّل $_kMaxTableRows - استخدم Excel أو PDF أعلاه لكل السجلات)' : ''}',
+                  style: const TextStyle(color: DashTokens.textSecondary, fontSize: 12, fontWeight: FontWeight.w500),
+                ),
+              ),
+              if (totalPages > 1) ...[
+                IconButton(
+                  tooltip: 'السابق',
+                  icon: const Icon(Icons.chevron_right, size: 20),
+                  onPressed: page > 0 ? () => setState(() => _tablePage = page - 1) : null,
+                ),
+                Text('${page + 1} / $totalPages', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: DashTokens.textSecondary)),
+                IconButton(
+                  tooltip: 'التالي',
+                  icon: const Icon(Icons.chevron_left, size: 20),
+                  onPressed: page < totalPages - 1 ? () => setState(() => _tablePage = page + 1) : null,
+                ),
+              ],
+            ],
           ),
+        ),
         Center(
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
@@ -1198,6 +1318,8 @@ class _CompactStatTile extends StatelessWidget {
   final String label;
   final Color color;
   final VoidCallback onTap;
+  final bool selected;
+  final bool compact;
 
   const _CompactStatTile({
     required this.icon,
@@ -1205,10 +1327,14 @@ class _CompactStatTile extends StatelessWidget {
     required this.label,
     required this.color,
     required this.onTap,
+    this.selected = false,
+    this.compact = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final iconBox = compact ? 26.0 : 30.0;
+    final valueSize = compact ? 15.0 : 15.0;
     return Material(
       color: Colors.white,
       borderRadius: BorderRadius.circular(10),
@@ -1218,27 +1344,33 @@ class _CompactStatTile extends StatelessWidget {
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.grey.shade200),
+            color: selected ? color.withValues(alpha: 0.06) : null,
+            border: Border.all(color: selected ? color.withValues(alpha: 0.55) : Colors.grey.shade200, width: selected ? 1.4 : 1),
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          padding: EdgeInsets.symmetric(horizontal: 8, vertical: compact ? 6 : 8),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 30,
-                height: 30,
+                width: iconBox,
+                height: iconBox,
                 decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(8)),
                 alignment: Alignment.center,
-                child: Icon(icon, color: Colors.white, size: 16),
+                child: Icon(icon, color: Colors.white, size: compact ? 14 : 16),
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(value, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.greenDark)),
+                    Text(value, style: TextStyle(fontSize: valueSize, fontWeight: FontWeight.bold, color: AppColors.greenDark)),
                     const SizedBox(height: 2),
-                    Text(label, style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
+                    Text(
+                      label,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: compact ? 10.5 : 9.5, fontWeight: FontWeight.w600, color: Colors.grey.shade700),
+                    ),
                   ],
                 ),
               ),

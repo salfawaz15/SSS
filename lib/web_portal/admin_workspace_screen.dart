@@ -253,12 +253,16 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
       );
 
       if (mounted) {
+        final hasMissingReason = mergeResult.missingReasonCount > 0;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
+            backgroundColor: hasMissingReason ? Colors.orange.shade800 : null,
             content: Text(
               'تم الرفع نيابةً عن "$department - $shatr": ${mergeResult.matchedCount} '
-              'حالة مطابَقة${mergeResult.unmatchedCount > 0 ? '، ${mergeResult.unmatchedCount} غير مطابَقة' : ''}',
+              'حالة مطابَقة${mergeResult.unmatchedCount > 0 ? '، ${mergeResult.unmatchedCount} غير مطابَقة' : ''}'
+              '${hasMissingReason ? '\nتنبيه: ${mergeResult.missingReasonCount} حالة اختار فيها المرشد "لم يتم التنفيذ" بلا تحديد السبب - يُرجى إعادتها له لتحديد السبب' : ''}',
             ),
+            duration: Duration(seconds: hasMissingReason ? 10 : 4),
           ),
         );
       }
