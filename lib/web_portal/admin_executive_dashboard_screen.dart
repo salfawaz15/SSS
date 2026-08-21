@@ -822,7 +822,7 @@ class _DepartmentFilterDropdown extends StatelessWidget {
           style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Colors.grey.shade700),
           icon: Icon(Icons.expand_more, size: 16, color: Colors.grey.shade600),
           items: [
-            const DropdownMenuItem(value: null, child: Text('كل الأقسام')),
+            const DropdownMenuItem(value: null, child: Text('القسم العلمي')),
             for (final d in _kCanonicalDepartmentOrder) DropdownMenuItem(value: d, child: Text(d)),
           ],
           onChanged: onChanged,
@@ -849,7 +849,7 @@ class _ShatrFilterDropdown extends StatelessWidget {
           style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Colors.grey.shade700),
           icon: Icon(Icons.expand_more, size: 16, color: Colors.grey.shade600),
           items: const [
-            DropdownMenuItem(value: _ShatrFilter.all, child: Text('كل الشطرين')),
+            DropdownMenuItem(value: _ShatrFilter.all, child: Text('الشطر')),
             DropdownMenuItem(value: _ShatrFilter.male, child: Text('شطر الطلاب')),
             DropdownMenuItem(value: _ShatrFilter.female, child: Text('شطر الطالبات')),
           ],
@@ -877,7 +877,7 @@ class _PriorityFilterDropdown extends StatelessWidget {
           style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Colors.grey.shade700),
           icon: Icon(Icons.expand_more, size: 16, color: Colors.grey.shade600),
           items: const [
-            DropdownMenuItem(value: _PriorityFilter.all, child: Text('الكل')),
+            DropdownMenuItem(value: _PriorityFilter.all, child: Text('الحالة')),
             DropdownMenuItem(value: _PriorityFilter.disability, child: Text('الإعاقة')),
             DropdownMenuItem(value: _PriorityFilter.graduate, child: Text('الخريجين')),
           ],
