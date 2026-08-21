@@ -1,6 +1,3 @@
-import 'dart:typed_data';
-
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -10,11 +7,8 @@ import '../data/teaching_load_regulation.dart';
 import '../data/teaching_quota_status.dart';
 import '../models/college_roster_member.dart';
 import '../models/course_section_record.dart';
-import '../services/college_roster_parser_service.dart';
 import '../services/college_roster_repository.dart';
 import '../services/course_schedule_repository.dart';
-import '../services/unit_committee_repository.dart';
-import '../services/xlsx_metadata_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/filter_pills.dart';
 import '../utils/name_display.dart';
@@ -120,7 +114,6 @@ class _CollegeRosterAdminScreenState extends State<CollegeRosterAdminScreen> {
   List<CourseSectionRecord> _femaleRecords = [];
   DateTime? _lastSavedAt;
   bool _loading = true;
-  bool _uploading = false;
 
   // تصنيف مستقل تمامًا: أعضاء هيئة تدريس أو إداريين - لا يشتركان بنفس الفرز
   // ولا نفس الأعمدة، حسب تعليمات صريحة.
@@ -242,141 +235,6 @@ class _CollegeRosterAdminScreenState extends State<CollegeRosterAdminScreen> {
     );
   }
 
-  Future<void> _clearData() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('تفريغ بيانات منسوبي الكلية'),
-        content: const Text('سيُحذَف كل ما هو مخزَّن حاليًا (لتسهيل إعادة اختبار الرفع). هل تريد المتابعة؟'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
-            child: const Text('تفريغ'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    await CollegeRosterRepository.clear();
-    await _loadAll();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تفريغ البيانات.')));
-  }
-
-  /// يفحص عمودي "نصاب الإرشاد" و"النصاب التدريسي" لكل عضو مقابل القيم
-  /// المعتمدة فقط - بديل عن قائمة منسدلة داخل ملف الإكسل (لا يدعمها قارئ
-  /// الموقع، انظر lib/data/advising_load_rules.dart). يُرجع سطرًا تحذيريًا
-  /// لكل قيمة غريبة (اسم العضو + العمود + القيمة المكتوبة) لعرضها في حوار
-  /// التأكيد قبل الاعتماد - تنبيه فقط، لا يمنع الرفع.
-  List<String> _invalidQuotaValues(List<CollegeRosterMember> members) {
-    final lines = <String>[];
-    for (final m in members) {
-      final advising = m.advisingQuotaNote.trim();
-      if (advising.isNotEmpty && !AdvisingLoadRules.validAdvisingQuotaValues.contains(advising)) {
-        lines.add('${m.name} - نصاب الإرشاد: "$advising"');
-      }
-      final teaching = m.quotaReductionNote.trim();
-      if (teaching.isNotEmpty && !TeachingLoadRegulation.validQuotaReductionValues.contains(teaching)) {
-        lines.add('${m.name} - النصاب التدريسي: "$teaching"');
-      }
-    }
-    return lines;
-  }
-
-  Future<void> _upload() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['xlsx'],
-      withData: true,
-    );
-    if (result == null || result.files.single.bytes == null) return;
-    final Uint8List bytes = result.files.single.bytes!;
-
-    setState(() => _uploading = true);
-    try {
-      final members = CollegeRosterParserService.parse(bytes);
-      if (members.isEmpty) {
-        throw Exception(
-          'لم يتم العثور على أي منسوب في الملف - تأكد من أنه الملف الرسمي '
-          '(قالب_بيانات_منسوبي_الكلية_الرسمي.xlsx) بورقتيه الأصليتين.',
-        );
-      }
-
-      final fileSavedAt = XlsxMetadataService.lastSavedAt(bytes);
-      final currentSavedAt = await CollegeRosterRepository.currentLastSavedAt();
-      if (fileSavedAt != null && currentSavedAt != null && !fileSavedAt.isAfter(currentSavedAt)) {
-        final fmt = DateFormat('yyyy/MM/dd HH:mm');
-        throw Exception(
-          'تاريخ آخر حفظ لهذا الملف (${fmt.format(fileSavedAt)}) ليس أحدث من تاريخ آخر نسخة معتمدة '
-          '(${fmt.format(currentSavedAt)}). تأكد من رفع أحدث نسخة محفوظة من الملف.',
-        );
-      }
-
-      if (!mounted) return;
-      final facultyCount = members.where((m) => m.type == CollegeMemberType.faculty).length;
-      final adminCount = members.length - facultyCount;
-      final invalidQuotaValues = _invalidQuotaValues(members);
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('تأكيد الاعتماد'),
-          content: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'تم استخراج ${members.length} منسوبًا من الملف ($facultyCount عضو هيئة تدريس، $adminCount إداري)'
-                  '${fileSavedAt != null ? '\nتاريخ آخر حفظ للملف: ${DateFormat('yyyy/MM/dd HH:mm').format(fileSavedAt)}' : ''}.\n\n'
-                  'سيستبدل هذا بيانات منسوبي الكلية المخزَّنة حاليًا بالكامل. هل تريد الاعتماد؟',
-                ),
-                if (invalidQuotaValues.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    'تنبيه: قيم غير معروفة في عمودي "نصاب الإرشاد"/"النصاب التدريسي" '
-                    '(قد تكون خطأ إملائي - سيُتعامَل معها كأنها فارغة):',
-                    style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 4),
-                  ...invalidQuotaValues.map((line) => Text('- $line', style: TextStyle(color: Colors.orange.shade800))),
-                ],
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('اعتماد')),
-          ],
-        ),
-      );
-      if (confirmed != true) return;
-
-      await CollegeRosterRepository.save(members, lastSavedAt: fileSavedAt);
-
-      // ورقة "تشكيل الوحدة" مستقلة تمامًا عن بيانات منسوبي الكلية أعلاه -
-      // لا تُحدَّث إلا إن وُجدت فعليًا بالملف المرفوع (خلاف ذلك يبقى التشكيل
-      // المعتمد سابقًا كما هو، لا يُمسح).
-      final committee = CollegeRosterParserService.parseUnitCommittee(bytes);
-      if (committee.isNotEmpty) {
-        await UnitCommitteeRepository.save(committee);
-      }
-
-      await _loadAll();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تم اعتماد بيانات منسوبي الكلية بنجاح (${members.length} منسوب).')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذّر قراءة الملف: $e'), backgroundColor: Colors.red.shade700),
-      );
-    } finally {
-      if (mounted) setState(() => _uploading = false);
-    }
-  }
 
   List<CollegeRosterMember> get _typedMembers => _members.where((m) => m.type == _typeFilter).toList();
 
@@ -454,48 +312,29 @@ class _CollegeRosterAdminScreenState extends State<CollegeRosterAdminScreen> {
     );
   }
 
+  /// شريط معلوماتي فقط (بلا زر رفع) - الرفع انتقل لصفحة "رفع وتنزيل الملفات"
+  /// الموحَّدة (سليمان 2026-08-22: "قم بإزالة الرفع من هنا، يوجد مكان للرفع").
   Widget _buildUploadBar() {
     final fmt = DateFormat('yyyy/MM/dd HH:mm');
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.gold.withValues(alpha: 0.4)),
+          color: AppColors.background,
+          borderRadius: BorderRadius.circular(10),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
+        child: Row(
           children: [
-            Wrap(
-              spacing: 10,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                FilledButton.icon(
-                  onPressed: _uploading ? null : _upload,
-                  icon: _uploading
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.upload_file),
-                  label: const Text('رفع ملف منسوبي الكلية'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.green,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                  ),
-                ),
-                if (_lastSavedAt != null)
-                  IconButton(
-                    tooltip: 'تفريغ البيانات (للاختبار)',
-                    onPressed: _clearData,
-                    icon: Icon(Icons.delete_sweep_outlined, color: Colors.red.shade700),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              _lastSavedAt != null ? 'آخر نسخة معتمدة: ${fmt.format(_lastSavedAt!)}' : 'لم يُرفع بعد',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            Icon(Icons.info_outline, size: 16, color: Colors.grey.shade600),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                _lastSavedAt != null
+                    ? 'آخر نسخة معتمدة: ${fmt.format(_lastSavedAt!)} - الرفع من صفحة "رفع وتنزيل الملفات"'
+                    : 'لم يُرفع بعد - ارفع الملف من صفحة "رفع وتنزيل الملفات"',
+                style: TextStyle(color: Colors.grey.shade700, fontSize: 12),
+              ),
             ),
           ],
         ),

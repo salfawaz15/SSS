@@ -7,12 +7,14 @@ import 'package:intl/intl.dart';
 
 import '../data/course_catalog.dart';
 import '../models/advisor_roster_entry.dart';
+import '../models/college_roster_member.dart';
 import '../models/course_section_record.dart';
 import '../services/advising_report_repository.dart';
 import '../services/advising_schedule_repository.dart';
 import '../services/advisor_correction_service.dart';
 import '../services/advisor_roster_service.dart';
 import '../services/advisor_zip_service.dart';
+import '../services/college_roster_repository.dart';
 import '../services/course_schedule_change_repository.dart';
 import '../services/course_schedule_diff_service.dart';
 import '../services/course_schedule_repository.dart';
@@ -65,6 +67,11 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   int _femaleCourseCount = 0;
   bool _uploadingCourses = false;
 
+  DateTime? _rosterLastSavedAt;
+  int _rosterFacultyCount = 0;
+  int _rosterAdminCount = 0;
+  bool _uploadingRoster = false;
+
   DateTime? _allCollegesMaleDate;
   DateTime? _allCollegesFemaleDate;
   DateTime? _healthMaleDate;
@@ -114,8 +121,11 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
         AdvisingScheduleRepository.uploadedCount(),
         CourseScheduleRepository.loadSchedule(Shatr.male),
         CourseScheduleRepository.loadSchedule(Shatr.female),
+        CollegeRosterRepository.currentLastSavedAt(),
+        CollegeRosterRepository.load(),
       ]);
       if (!mounted) return;
+      final roster = results[11] as List<CollegeRosterMember>;
       setState(() {
         _maleExportDate = results[0] as DateTime?;
         _femaleExportDate = results[1] as DateTime?;
@@ -127,6 +137,9 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
         _scheduleUploadedCount = results[7] as int;
         _maleCourseCount = (results[8] as List<CourseSectionRecord>).length;
         _femaleCourseCount = (results[9] as List<CourseSectionRecord>).length;
+        _rosterLastSavedAt = results[10] as DateTime?;
+        _rosterFacultyCount = roster.where((m) => m.type == CollegeMemberType.faculty).length;
+        _rosterAdminCount = roster.where((m) => m.type == CollegeMemberType.admin).length;
       });
     } finally {
       if (mounted) setState(() => _loadingDates = false);
@@ -804,11 +817,15 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                         // صراحةً 2026-08-20: "الهدف أن تكون الصفحة واحدة
                         // دون تمرير").
                         child: LayoutBuilder(builder: (context, constraints) {
-                          final wide = constraints.maxWidth >= 900;
+                          final wide = constraints.maxWidth >= 1100;
+                          final boxes = [_coursesBanner(), _rosterBanner(), _advisingSection()];
                           if (!wide) {
-                            return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [_coursesBanner(), const SizedBox(height: 14), _advisingSection()]);
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [for (final b in boxes) ...[b, const SizedBox(height: 14)]]..removeLast(),
+                            );
                           }
-                          return _EqualHeightRow(left: _coursesBanner(), right: _advisingSection());
+                          return _EqualHeightRow(children: boxes);
                         }),
                       ),
                     ],
@@ -1254,7 +1271,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     final coursesDate = _latestOf(_maleExportDate, _femaleExportDate);
     final dateFmt = DateFormat('d MMMM yyyy، h:mm a', 'ar');
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(color: Colors.white, border: Border.all(color: AppColors.goldLight), borderRadius: BorderRadius.circular(16)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1288,16 +1305,93 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   /// بطاقة إحصائية صغيرة: عدد شعب المقررات المرفوعة لشطر واحد.
   Widget _courseCountStat({required String label, required int count, required String emoji}) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(9)),
       child: Column(
         children: [
-          Text('$emoji  $count', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: AppColors.greenDark)),
-          const SizedBox(height: 3),
-          Text(label, style: TextStyle(fontSize: 11, color: Colors.grey.shade600), textAlign: TextAlign.center),
+          Text('$emoji  $count', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppColors.greenDark)),
+          const SizedBox(height: 2),
+          Text(label, style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600), textAlign: TextAlign.center),
         ],
       ),
     );
+  }
+
+  /// مربع "منسوبي الكلية" - نُقل من صفحة "بيانات منسوبي الكلية" المستقلة
+  /// إلى هنا (سليمان 2026-08-22: "يوجد مكان للرفع") ليقع بين مربعَي
+  /// "المقررات الدراسية" و"الإرشاد الأكاديمي" بنفس هويتهما البصرية حرفيًا.
+  Widget _rosterBanner() {
+    final dateFmt = DateFormat('d MMMM yyyy، h:mm a', 'ar');
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: Colors.white, border: Border.all(color: AppColors.goldLight), borderRadius: BorderRadius.circular(16)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _greenBanner(
+            icon: Icons.groups_2_outlined,
+            title: 'منسوبي الكلية',
+            subtitleIcon: Icons.info_outline,
+            subtitle: _rosterLastSavedAt != null ? 'آخر اعتماد: ${dateFmt.format(_rosterLastSavedAt!)}' : 'لا توجد بيانات مرفوعة بعد',
+            button: _bannerButton(
+              uploading: _uploadingRoster,
+              label: 'رفع الملف',
+              onPressed: () => runUploadCollegeRoster(
+                context: context,
+                setUploading: (v) => setState(() => _uploadingRoster = v),
+                onSuccess: () async {
+                  await _loadDates();
+                  if (mounted) _showSuccessSnackBar('تم اعتماد بيانات منسوبي الكلية بنجاح');
+                },
+              ),
+            ),
+            verticalPadding: 12,
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(child: _courseCountStat(label: 'أعضاء هيئة تدريس', count: _rosterFacultyCount, emoji: '👨‍🏫')),
+              const SizedBox(width: 10),
+              Expanded(child: _courseCountStat(label: 'إداريون', count: _rosterAdminCount, emoji: '🗂️')),
+            ],
+          ),
+          if (_rosterLastSavedAt != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: _clearDataButton(
+                  label: 'مسح بيانات المنسوبين',
+                  onPressed: () => _clearRoster(),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _clearRoster() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('تفريغ بيانات منسوبي الكلية'),
+        content: const Text('سيُحذَف كل ما هو مخزَّن حاليًا (لتسهيل إعادة اختبار الرفع). هل تريد المتابعة؟'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+            child: const Text('تفريغ'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await CollegeRosterRepository.clear();
+    await _loadDates();
+    if (!mounted) return;
+    _showSuccessSnackBar('تم تفريغ بيانات المنسوبين.');
   }
 
   /// القسم الثالث: الإرشاد الأكاديمي - شريط أخضر عنوان فقط (بلا زر) يوضّح
@@ -1309,7 +1403,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     final scheduleMaxed = _scheduleUploadedCount >= 10;
 
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(color: Colors.white, border: Border.all(color: AppColors.goldLight), borderRadius: BorderRadius.circular(16)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1561,25 +1655,28 @@ class _HoverableClearButtonState extends State<_HoverableClearButton> {
 /// بديل عن `IntrinsicHeight` (يتعارض مع `LayoutBuilder` المتداخل بداخل
 /// `_greenBanner`، انظر ملاحظة README.md 2026-08-20) يقيس الارتفاع الفعلي
 /// بعد الرسم عبر `GlobalKey` ويطبّق الأطول كحدّ أدنى للطرفين.
+/// صفّ Expanded متساوي الارتفاع بعدد عناصر حرّ (كان يقبل عنصرين فقط
+/// left/right - عُمِّم ليقبل قائمة بعد إضافة مربع "منسوبي الكلية" الثالث
+/// بينهما، سليمان 2026-08-22).
 class _EqualHeightRow extends StatefulWidget {
-  final Widget left;
-  final Widget right;
-  const _EqualHeightRow({required this.left, required this.right});
+  final List<Widget> children;
+  const _EqualHeightRow({required this.children});
 
   @override
   State<_EqualHeightRow> createState() => _EqualHeightRowState();
 }
 
 class _EqualHeightRowState extends State<_EqualHeightRow> {
-  final _leftKey = GlobalKey();
-  final _rightKey = GlobalKey();
+  late final List<GlobalKey> _keys = [for (var i = 0; i < widget.children.length; i++) GlobalKey()];
   double? _matchedHeight;
 
   void _measure() {
-    final leftBox = _leftKey.currentContext?.findRenderObject() as RenderBox?;
-    final rightBox = _rightKey.currentContext?.findRenderObject() as RenderBox?;
-    if (leftBox == null || rightBox == null || !leftBox.hasSize || !rightBox.hasSize) return;
-    final maxHeight = leftBox.size.height > rightBox.size.height ? leftBox.size.height : rightBox.size.height;
+    double maxHeight = 0;
+    for (final key in _keys) {
+      final box = key.currentContext?.findRenderObject() as RenderBox?;
+      if (box == null || !box.hasSize) return;
+      if (box.size.height > maxHeight) maxHeight = box.size.height;
+    }
     if (_matchedHeight != maxHeight && mounted) {
       setState(() => _matchedHeight = maxHeight);
     }
@@ -1591,21 +1688,16 @@ class _EqualHeightRowState extends State<_EqualHeightRow> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: ConstrainedBox(
-            key: _leftKey,
-            constraints: BoxConstraints(minHeight: _matchedHeight ?? 0),
-            child: widget.left,
+        for (var i = 0; i < widget.children.length; i++) ...[
+          if (i != 0) const SizedBox(width: 14),
+          Expanded(
+            child: ConstrainedBox(
+              key: _keys[i],
+              constraints: BoxConstraints(minHeight: _matchedHeight ?? 0),
+              child: widget.children[i],
+            ),
           ),
-        ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: ConstrainedBox(
-            key: _rightKey,
-            constraints: BoxConstraints(minHeight: _matchedHeight ?? 0),
-            child: widget.right,
-          ),
-        ),
+        ],
       ],
     );
   }

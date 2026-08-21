@@ -730,9 +730,9 @@ class _ReportCardState extends State<_ReportCard> {
                     children: [
                       Text(
                         widget.entry.title,
-                        maxLines: 1,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: DashTokens.textPrimary),
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: DashTokens.textPrimary, height: 1.25),
                       ),
                       const SizedBox(height: 4),
                       Text(

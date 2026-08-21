@@ -2,8 +2,11 @@ import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
+import '../data/advising_load_rules.dart';
 import '../data/faculty_sort_order.dart';
+import '../data/teaching_load_regulation.dart';
 import '../models/advising_case_record.dart';
 import '../models/advising_schedule.dart';
 import '../models/college_roster_member.dart';
@@ -15,8 +18,11 @@ import '../services/advising_schedule_excel_service.dart';
 import '../services/advising_schedule_repository.dart';
 import '../services/advisor_movement_repository.dart';
 import '../services/advisor_name_matching.dart';
+import '../services/college_roster_parser_service.dart';
 import '../services/college_roster_repository.dart';
 import '../services/course_schedule_repository.dart' show Shatr, ShatrLabel;
+import '../services/unit_committee_repository.dart';
+import '../services/xlsx_metadata_service.dart';
 import 'upload_dialogs.dart';
 
 /// منطق رفع الملفات الثلاثة التي مصدرها المنظومة الداخلية للجامعة (كل
@@ -485,4 +491,117 @@ List<({String name, List<String> offices})> _findOfficeConflicts(List<AdvisingSc
     for (final e in officesByName.entries)
       if (e.value.length > 1) (name: e.key, offices: e.value.toList()..sort()),
   ];
+}
+
+/// يفحص عمودي "نصاب الإرشاد" و"النصاب التدريسي" لكل عضو مقابل القيم
+/// المعتمدة فقط - بديل عن قائمة منسدلة داخل ملف الإكسل (لا يدعمها قارئ
+/// الموقع). يُرجع سطرًا تحذيريًا لكل قيمة غريبة لعرضها بحوار التأكيد قبل
+/// الاعتماد - تنبيه فقط، لا يمنع الرفع.
+List<String> _invalidRosterQuotaValues(List<CollegeRosterMember> members) {
+  final lines = <String>[];
+  for (final m in members) {
+    final advising = m.advisingQuotaNote.trim();
+    if (advising.isNotEmpty && !AdvisingLoadRules.validAdvisingQuotaValues.contains(advising)) {
+      lines.add('${m.name} - نصاب الإرشاد: "$advising"');
+    }
+    final teaching = m.quotaReductionNote.trim();
+    if (teaching.isNotEmpty && !TeachingLoadRegulation.validQuotaReductionValues.contains(teaching)) {
+      lines.add('${m.name} - النصاب التدريسي: "$teaching"');
+    }
+  }
+  return lines;
+}
+
+/// رفع ملف "منسوبي الكلية" الرسمي - نُقل من صفحة "بيانات منسوبي الكلية"
+/// المستقلة إلى صفحة "رفع وتنزيل الملفات" الموحَّدة لكل رفعات الموقع (سليمان
+/// 2026-08-22: "قم بإزالة الرفع من هنا، يوجد مكان للرفع" - المكان الموحَّد).
+Future<void> runUploadCollegeRoster({
+  required BuildContext context,
+  required ValueChanged<bool> setUploading,
+  required VoidCallback onSuccess,
+}) async {
+  final result = await FilePicker.platform.pickFiles(
+    type: FileType.custom,
+    allowedExtensions: const ['xlsx'],
+    withData: true,
+  );
+  if (result == null || result.files.single.bytes == null) return;
+  final Uint8List bytes = result.files.single.bytes!;
+
+  setUploading(true);
+  try {
+    final members = CollegeRosterParserService.parse(bytes);
+    if (members.isEmpty) {
+      throw Exception(
+        'لم يتم العثور على أي منسوب في الملف - تأكد من أنه الملف الرسمي '
+        '(قالب_بيانات_منسوبي_الكلية_الرسمي.xlsx) بورقتيه الأصليتين.',
+      );
+    }
+
+    final fileSavedAt = XlsxMetadataService.lastSavedAt(bytes);
+    final currentSavedAt = await CollegeRosterRepository.currentLastSavedAt();
+    if (fileSavedAt != null && currentSavedAt != null && !fileSavedAt.isAfter(currentSavedAt)) {
+      final fmt = DateFormat('yyyy/MM/dd HH:mm');
+      throw Exception(
+        'تاريخ آخر حفظ لهذا الملف (${fmt.format(fileSavedAt)}) ليس أحدث من تاريخ آخر نسخة معتمدة '
+        '(${fmt.format(currentSavedAt)}). تأكد من رفع أحدث نسخة محفوظة من الملف.',
+      );
+    }
+
+    if (!context.mounted) return;
+    final facultyCount = members.where((m) => m.type == CollegeMemberType.faculty).length;
+    final adminCount = members.length - facultyCount;
+    final invalidQuotaValues = _invalidRosterQuotaValues(members);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('تأكيد الاعتماد'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'تم استخراج ${members.length} منسوبًا من الملف ($facultyCount عضو هيئة تدريس، $adminCount إداري)'
+                '${fileSavedAt != null ? '\nتاريخ آخر حفظ للملف: ${DateFormat('yyyy/MM/dd HH:mm').format(fileSavedAt)}' : ''}.\n\n'
+                'سيستبدل هذا بيانات منسوبي الكلية المخزَّنة حاليًا بالكامل. هل تريد الاعتماد؟',
+              ),
+              if (invalidQuotaValues.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(
+                  'تنبيه: قيم غير معروفة في عمودي "نصاب الإرشاد"/"النصاب التدريسي" '
+                  '(قد تكون خطأ إملائي - سيُتعامَل معها كأنها فارغة):',
+                  style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                ...invalidQuotaValues.map((line) => Text('- $line', style: TextStyle(color: Colors.orange.shade800))),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('اعتماد')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    await CollegeRosterRepository.save(members, lastSavedAt: fileSavedAt);
+
+    // ورقة "تشكيل الوحدة" مستقلة تمامًا عن بيانات منسوبي الكلية أعلاه - لا
+    // تُحدَّث إلا إن وُجدت فعليًا بالملف المرفوع (خلاف ذلك يبقى التشكيل
+    // المعتمد سابقًا كما هو، لا يُمسح).
+    final committee = CollegeRosterParserService.parseUnitCommittee(bytes);
+    if (committee.isNotEmpty) {
+      await UnitCommitteeRepository.save(committee);
+    }
+
+    onSuccess();
+  } catch (e) {
+    if (!context.mounted) return;
+    showUploadErrorDialog(context, 'تعذّر قراءة الملف', '$e');
+  } finally {
+    setUploading(false);
+  }
 }
