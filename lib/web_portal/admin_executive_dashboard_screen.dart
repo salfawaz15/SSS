@@ -64,8 +64,6 @@ class AdminExecutiveDashboardScreen extends StatelessWidget {
                           const SizedBox(height: 18),
                           _WorkflowSection(data: data),
                           const SizedBox(height: 18),
-                          _DepartmentPerformanceSection(data: data),
-                          const SizedBox(height: 18),
                           _ActionTypeCompletionSection(data: data),
                           const SizedBox(height: 18),
                           _MainGrid(data: data),
@@ -134,8 +132,8 @@ class _MutableActionType {
 /// تحتاجها اللوحة دفعة واحدة - مصدر واحد يضمن اتساق كل الأرقام ببعضها
 /// (نفس الضمان الذي وفّرته `_kDepartmentPerf` سابقًا للبيانات الوهمية).
 class _DashboardData {
+  final List<Map<String, dynamic>> tickets;
   final List<_DepartmentPerf> departmentPerf;
-  final List<_RoleProgress> roleProgress;
   final List<_ActionTypeStats> actionTypeStats;
   final List<_ManagementCase> managementCases;
   final int totalRequests;
@@ -143,8 +141,8 @@ class _DashboardData {
   final int totalOverdue;
 
   const _DashboardData({
+    required this.tickets,
     required this.departmentPerf,
-    required this.roleProgress,
     required this.actionTypeStats,
     required this.managementCases,
     required this.totalRequests,
@@ -233,18 +231,8 @@ class _DashboardData {
     final actionTypeAcc = <String, _MutableActionType>{};
     final cases = <_ManagementCase>[];
     var totalOverdue = 0;
-    final advisorOutcomeCounts = {for (final o in TicketAdvisorOutcome.values) o: 0};
-    final coordinatorOutcomeCounts = {for (final o in TicketAdvisorOutcome.values) o: 0};
-    final collegeOutcomeCounts = {for (final o in TicketAdvisorOutcome.values) o: 0};
 
     for (final ticket in tickets) {
-      final advisorOutcome = ticketOutcomeForField(ticket, 'advisor_status');
-      advisorOutcomeCounts[advisorOutcome] = (advisorOutcomeCounts[advisorOutcome] ?? 0) + 1;
-      final coordinatorOutcome = ticketOutcomeForField(ticket, 'coordinator_status');
-      coordinatorOutcomeCounts[coordinatorOutcome] = (coordinatorOutcomeCounts[coordinatorOutcome] ?? 0) + 1;
-      final collegeOutcome = ticketOutcomeForField(ticket, 'college_status');
-      collegeOutcomeCounts[collegeOutcome] = (collegeOutcomeCounts[collegeOutcome] ?? 0) + 1;
-
       final shatrRaw = (ticket['shatr'] ?? '').toString();
       final shatrKey = shatrRaw == ExcelParserService.shatrMale ? 'male' : 'female';
       final rawDept = (ticket['department'] ?? '').toString();
@@ -330,17 +318,11 @@ class _DashboardData {
       return _ActionTypeStats(label: e.value, completed: acc?.completed ?? 0, processing: acc?.processing ?? 0, notStarted: acc?.notStarted ?? 0);
     }).toList();
 
-    final roleProgress = [
-      _RoleProgress(role: 'المرشدون الأكاديميون', breakdown: advisorOutcomeCounts),
-      _RoleProgress(role: 'منسّقو الأقسام العلمية', breakdown: coordinatorOutcomeCounts),
-      _RoleProgress(role: 'منسّقو الكلية', breakdown: collegeOutcomeCounts),
-    ];
-
     cases.sort((a, b) => a.severity.index.compareTo(b.severity.index));
 
     return _DashboardData(
+      tickets: tickets,
       departmentPerf: departmentPerf,
-      roleProgress: roleProgress,
       actionTypeStats: actionTypeStats,
       managementCases: cases,
       totalRequests: totalRequests,
@@ -348,6 +330,31 @@ class _DashboardData {
       totalOverdue: totalOverdue,
     );
   }
+}
+
+/// نتيجة إجراءات دور واحد (مرشد/منسّق قسم/منسّق كلية) لمجموعة تذاكر معيّنة -
+/// تُحسَب من [tickets] مباشرة عبر [ticketOutcomeForField]، فتصلح لكل من
+/// الإجمالي العام وأي فلترة لاحقة (شطر/قسم) بلا حاجة لإعادة استعلام
+/// Firestore - الفلترة تحدث محليًا على القائمة نفسها.
+List<_RoleProgress> _computeRoleProgress(List<Map<String, dynamic>> tickets) {
+  final advisor = {for (final o in TicketAdvisorOutcome.values) o: 0};
+  final coordinator = {for (final o in TicketAdvisorOutcome.values) o: 0};
+  final college = {for (final o in TicketAdvisorOutcome.values) o: 0};
+
+  for (final ticket in tickets) {
+    final advisorOutcome = ticketOutcomeForField(ticket, 'advisor_status');
+    advisor[advisorOutcome] = (advisor[advisorOutcome] ?? 0) + 1;
+    final coordinatorOutcome = ticketOutcomeForField(ticket, 'coordinator_status');
+    coordinator[coordinatorOutcome] = (coordinator[coordinatorOutcome] ?? 0) + 1;
+    final collegeOutcome = ticketOutcomeForField(ticket, 'college_status');
+    college[collegeOutcome] = (college[collegeOutcome] ?? 0) + 1;
+  }
+
+  return [
+    _RoleProgress(role: 'المرشدون الأكاديميون', breakdown: advisor),
+    _RoleProgress(role: 'منسّقو الأقسام العلمية', breakdown: coordinator),
+    _RoleProgress(role: 'منسّقو الكلية', breakdown: college),
+  ];
 }
 
 class _SectionTitle extends StatelessWidget {
@@ -618,12 +625,40 @@ class _RoleProgress {
   int get notStarted => breakdown[TicketAdvisorOutcome.notStarted] ?? 0;
 }
 
-class _WorkflowSection extends StatelessWidget {
+class _WorkflowSection extends StatefulWidget {
   final _DashboardData data;
   const _WorkflowSection({required this.data});
 
   @override
+  State<_WorkflowSection> createState() => _WorkflowSectionState();
+}
+
+class _WorkflowSectionState extends State<_WorkflowSection> {
+  _ShatrFilter _shatr = _ShatrFilter.all;
+  // null = "الكل" - نفس تمييز فلتر القسم بقية اللوحة.
+  String? _department;
+
+  List<Map<String, dynamic>> get _filteredTickets {
+    return widget.data.tickets.where((t) {
+      if (_shatr != _ShatrFilter.all) {
+        final shatrRaw = (t['shatr'] ?? '').toString();
+        final wantMale = _shatr == _ShatrFilter.male;
+        final isMale = shatrRaw == ExcelParserService.shatrMale;
+        if (isMale != wantMale) return false;
+      }
+      if (_department != null) {
+        final dept = _DashboardData._displayDepartment((t['department'] ?? '').toString());
+        if (dept != _department) return false;
+      }
+      return true;
+    }).toList();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final roleProgress = _computeRoleProgress(_filteredTickets);
+    final hasFilter = _shatr != _ShatrFilter.all || _department != null;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
       decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(14)),
@@ -633,10 +668,28 @@ class _WorkflowSection extends StatelessWidget {
           const _SectionTitle(title: 'متابعة سير العمل', icon: Icons.timeline_outlined),
           const SizedBox(height: 4),
           Text('حالة الطلبات فعليًا عند كل مستوى - كل رقم من واقع ما أُدخِل بالملفات', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 10,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              _ShatrFilterChips(value: _shatr, onChanged: (v) => setState(() => _shatr = v)),
+              _DepartmentFilterDropdown(value: _department, onChanged: (v) => setState(() => _department = v)),
+              if (hasFilter)
+                TextButton(
+                  onPressed: () => setState(() {
+                    _shatr = _ShatrFilter.all;
+                    _department = null;
+                  }),
+                  child: const Text('إعادة الكل', style: TextStyle(fontSize: 12)),
+                ),
+            ],
+          ),
           const SizedBox(height: 14),
           LayoutBuilder(builder: (context, constraints) {
             final narrow = constraints.maxWidth < 900;
-            final cards = data.roleProgress.map((r) => _RoleProgressCard(progress: r)).toList();
+            final cards = roleProgress.map((r) => _RoleProgressCard(progress: r)).toList();
             if (narrow) {
               return Column(children: [for (var i = 0; i < cards.length; i++) ...[if (i > 0) const SizedBox(height: 10), cards[i]]]);
             }
@@ -651,6 +704,33 @@ class _WorkflowSection extends StatelessWidget {
             );
           }),
         ],
+      ),
+    );
+  }
+}
+
+class _DepartmentFilterDropdown extends StatelessWidget {
+  final String? value;
+  final ValueChanged<String?> onChanged;
+  const _DepartmentFilterDropdown({required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String?>(
+          value: value,
+          isDense: true,
+          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Colors.grey.shade700),
+          icon: Icon(Icons.expand_more, size: 16, color: Colors.grey.shade600),
+          items: [
+            const DropdownMenuItem(value: null, child: Text('كل الأقسام')),
+            for (final d in _kCanonicalDepartmentOrder) DropdownMenuItem(value: d, child: Text(d)),
+          ],
+          onChanged: onChanged,
+        ),
       ),
     );
   }
@@ -753,77 +833,6 @@ class _DepartmentPerf {
 
 enum _ShatrFilter { all, male, female }
 
-/// أداء الأقسام العلمية - نُقل مباشرة بعد "متابعة سير العمل" (بطلب سليمان:
-/// مدير الوحدة يحتاج معرفة أداء الأقسام العلمية مبكرًا)، مع فلتر شطر جديد
-/// (الكل/الطلاب/الطالبات) لمقارنة الأداء بحسب الشطر.
-class _DepartmentPerformanceSection extends StatefulWidget {
-  final _DashboardData data;
-  const _DepartmentPerformanceSection({required this.data});
-
-  @override
-  State<_DepartmentPerformanceSection> createState() => _DepartmentPerformanceSectionState();
-}
-
-class _DepartmentPerformanceSectionState extends State<_DepartmentPerformanceSection> {
-  _ShatrFilter _filter = _ShatrFilter.all;
-
-  _DeptShatrStats _statsFor(_DepartmentPerf d) => switch (_filter) {
-        _ShatrFilter.male => d.male,
-        _ShatrFilter.female => d.female,
-        _ShatrFilter.all => d.male + d.female,
-      };
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(14)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _SectionTitle(
-            title: 'أداء الأقسام العلمية',
-            icon: Icons.bar_chart_outlined,
-            trailing: _ShatrFilterChips(value: _filter, onChanged: (v) => setState(() => _filter = v)),
-          ),
-          const SizedBox(height: 10),
-          const _DepartmentGridHeader(),
-          const Divider(height: 10, thickness: 1),
-          // ترتيب الأقسام العلمية يبقى كما هو متّفَق عليه (لا فرز حسب الأداء
-          // أو الاسم) - نفس ترتيب [_kCanonicalDepartmentOrder] دائمًا (سليمان
-          // 2026-08-19).
-          for (final d in widget.data.departmentPerf) _DepartmentRow(name: d.name, stats: _statsFor(d)),
-        ],
-      ),
-    );
-  }
-}
-
-/// رأس أعمدة واحد لكل الجدول - بدل تكرار مسميات "الإجمالي/قيد المعالجة/
-/// متأخرة/مكتملة" داخل كل صف (سليمان 2026-08-19: كان يسبّب تكرارًا بصريًا
-/// ويزيد الارتفاع بلا فائدة). التصميم يبقى خفيفًا (لا حدود شبكية ثقيلة).
-class _DepartmentGridHeader extends StatelessWidget {
-  const _DepartmentGridHeader();
-
-  @override
-  Widget build(BuildContext context) {
-    final style = TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Colors.grey.shade500);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: Row(
-        children: [
-          const Expanded(flex: 3, child: SizedBox()),
-          Expanded(flex: 2, child: Text('الإجمالي', textAlign: TextAlign.center, style: style)),
-          Expanded(flex: 2, child: Text('قيد المعالجة', textAlign: TextAlign.center, style: style)),
-          Expanded(flex: 2, child: Text('متأخرة', textAlign: TextAlign.center, style: style)),
-          Expanded(flex: 2, child: Text('مكتملة', textAlign: TextAlign.center, style: style)),
-          Expanded(flex: 3, child: Text('نسبة الإنجاز', textAlign: TextAlign.center, style: style)),
-        ],
-      ),
-    );
-  }
-}
-
 class _ShatrFilterChips extends StatelessWidget {
   final _ShatrFilter value;
   final ValueChanged<_ShatrFilter> onChanged;
@@ -851,94 +860,6 @@ class _ShatrFilterChips extends StatelessWidget {
       chip('شطر الطالبات', _ShatrFilter.female),
     ]);
   }
-}
-
-class _DepartmentRow extends StatelessWidget {
-  final String name;
-  final _DeptShatrStats stats;
-  const _DepartmentRow({required this.name, required this.stats});
-
-  Color get _rateColor => stats.rate >= 80
-      ? AppColors.green
-      : stats.rate >= 60
-          ? AppColors.gold
-          : AppColors.errorRed;
-
-  @override
-  Widget build(BuildContext context) {
-    // صف أرقام فقط - المسميات (الإجمالي/قيد المعالجة/متأخرة/مكتملة) صارت
-    // برأس أعمدة واحد (_DepartmentGridHeader) بدل تكرارها بكل صف (سليمان
-    // 2026-08-19: كان يزيد الارتفاع بلا فائدة). نفس توزيع flex الموجود
-    // بالرأس تمامًا حتى تتحاذى الأعمدة رأسيًا.
-    return InkWell(
-      onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('عرض تفاصيل "$name"')),
-      ),
-      borderRadius: BorderRadius.circular(10),
-      hoverColor: AppColors.green.withValues(alpha: 0.05),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 5),
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
-        constraints: const BoxConstraints(minHeight: 42),
-        decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(10)),
-        child: LayoutBuilder(builder: (context, constraints) {
-          final narrow = constraints.maxWidth < 560;
-          if (narrow) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    Expanded(child: Text(name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5))),
-                    Text('${stats.rate}%', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5, color: _rateColor)),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Wrap(spacing: 12, runSpacing: 2, children: [
-                  _inlineStat('الإجمالي', stats.total),
-                  _inlineStat('قيد المعالجة', stats.processing),
-                  _inlineStat('متأخرة', stats.overdue),
-                  _inlineStat('مكتملة', stats.completed),
-                ]),
-                const SizedBox(height: 6),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: LinearProgressIndicator(value: stats.rate / 100, minHeight: 5, backgroundColor: Colors.grey.shade200, valueColor: AlwaysStoppedAnimation(_rateColor)),
-                ),
-              ],
-            );
-          }
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(flex: 3, child: Text(name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5))),
-              Expanded(flex: 2, child: Text('${stats.total}', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Colors.grey.shade700))),
-              Expanded(flex: 2, child: Text('${stats.processing}', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF2563EB)))),
-              Expanded(flex: 2, child: Text(stats.overdue == 0 ? '—' : '${stats.overdue}', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: stats.overdue == 0 ? Colors.grey.shade400 : AppColors.errorRed))),
-              Expanded(flex: 2, child: Text('${stats.completed}', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: AppColors.green))),
-              Expanded(
-                flex: 3,
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        child: LinearProgressIndicator(value: stats.rate / 100, minHeight: 5, backgroundColor: Colors.grey.shade200, valueColor: AlwaysStoppedAnimation(_rateColor)),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    SizedBox(width: 32, child: Text('${stats.rate}%', textAlign: TextAlign.end, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: _rateColor))),
-                  ],
-                ),
-              ),
-            ],
-          );
-        }),
-      ),
-    );
-  }
-
-  Widget _inlineStat(String label, int value) => Text('$label: $value', style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600));
 }
 
 /// حالة الإنجاز حسب نوع الإجراء - قسم مستعاد من التصميم الأول (بطلب سليمان
