@@ -478,36 +478,29 @@ class BrandPanel extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 InkWell(
-                  borderRadius: BorderRadius.circular(40),
+                  borderRadius: BorderRadius.circular(16),
                   onTap: () => Navigator.of(context).maybePop(),
                   child: Container(
-                    width: compact ? 52 : 78,
-                    height: compact ? 52 : 78,
-                    alignment: Alignment.center,
-                    clipBehavior: Clip.antiAlias,
+                    padding: EdgeInsets.symmetric(horizontal: compact ? 14 : 18, vertical: compact ? 10 : 14),
+                    constraints: BoxConstraints(maxWidth: compact ? 210 : 260),
                     decoration: BoxDecoration(
-                      shape: BoxShape.circle,
                       color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
                       border: Border.all(
                         color: AppColors.gold.withValues(alpha: 0.7),
-                        width: 1.6,
+                        width: 1.4,
                       ),
                     ),
-                    // شعار الوحدة الرسمي المعتمد (نفس الصورة المستخدمة كأيقونة
-                    // شارة الهوية بالبوابة الداخلية - انظر
-                    // `_PortalBrandBadge` بportal_header.dart) بدل حرفي "TU"
-                    // النصيّين (بطلب سليمان 2026-08-21).
+                    // شعار الوحدة الرسمي المعتمد فعليًا بكل الموقع
+                    // (`unit_logo_final.png` - نفس الصورة المستخدمة بأعلى
+                    // الصفحة العامة، انظر public_landing_screen.dart) بدل
+                    // أيقونة "TU" العامة (`app_icon.png` كانت مجرد أيقونة
+                    // تطبيق مصغَّرة عامة، لا الشعار الرسمي المعتمد - سليمان
+                    // لاحظ ذلك صراحةً 2026-08-21).
                     child: Image.asset(
-                      'assets/images/app_icon.png',
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => Text(
-                        'TU',
-                        style: TextStyle(
-                          color: AppColors.goldLight,
-                          fontWeight: FontWeight.bold,
-                          fontSize: compact ? 18 : 26,
-                        ),
-                      ),
+                      'assets/images/unit_logo_final.png',
+                      height: compact ? 34 : 44,
+                      fit: BoxFit.contain,
                     ),
                   ),
                 ),
