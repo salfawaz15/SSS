@@ -83,24 +83,26 @@ class SulaimanApp extends StatelessWidget {
 /// (سليمان 2026-08-21) - لا يُعيده لنفس الصفحة الفرعية بالضبط (فقط لجذر
 /// لوحته)، فالحل الكامل (روابط URL مستقلة لكل صفحة) مؤجَّل عمدًا لمشروع
 /// مستقبلي منفصل.
+///
+/// **محاولة `.skip(1)` على `authStateChanges()` (2026-08-21) رُجِعَت**: كانت
+/// نيّتها تجاوز حدث `yield currentUser` المتزامن الأول (يُقرأ أحيانًا `null`
+/// قبل اكتمال استعادة الجلسة). لكن تبيّن أن هذا الحدث المتزامن هو تعويض
+/// متعمَّد بحزمة firebase_auth_web عن سباق توقيت حقيقي بالمستمِع الأصلي
+/// (JS): إن لم يلتقط الاشتراك بالمستمِع أول بثّة منه (قد تفوته)، لا يصل أي
+/// حدث لاحق أبدًا ما لم يحدث تغيّر فعلي بالجلسة - فتجاوزه بـ`.skip(1)` علّق
+/// الشاشة للأبد (دائرة تحميل بلا نهاية) لمن لا حدث ثانٍ يصله. الحل الآمن:
+/// الاعتماد على الحدث الأول كما هو (لا تخمين إضافي)، مع سقف زمني قصير
+/// كشبكة أمان تمنع أي تعليق أبدي بغض النظر عن سبب التأخير.
 class _WebEntryGate extends StatelessWidget {
   const _WebEntryGate();
 
   @override
   Widget build(BuildContext context) {
-    // `authStateChanges()` يبعث حدثه الأول فورًا وبشكل متزامن (قراءة مباشرة
-    // لـ`currentUser` بلحظة الاشتراك بالستريم - انظر تطبيقها الفعلي بحزمة
-    // firebase_auth_web: `yield currentUser;` قبل الانضمام لستريم المستمِع
-    // الحقيقي)، أي **قبل** اكتمال قراءة الجلسة المحفوظة فعليًا من تخزين
-    // المتصفح - فيصل دائمًا `null` مهما كانت الجلسة نشطة، ثم يُصحَّح بحدث
-    // ثانٍ حقيقي من مستمِع Firebase الفعلي (JS) بعد ذلك مباشرة. الاعتماد
-    // على أول Snapshot فقط (كما بالمحاولة الأولى 2026-08-21) كان يستقر على
-    // هذا الحدث المضلِّل فيعرض الصفحة العامة دائمًا رغم وجود جلسة فعلية -
-    // `skip(1)` يتجاوز هذا الحدث الاصطناعي الأول ويعتمد فقط على الحدث
-    // الحقيقي التالي (مضمون الوصول دائمًا من Firebase، حتى لو كانت النتيجة
-    // "لا مستخدم" فعليًا).
     return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges().skip(1),
+      stream: FirebaseAuth.instance.authStateChanges().timeout(
+        const Duration(seconds: 5),
+        onTimeout: (sink) => sink.add(FirebaseAuth.instance.currentUser),
+      ),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
