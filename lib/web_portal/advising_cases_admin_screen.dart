@@ -14,6 +14,7 @@ import '../services/web_download.dart';
 import '../services/course_schedule_repository.dart' show Shatr, ShatrLabel;
 import '../theme/app_theme.dart';
 import '../theme/dashboard_tokens.dart';
+import '../theme/filter_pills.dart';
 import '../utils/name_display.dart';
 import 'admin_nav.dart';
 import 'advising_workspace.dart';
@@ -521,14 +522,25 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
   /// عليها جميعًا فورًا، كما طُلب صراحةً (2026-08-14). قائمة المرشد تُعاد
   /// بناؤها تلقائيًا (عبر `key`) كلما تغيّر القسم لأنها مقصورة عليه.
   Widget _buildFilterBar() {
-    return Wrap(
-      spacing: 12,
-      runSpacing: 10,
-      crossAxisAlignment: WrapCrossAlignment.end,
-      children: [
-        SizedBox(
-          width: 160,
-          child: _FilterField(
+    final hasFilter = _shatrFilter != _kAllShatr || _deptFilter != _kAllDepartments || _advisorFilter != _kAllAdvisors;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(14)),
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          FilterResetChip(
+            active: !hasFilter,
+            onTap: () => setState(() {
+              _shatrFilter = _kAllShatr;
+              _deptFilter = _kAllDepartments;
+              _advisorFilter = _kAllAdvisors;
+              _resetTablePage();
+            }),
+          ),
+          FilterPillDropdown<String>(
             label: 'الشطر',
             value: _shatrFilter == _kAllShatr ? null : _shatrFilter,
             items: [Shatr.male.label, Shatr.female.label],
@@ -539,10 +551,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
               _resetTablePage();
             }),
           ),
-        ),
-        SizedBox(
-          width: 220,
-          child: _FilterField(
+          FilterPillDropdown<String>(
             label: 'القسم',
             value: _deptFilter == _kAllDepartments ? null : _deptFilter,
             items: _departments,
@@ -553,11 +562,8 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
               _resetTablePage();
             }),
           ),
-        ),
-        SizedBox(
-          key: ValueKey('$_deptFilter|$_shatrFilter'),
-          width: 240,
-          child: _FilterField(
+          FilterPillDropdown<String>(
+            key: ValueKey('$_deptFilter|$_shatrFilter'),
             label: 'المرشد',
             value: _advisorFilter == _kAllAdvisors ? null : _advisorFilter,
             items: _advisorFilterOptions,
@@ -567,29 +573,29 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
               _resetTablePage();
             }),
           ),
-        ),
-        SizedBox(
-          width: 220,
-          height: 38,
-          child: TextField(
-            controller: _searchCtrl,
-            style: const TextStyle(fontSize: 12.5, color: _FilterTokens.textPrimary, fontWeight: FontWeight.w500),
-            decoration: InputDecoration(
-              hintText: 'بحث باسم/رقم الطالب أو المرشد',
-              hintStyle: TextStyle(fontSize: 12, color: _FilterTokens.textSecondary),
-              prefixIcon: const Icon(Icons.search, size: 18, color: _FilterTokens.textSecondary),
-              isDense: true,
-              filled: true,
-              fillColor: Colors.white,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(9), borderSide: const BorderSide(color: _FilterTokens.border)),
-              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(9), borderSide: const BorderSide(color: _FilterTokens.border)),
-              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(9), borderSide: const BorderSide(color: AppColors.gold, width: 1.4)),
+          SizedBox(
+            width: 220,
+            height: 32,
+            child: TextField(
+              controller: _searchCtrl,
+              style: const TextStyle(fontSize: 12.5, color: _FilterTokens.textPrimary, fontWeight: FontWeight.w500),
+              decoration: InputDecoration(
+                hintText: 'بحث باسم/رقم الطالب أو المرشد',
+                hintStyle: TextStyle(fontSize: 12, color: _FilterTokens.textSecondary),
+                prefixIcon: const Icon(Icons.search, size: 18, color: _FilterTokens.textSecondary),
+                isDense: true,
+                filled: true,
+                fillColor: Colors.grey.shade100,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: const BorderSide(color: AppColors.gold, width: 1.4)),
+              ),
+              onChanged: (_) => setState(() => _resetTablePage()),
             ),
-            onChanged: (_) => setState(() => _resetTablePage()),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -1383,66 +1389,10 @@ class _CompactStatTile extends StatelessWidget {
 }
 
 /// ألوان مقتبسة حرفيًا من هوية شريط فلاتر "إحصائيات طلبات الحذف والإضافة"
-/// ([ticket_action_stats_panel.dart] - `_Tokens`) - بطلب سليمان الصريح
-/// (2026-08-20): توحيد هوية الفلاتر بين الصفحتين بدل `DropdownMenu` القياسي.
+/// - تُستخدَم لحقل البحث النصي فقط (الفلاتر المنسدلة أصبحت [FilterPillDropdown]
+/// المشتركة بـ`theme/filter_pills.dart`).
 class _FilterTokens {
   static const textPrimary = Color(0xFF17352B);
   static const textSecondary = Color(0xFF66746F);
   static const border = Color(0xFFE4EAE7);
-}
-
-/// حقل فلترة بتسمية أعلى صندوق أبيض رفيع الحدود - نفس تصميم `_FilterField`
-/// بصفحة "إحصائيات طلبات الحذف والإضافة" حرفيًا، معاد تعريفه هنا محليًا لأن
-/// الأصل خاص (private) بذلك الملف.
-class _FilterField extends StatelessWidget {
-  final String label;
-  final String? value;
-  final List<String> items;
-  final String Function(String) itemLabel;
-  final ValueChanged<String?> onChanged;
-
-  const _FilterField({
-    required this.label,
-    required this.value,
-    required this.items,
-    required this.itemLabel,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: const TextStyle(fontSize: 11, color: _FilterTokens.textSecondary, fontWeight: FontWeight.w500)),
-        const SizedBox(height: 5),
-        Container(
-          height: 38,
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            border: Border.all(color: _FilterTokens.border),
-            borderRadius: BorderRadius.circular(9),
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String?>(
-              value: value,
-              isDense: true,
-              isExpanded: true,
-              icon: const Icon(Icons.expand_more_rounded, size: 18, color: _FilterTokens.textSecondary),
-              style: const TextStyle(fontSize: 12.5, color: _FilterTokens.textPrimary, fontWeight: FontWeight.w500),
-              dropdownColor: Colors.white,
-              borderRadius: BorderRadius.circular(9),
-              items: [
-                const DropdownMenuItem(value: null, child: Padding(padding: EdgeInsets.only(right: 6), child: Text('الكل'))),
-                for (final item in items)
-                  DropdownMenuItem(value: item, child: Padding(padding: const EdgeInsets.only(right: 6), child: Text(itemLabel(item)))),
-              ],
-              onChanged: onChanged,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 }

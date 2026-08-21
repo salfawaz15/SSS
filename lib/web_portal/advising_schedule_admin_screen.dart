@@ -14,6 +14,7 @@ import '../services/college_roster_repository.dart';
 import '../services/excel_parser_service.dart';
 import '../services/web_download.dart';
 import '../theme/app_theme.dart';
+import '../theme/filter_pills.dart';
 import 'admin_nav.dart';
 import 'advising_workspace.dart';
 import 'portal_accounts.dart';
@@ -268,44 +269,39 @@ class _AdvisingScheduleAdminScreenState extends State<AdvisingScheduleAdminScree
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Wrap(
-            spacing: 12,
-            runSpacing: 10,
+            spacing: 10,
+            runSpacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              SizedBox(
-                width: 190,
-                child: DropdownMenu<String>(
-                  label: const Text('الشطر'),
-                  initialSelection: _shatr,
-                  expandedInsets: EdgeInsets.zero,
-                  dropdownMenuEntries: [
-                    const DropdownMenuEntry(value: _kAllShatr, label: _kAllShatr),
-                    DropdownMenuEntry(value: ExcelParserService.shatrMale, label: ExcelParserService.shatrMale),
-                    DropdownMenuEntry(value: ExcelParserService.shatrFemale, label: ExcelParserService.shatrFemale),
-                  ],
-                  onSelected: (v) {
-                    if (v == null) return;
-                    setState(() => _shatr = v);
-                    _load();
-                  },
-                ),
+              FilterResetChip(
+                active: _shatr == _kAllShatr && _department == _kAllDepartments,
+                onTap: () {
+                  setState(() {
+                    _shatr = _kAllShatr;
+                    _department = _kAllDepartments;
+                  });
+                  _load();
+                },
               ),
-              SizedBox(
-                width: 230,
-                child: DropdownMenu<String>(
-                  label: const Text('القسم'),
-                  initialSelection: _department,
-                  expandedInsets: EdgeInsets.zero,
-                  dropdownMenuEntries: [
-                    const DropdownMenuEntry(value: _kAllDepartments, label: _kAllDepartments),
-                    ...CourseCatalog.departments.map((d) => DropdownMenuEntry(value: d, label: d)),
-                  ],
-                  onSelected: (v) {
-                    if (v == null) return;
-                    setState(() => _department = v);
-                    _load();
-                  },
-                ),
+              FilterPillDropdown<String>(
+                label: 'الشطر',
+                value: _shatr == _kAllShatr ? null : _shatr,
+                items: const [ExcelParserService.shatrMale, ExcelParserService.shatrFemale],
+                itemLabel: (v) => v,
+                onChanged: (v) {
+                  setState(() => _shatr = v ?? _kAllShatr);
+                  _load();
+                },
+              ),
+              FilterPillDropdown<String>(
+                label: 'القسم',
+                value: _department == _kAllDepartments ? null : _department,
+                items: CourseCatalog.departments,
+                itemLabel: (v) => v,
+                onChanged: (v) {
+                  setState(() => _department = v ?? _kAllDepartments);
+                  _load();
+                },
               ),
               Container(width: 1, height: 34, color: Colors.grey.shade300),
               _ToolbarButton(
@@ -313,7 +309,7 @@ class _AdvisingScheduleAdminScreenState extends State<AdvisingScheduleAdminScree
                 loading: _downloadingTemplate,
                 icon: Icons.download_outlined,
                 label: 'تنزيل نموذج Excel',
-                color: AppColors.green,
+                color: AppColors.greenDark,
               ),
               _ToolbarButton(
                 onPressed: _uploadingTemplate
@@ -326,7 +322,7 @@ class _AdvisingScheduleAdminScreenState extends State<AdvisingScheduleAdminScree
                 loading: _uploadingTemplate,
                 icon: Icons.upload_file,
                 label: 'رفع نموذج معبّأ',
-                color: AppColors.green,
+                color: AppColors.greenDark,
                 filled: false,
               ),
             ],

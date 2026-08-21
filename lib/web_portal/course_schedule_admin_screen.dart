@@ -18,6 +18,7 @@ import '../services/instructor_schedule_pdf_service.dart';
 import '../services/instructor_schedule_table.dart';
 import '../services/outside_course_repository.dart';
 import '../theme/app_theme.dart';
+import '../theme/filter_pills.dart';
 import '../utils/name_display.dart';
 import 'admin_nav.dart';
 import 'portal_header.dart';
@@ -469,30 +470,26 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
             runSpacing: 10,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              SizedBox(
-                width: 160,
-                child: DropdownMenu<String>(
-                  label: const Text('الشطر'),
-                  initialSelection: _shatrFilter,
-                  dropdownMenuEntries: [
-                    const DropdownMenuEntry(value: _kAllShatr, label: _kAllShatr),
-                    DropdownMenuEntry(value: Shatr.male.label, label: Shatr.male.label),
-                    DropdownMenuEntry(value: Shatr.female.label, label: Shatr.female.label),
-                  ],
-                  onSelected: (v) => setState(() => _shatrFilter = v ?? _kAllShatr),
-                ),
+              FilterResetChip(
+                active: _shatrFilter == _kAllShatr && _deptFilter == _kAllDepartments,
+                onTap: () => setState(() {
+                  _shatrFilter = _kAllShatr;
+                  _deptFilter = _kAllDepartments;
+                }),
               ),
-              SizedBox(
-                width: 200,
-                child: DropdownMenu<String>(
-                  label: const Text('القسم'),
-                  initialSelection: _deptFilter,
-                  dropdownMenuEntries: [
-                    const DropdownMenuEntry(value: _kAllDepartments, label: _kAllDepartments),
-                    ...CourseCatalog.departments.map((d) => DropdownMenuEntry(value: d, label: d)),
-                  ],
-                  onSelected: (v) => setState(() => _deptFilter = v ?? _kAllDepartments),
-                ),
+              FilterPillDropdown<String>(
+                label: 'الشطر',
+                value: _shatrFilter == _kAllShatr ? null : _shatrFilter,
+                items: [Shatr.male.label, Shatr.female.label],
+                itemLabel: (v) => v,
+                onChanged: (v) => setState(() => _shatrFilter = v ?? _kAllShatr),
+              ),
+              FilterPillDropdown<String>(
+                label: 'القسم',
+                value: _deptFilter == _kAllDepartments ? null : _deptFilter,
+                items: CourseCatalog.departments,
+                itemLabel: (v) => v,
+                onChanged: (v) => setState(() => _deptFilter = v ?? _kAllDepartments),
               ),
               SizedBox(
                 width: 220,
@@ -510,12 +507,13 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
               FilterChip(
                 selected: _showOutsideCourses,
                 onSelected: (v) => setState(() => _showOutsideCourses = v),
-                avatar: Icon(Icons.school_outlined, size: 18, color: _showOutsideCourses ? Colors.white : AppColors.green),
+                avatar: Icon(Icons.school_outlined, size: 18, color: _showOutsideCourses ? Colors.white : AppColors.greenDark),
                 label: const Text('مواد خارج الكلية'),
-                labelStyle: TextStyle(color: _showOutsideCourses ? Colors.white : AppColors.green),
-                selectedColor: AppColors.green,
-                backgroundColor: AppColors.background,
-                side: BorderSide(color: AppColors.green.withValues(alpha: 0.4)),
+                labelStyle: TextStyle(color: _showOutsideCourses ? Colors.white : AppColors.greenDark),
+                selectedColor: AppColors.greenDark,
+                backgroundColor: Colors.grey.shade100,
+                side: BorderSide.none,
+                shape: const StadiumBorder(),
               ),
               Wrap(
                 spacing: 6,
@@ -1017,28 +1015,31 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
             spacing: 12,
             runSpacing: 8,
             children: [
-              DropdownMenu<Shatr>(
-                label: const Text('الشطر'),
-                initialSelection: _facultyShatr,
-                dropdownMenuEntries: shatrOptions
-                    .map((s) => DropdownMenuEntry(value: s, label: s.label))
-                    .toList(),
-                onSelected: (v) => setState(() {
+              FilterPillDropdown<Shatr>(
+                label: 'الشطر',
+                value: _facultyShatr,
+                items: shatrOptions,
+                itemLabel: (s) => s.label,
+                onChanged: (v) => setState(() {
                   _facultyShatr = v;
                   _facultyInstructor = null;
                   _facultyViewMode = null;
                 }),
               ),
-              DropdownMenu<String>(
-                label: const Text('القسم'),
-                initialSelection: _facultyDept,
-                dropdownMenuEntries: deptOptions.map((d) => DropdownMenuEntry(value: d, label: d)).toList(),
-                onSelected: (v) => setState(() {
+              FilterPillDropdown<String>(
+                label: 'القسم',
+                value: _facultyDept,
+                items: deptOptions,
+                itemLabel: (v) => v,
+                onChanged: (v) => setState(() {
                   _facultyDept = v;
                   _facultyInstructor = null;
                   _facultyViewMode = null;
                 }),
               ),
+              // يبقى DropdownMenu (لا شريحة بسيطة) عمدًا - يحتاج بحثًا فوريًا
+              // بالكتابة (enableFilter) لأن عدد أعضاء هيئة التدريس كبير، بخلاف
+              // بقية الفلاتر (قوائم قصيرة ثابتة تناسب الشريحة الدائرية).
               DropdownMenu<String>(
                 // مفتاح يتغيّر مع القيمة نفسها - يجبر Flutter على إعادة بناء
                 // حقل النص الداخلي بدل الاحتفاظ بالنص القديم معروضًا (باهتًا)
@@ -1056,13 +1057,12 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
                   _facultyViewMode = null;
                 }),
               ),
-              DropdownMenu<String>(
-                key: ValueKey('viewMode-$_facultyViewMode'),
-                label: const Text('تقارير وعروض جماعية'),
-                enabled: _facultyDept != null && _facultyShatr != null && _facultyInstructor == null,
-                initialSelection: _facultyViewMode,
-                dropdownMenuEntries: viewModeOptions.map((n) => DropdownMenuEntry(value: n, label: n)).toList(),
-                onSelected: (v) => setState(() {
+              FilterPillDropdown<String>(
+                label: 'تقارير وعروض جماعية',
+                value: _facultyViewMode,
+                items: viewModeOptions,
+                itemLabel: (v) => v,
+                onChanged: (v) => setState(() {
                   _facultyViewMode = v;
                   _facultyInstructor = null;
                 }),
@@ -1071,6 +1071,11 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
                 label: const Text('إظهار الكل'),
                 selected: _showAllFaculty,
                 onSelected: (v) => setState(() => _showAllFaculty = v),
+                selectedColor: AppColors.greenDark,
+                labelStyle: TextStyle(color: _showAllFaculty ? Colors.white : Colors.grey.shade700),
+                backgroundColor: Colors.grey.shade100,
+                side: BorderSide.none,
+                shape: const StadiumBorder(),
               ),
             ],
           ),
@@ -1341,14 +1346,13 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
             children: [
               _quotaCountChip(_kQuotaUnder, underCount, Colors.red.shade700),
               _quotaCountChip(_kQuotaOver, overCount, Colors.orange.shade800),
-              SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(value: _kQuotaAll, label: Text(_kQuotaAll)),
-                  ButtonSegment(value: _kQuotaUnder, label: Text(_kQuotaUnder)),
-                  ButtonSegment(value: _kQuotaOver, label: Text(_kQuotaOver)),
-                ],
-                selected: {_quotaFilter},
-                onSelectionChanged: (s) => setState(() => _quotaFilter = s.first),
+              FilterResetChip(active: _quotaFilter == _kQuotaAll, onTap: () => setState(() => _quotaFilter = _kQuotaAll)),
+              FilterPillDropdown<String>(
+                label: 'النصاب',
+                value: _quotaFilter == _kQuotaAll ? null : _quotaFilter,
+                items: const [_kQuotaUnder, _kQuotaOver],
+                itemLabel: (v) => v,
+                onChanged: (v) => setState(() => _quotaFilter = v ?? _kQuotaAll),
               ),
               FilledButton.icon(
                 onPressed: () async => Printing.sharePdf(
@@ -1357,13 +1361,13 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
                 ),
                 icon: const Icon(Icons.picture_as_pdf_outlined),
                 label: const Text('عرض PDF'),
-                style: FilledButton.styleFrom(backgroundColor: AppColors.green),
+                style: FilledButton.styleFrom(backgroundColor: AppColors.greenDark),
               ),
               OutlinedButton.icon(
                 onPressed: () async => Printing.layoutPdf(onLayout: (_) async => _buildQuotaPdf(filtered)),
                 icon: const Icon(Icons.print_outlined),
                 label: const Text('طباعة'),
-                style: OutlinedButton.styleFrom(foregroundColor: AppColors.green, side: BorderSide(color: AppColors.green)),
+                style: OutlinedButton.styleFrom(foregroundColor: AppColors.greenDark, side: BorderSide(color: AppColors.greenDark)),
               ),
             ],
           ),

@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
 import '../theme/dashboard_tokens.dart';
 import 'admin_nav.dart';
 import 'admin_reports_screen.dart';
@@ -452,7 +453,6 @@ class _ReportsHubScreenState extends State<ReportsHubScreen> {
                           label: cat.label,
                           selected: _categoryFilter == cat,
                           level: _FilterLevel.primary,
-                          accent: cat.color,
                           onSelected: () => setState(() => _categoryFilter = cat),
                         ),
                     ],
@@ -615,13 +615,12 @@ class _FilterGroup extends StatelessWidget {
   }
 }
 
-/// شريحة فلتر واحدة - حالة الاختيار لا تعتمد على اللون وحده (خلفية + حدّ +
-/// وزن خط + علامة صح)، والوزن البصري (primary/secondary) يميّز صفّي الفلاتر.
+/// شريحة فلتر واحدة - نفس هوية الشرائح الموحَّدة بكل الموقع (أخضر داكن عند
+/// التفعيل، رمادي فاتح عند عدمه) بدل الألوان المتعدّدة حسب التصنيف سابقًا.
 class _FilterChip extends StatelessWidget {
   final String label;
   final bool selected;
   final _FilterLevel level;
-  final Color? accent;
   final VoidCallback onSelected;
 
   const _FilterChip({
@@ -629,20 +628,18 @@ class _FilterChip extends StatelessWidget {
     required this.selected,
     required this.level,
     required this.onSelected,
-    this.accent,
   });
 
   @override
   Widget build(BuildContext context) {
-    final color = accent ?? DashTokens.green900;
     final isPrimary = level == _FilterLevel.primary;
     return Semantics(
       button: true,
       selected: selected,
       child: InkWell(
         onTap: onSelected,
-        borderRadius: BorderRadius.circular(999),
-        focusColor: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(20),
+        focusColor: AppColors.greenDark.withValues(alpha: 0.08),
         child: Focus(
           child: Builder(
             builder: (context) {
@@ -651,27 +648,17 @@ class _FilterChip extends StatelessWidget {
                 constraints: BoxConstraints(minHeight: isPrimary ? 38 : 34),
                 padding: EdgeInsets.symmetric(horizontal: isPrimary ? 14 : 12, vertical: isPrimary ? 8 : 6),
                 decoration: BoxDecoration(
-                  color: selected ? color.withValues(alpha: 0.12) : DashTokens.cardBg,
-                  border: Border.all(color: selected ? color.withValues(alpha: 0.55) : DashTokens.border, width: selected ? 1.4 : 1),
-                  borderRadius: BorderRadius.circular(999),
-                  boxShadow: hasFocus ? [BoxShadow(color: color.withValues(alpha: 0.35), blurRadius: 0, spreadRadius: 2)] : null,
+                  color: selected ? AppColors.greenDark : Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: hasFocus ? [BoxShadow(color: AppColors.greenDark.withValues(alpha: 0.35), blurRadius: 0, spreadRadius: 2)] : null,
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (selected) ...[
-                      Icon(Icons.check, size: isPrimary ? 15 : 13, color: color),
-                      const SizedBox(width: 5),
-                    ],
-                    Text(
-                      label,
-                      style: TextStyle(
-                        fontSize: isPrimary ? 12.5 : 11.5,
-                        fontWeight: selected ? FontWeight.w700 : (isPrimary ? FontWeight.w600 : FontWeight.w500),
-                        color: selected ? color : DashTokens.textSecondary,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: isPrimary ? 11.5 : 10.5,
+                    fontWeight: FontWeight.w700,
+                    color: selected ? Colors.white : Colors.grey.shade700,
+                  ),
                 ),
               );
             },

@@ -16,6 +16,7 @@ import '../services/course_schedule_repository.dart';
 import '../services/unit_committee_repository.dart';
 import '../services/xlsx_metadata_service.dart';
 import '../theme/app_theme.dart';
+import '../theme/filter_pills.dart';
 import '../utils/name_display.dart';
 import 'admin_nav.dart';
 import 'portal_header.dart';
@@ -517,6 +518,10 @@ class _CollegeRosterAdminScreenState extends State<CollegeRosterAdminScreen> {
             _typeFilter = s.first;
             _deptFilter = _kAllDepartments;
           }),
+          style: SegmentedButton.styleFrom(
+            selectedBackgroundColor: AppColors.greenDark,
+            selectedForegroundColor: Colors.white,
+          ),
         ),
       ),
     );
@@ -530,36 +535,44 @@ class _CollegeRosterAdminScreenState extends State<CollegeRosterAdminScreen> {
         runSpacing: 8,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          // متاح الآن للإداريين أيضًا بعد إضافة عمود "الشطر" لورقتهم.
-          DropdownMenu<String>(
-            label: const Text('الشطر'),
-            initialSelection: _shatrFilter,
-            dropdownMenuEntries: const [
-              DropdownMenuEntry(value: _kAllShatr, label: _kAllShatr),
-              DropdownMenuEntry(value: 'طلاب', label: 'طلاب'),
-              DropdownMenuEntry(value: 'طالبات', label: 'طالبات'),
-            ],
-            onSelected: (v) => setState(() => _shatrFilter = v ?? _kAllShatr),
+          FilterResetChip(
+            active: _shatrFilter == _kAllShatr && _deptFilter == _kAllDepartments,
+            onTap: () => setState(() {
+              _shatrFilter = _kAllShatr;
+              _deptFilter = _kAllDepartments;
+            }),
           ),
-          DropdownMenu<String>(
+          // متاح الآن للإداريين أيضًا بعد إضافة عمود "الشطر" لورقتهم.
+          FilterPillDropdown<String>(
+            label: 'الشطر',
+            value: _shatrFilter == _kAllShatr ? null : _shatrFilter,
+            items: const ['طلاب', 'طالبات'],
+            itemLabel: (v) => v,
+            onChanged: (v) => setState(() => _shatrFilter = v ?? _kAllShatr),
+          ),
+          FilterPillDropdown<String>(
             key: ValueKey(_typeFilter),
-            label: const Text('القسم / الجهة'),
-            initialSelection: _deptFilter,
-            dropdownMenuEntries: [
-              const DropdownMenuEntry(value: _kAllDepartments, label: _kAllDepartments),
-              ..._departments.map((d) => DropdownMenuEntry(value: d, label: d)),
-            ],
-            onSelected: (v) => setState(() => _deptFilter = v ?? _kAllDepartments),
+            label: 'القسم / الجهة',
+            value: _deptFilter == _kAllDepartments ? null : _deptFilter,
+            items: _departments,
+            itemLabel: (v) => v,
+            onChanged: (v) => setState(() => _deptFilter = v ?? _kAllDepartments),
           ),
           SizedBox(
             width: 240,
+            height: 32,
             child: TextField(
               controller: _searchCtrl,
-              decoration: const InputDecoration(
-                labelText: 'بحث بالاسم',
-                prefixIcon: Icon(Icons.search),
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                hintText: 'بحث بالاسم',
+                prefixIcon: const Icon(Icons.search, size: 18),
                 isDense: true,
+                filled: true,
+                fillColor: Colors.grey.shade100,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: const BorderSide(color: AppColors.gold, width: 1.4)),
               ),
               onChanged: (_) => setState(() {}),
             ),
@@ -570,6 +583,11 @@ class _CollegeRosterAdminScreenState extends State<CollegeRosterAdminScreen> {
             label: const Text('إظهار الكل'),
             selected: _showAll,
             onSelected: (v) => setState(() => _showAll = v),
+            selectedColor: AppColors.greenDark,
+            labelStyle: TextStyle(color: _showAll ? Colors.white : Colors.grey.shade700),
+            backgroundColor: Colors.grey.shade100,
+            side: BorderSide.none,
+            shape: const StadiumBorder(),
           ),
         ],
       ),
