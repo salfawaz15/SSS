@@ -478,25 +478,28 @@ class BrandPanel extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 InkWell(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(10),
                   onTap: () => Navigator.of(context).maybePop(),
                   child: Container(
-                    constraints: BoxConstraints(maxWidth: compact ? 380 : 520),
-                    // بلا خلفية بيضاء ولا حدود - الشعار (نسخته الشفافة) يندمج
-                    // مباشرة بخلفية اللوحة الخضراء الغامقة بدل الظهور كبطاقة
-                    // منفصلة "فوق" شعار آخر (سليمان 2026-08-21). حجم أكبر
-                    // بكثير من المحاولتين السابقتين (34/44 ثم 64/88) اللتين
-                    // ظلّتا صغيرتين جدًا وغير مقروءتين وسط الخلفية والدوائر
-                    // الزخرفية - هذا الحجم مضاعف تقريبًا عن المحاولة الثانية.
-                    // `unit_logo_transparent.png` تبيّن أنه ملف PNG بلوحة
-                    // ألوان (indexed) وليس شفافية حقيقية (RGBA) - حواف النص
-                    // المموَّهة كانت مطبوعة كبكسلات بيضاء صريحة بدل شفافية
-                    // متدرّجة، فتظهر كخطوط بيضاء واضحة فوق الخلفية الخضراء
-                    // الغامقة (لاحظه سليمان 2026-08-22). `unit_logo_light.png`
-                    // ملف RGBA حقيقي بشفافية نظيفة تمامًا، يعمل بلا أي هالة.
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    // كل نسخ الشعار "الشفافة" المتوفرة (unit_logo_transparent،
+                    // unit_logo_light، unit_logo_dark) تبيّن أنها ملفات ذات
+                    // جودة رديئة فعليًا (تشويش/بكسلات ضبابية واضحة حول النص
+                    // عند التكبير - عيب بملف المصدر نفسه لا يُصلَح بالكود -
+                    // سليمان لاحظه صراحةً 2026-08-22). بدّلناها بـ
+                    // full_logo_green.png (نظيف تمامًا، نفس الصورة المعتمدة
+                    // فعليًا بشريط البوابة الداخلية `_PortalBrandBadge`
+                    // بportal_header.dart بلا أي شكوى سابقة). خلفيته الخضراء
+                    // مدمجة بالصورة نفسها (0xFF0A5545 تقريبًا بالمعاينة) لا
+                    // شفافة، فلوّنّا الحاوية بنفس اللون تقريبًا لإخفاء أي حافة
+                    // مربّعة ظاهرة بدل محاولة تطابق مستحيلة مع تدرّج اللوحة.
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0A5545),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                     child: Image.asset(
-                      'assets/images/unit_logo_light.png',
-                      height: compact ? 130 : 175,
+                      'assets/images/full_logo_green.png',
+                      height: compact ? 36 : 46,
                       fit: BoxFit.contain,
                     ),
                   ),
