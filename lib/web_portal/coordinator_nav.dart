@@ -46,7 +46,12 @@ List<PortalNavItem> buildCoordinatorNavItems(
       label: 'لوحة المنسّق',
       icon: Icons.dashboard_outlined,
       selected: current == 'dashboard',
-      onTap: () => Navigator.of(context).popUntil((r) => r.settings.name == kPortalRootRouteName),
+      // `|| r.isFirst` احتياط ضروري منذ (main.dart، سليمان 2026-08-21): عند
+      // الدخول التلقائي عبر جلسة محفوظة بعد F5، PortalRoot يُعرَض كصفحة
+      // الجذر مباشرة (`MaterialApp.home`) بلا اسم مسار مخصَّص، فلا يطابق
+      // الاسم الثابت - بدون هذا الاحتياط `popUntil` يحاول تجاوز المسار
+      // الأول فيتعطّل.
+      onTap: () => Navigator.of(context).popUntil((r) => r.settings.name == kPortalRootRouteName || r.isFirst),
     ),
     if (onDeleteAdd != null)
       PortalNavItem(

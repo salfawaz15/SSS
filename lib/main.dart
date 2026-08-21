@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import 'firebase_options.dart';
 import 'screens/home_shell.dart';
 import 'theme/app_theme.dart';
 import 'web_portal/hidden_admin_login_screen.dart';
+import 'web_portal/portal_root.dart';
 import 'web_portal/public_landing_screen.dart';
 
 /// المسار السرّي لدخول المدير العام (salfawaz) - غير ظاهر أو مرتبط بأي زر
@@ -67,8 +69,33 @@ class SulaimanApp extends StatelessWidget {
       home: kIsWeb
           ? (Uri.base.fragment == _hiddenAdminPath
               ? const HiddenAdminLoginScreen()
-              : const PublicLandingScreen())
+              : const _WebEntryGate())
           : const HomeShell(),
+    );
+  }
+}
+
+/// نقطة دخول موقع الويب (بلا الرابط السرّي) - تفحص أولاً إن كانت هناك جلسة
+/// نشطة محفوظة بالمتصفح (`Persistence.LOCAL`، انظر staff_number_login_screen.dart)
+/// قبل عرض أي شيء: لو نشطة توجّه مباشرة للوحة صاحبها [PortalRoot] بدل
+/// الصفحة العامة. حل سريع لإزعاج تحديث الصفحة (F5) داخل أي شاشة بالبوابة كان
+/// يرمي المستخدم دائمًا للصفحة العامة رغم أنه لا يزال مسجّلاً دخوله فعليًا
+/// (سليمان 2026-08-21) - لا يُعيده لنفس الصفحة الفرعية بالضبط (فقط لجذر
+/// لوحته)، فالحل الكامل (روابط URL مستقلة لكل صفحة) مؤجَّل عمدًا لمشروع
+/// مستقبلي منفصل.
+class _WebEntryGate extends StatelessWidget {
+  const _WebEntryGate();
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+        return snapshot.data != null ? const PortalRoot() : const PublicLandingScreen();
+      },
     );
   }
 }
