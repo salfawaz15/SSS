@@ -821,9 +821,14 @@ class _DepartmentFilterDropdown extends StatelessWidget {
           isDense: true,
           style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Colors.grey.shade700),
           icon: Icon(Icons.expand_more, size: 16, color: Colors.grey.shade600),
+          selectedItemBuilder: (context) => [
+            const Text('القسم العلمي'),
+            for (final d in _kCanonicalDepartmentOrder)
+              Text(d.replaceFirst('قسم ', ''), style: const TextStyle(color: AppColors.green, fontWeight: FontWeight.w700)),
+          ],
           items: [
             const DropdownMenuItem(value: null, child: Text('القسم العلمي')),
-            for (final d in _kCanonicalDepartmentOrder) DropdownMenuItem(value: d, child: Text(d)),
+            for (final d in _kCanonicalDepartmentOrder) DropdownMenuItem(value: d, child: Text(d.replaceFirst('قسم ', ''))),
           ],
           onChanged: onChanged,
         ),
@@ -848,10 +853,15 @@ class _ShatrFilterDropdown extends StatelessWidget {
           isDense: true,
           style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Colors.grey.shade700),
           icon: Icon(Icons.expand_more, size: 16, color: Colors.grey.shade600),
+          selectedItemBuilder: (context) => const [
+            Text('الشطر'),
+            Text('الطلاب', style: TextStyle(color: AppColors.green, fontWeight: FontWeight.w700)),
+            Text('الطالبات', style: TextStyle(color: AppColors.green, fontWeight: FontWeight.w700)),
+          ],
           items: const [
             DropdownMenuItem(value: _ShatrFilter.all, child: Text('الشطر')),
-            DropdownMenuItem(value: _ShatrFilter.male, child: Text('شطر الطلاب')),
-            DropdownMenuItem(value: _ShatrFilter.female, child: Text('شطر الطالبات')),
+            DropdownMenuItem(value: _ShatrFilter.male, child: Text('الطلاب')),
+            DropdownMenuItem(value: _ShatrFilter.female, child: Text('الطالبات')),
           ],
           onChanged: (v) => onChanged(v ?? _ShatrFilter.all),
         ),
@@ -876,10 +886,15 @@ class _PriorityFilterDropdown extends StatelessWidget {
           isDense: true,
           style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Colors.grey.shade700),
           icon: Icon(Icons.expand_more, size: 16, color: Colors.grey.shade600),
+          selectedItemBuilder: (context) => const [
+            Text('الحالة'),
+            Text('ذوي الإعاقة', style: TextStyle(color: AppColors.green, fontWeight: FontWeight.w700)),
+            Text('المتوقع تخرجهم', style: TextStyle(color: AppColors.green, fontWeight: FontWeight.w700)),
+          ],
           items: const [
             DropdownMenuItem(value: _PriorityFilter.all, child: Text('الحالة')),
-            DropdownMenuItem(value: _PriorityFilter.disability, child: Text('الإعاقة')),
-            DropdownMenuItem(value: _PriorityFilter.graduate, child: Text('الخريجين')),
+            DropdownMenuItem(value: _PriorityFilter.disability, child: Text('ذوي الإعاقة')),
+            DropdownMenuItem(value: _PriorityFilter.graduate, child: Text('المتوقع تخرجهم')),
           ],
           onChanged: (v) => onChanged(v ?? _PriorityFilter.all),
         ),
