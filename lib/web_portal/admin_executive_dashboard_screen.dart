@@ -60,9 +60,7 @@ class AdminExecutiveDashboardScreen extends StatelessWidget {
                         children: [
                           const _LastUpdateBar(),
                           const SizedBox(height: 14),
-                          _KpiRow(data: data),
-                          const SizedBox(height: 18),
-                          _WorkflowSection(data: data),
+                          _FilterableDashboardContent(data: data),
                           const SizedBox(height: 18),
                           _MainGrid(data: data),
                           const SizedBox(height: 12),
@@ -131,6 +129,7 @@ class _MutableActionType {
 /// (نفس الضمان الذي وفّرته `_kDepartmentPerf` سابقًا للبيانات الوهمية).
 class _DashboardData {
   final List<Map<String, dynamic>> tickets;
+  final Map<String, Map<String, dynamic>> downloads;
   final List<_DepartmentPerf> departmentPerf;
   final List<_ManagementCase> managementCases;
   final int totalRequests;
@@ -139,6 +138,7 @@ class _DashboardData {
 
   const _DashboardData({
     required this.tickets,
+    required this.downloads,
     required this.departmentPerf,
     required this.managementCases,
     required this.totalRequests,
@@ -292,6 +292,7 @@ class _DashboardData {
 
     return _DashboardData(
       tickets: tickets,
+      downloads: downloads,
       departmentPerf: departmentPerf,
       managementCases: cases,
       totalRequests: totalRequests,
@@ -324,6 +325,47 @@ List<_RoleProgress> _computeRoleProgress(List<Map<String, dynamic>> tickets) {
     _RoleProgress(role: 'منسّقو الأقسام العلمية', breakdown: coordinator),
     _RoleProgress(role: 'منسّقو الكلية', breakdown: college),
   ];
+}
+
+class _KpiStats {
+  final int totalRequests;
+  final int totalCompleted;
+  final int totalOverdue;
+  const _KpiStats({required this.totalRequests, required this.totalCompleted, required this.totalOverdue});
+}
+
+/// نفس مؤشرات "الإغلاق النهائي/المتأخر" الأصلية لكن قابلة لإعادة الحساب على
+/// أي مجموعة تذاكر مُفلترة - يحتاج [downloads] (بخلاف الدالتين الأخريين)
+/// لأن حساب "التأخر" يعتمد على توقيت التنزيل لا نصوص الحالة فقط.
+_KpiStats _computeKpiStats(List<Map<String, dynamic>> tickets, Map<String, Map<String, dynamic>> downloads) {
+  final now = DateTime.now();
+  DateTime? downloadTime(String shatr, String department, String field) {
+    final doc = downloads['${shatr}_$department'];
+    final ts = doc == null ? null : doc[field];
+    if (ts == null) return null;
+    try {
+      return (ts as dynamic).toDate() as DateTime;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  var total = 0, completed = 0, overdue = 0;
+  for (final ticket in tickets) {
+    final shatrRaw = (ticket['shatr'] ?? '').toString();
+    final rawDept = (ticket['department'] ?? '').toString();
+    final advisorDl = downloadTime(shatrRaw, rawDept, 'advisor_downloaded_at');
+    final coordDl = downloadTime(shatrRaw, rawDept, 'coordinator_downloaded_at');
+    final actions = (ticket['actions'] as List?) ?? const [];
+    for (final raw in actions) {
+      final action = Map<String, dynamic>.from(raw as Map);
+      final computed = _DashboardData._classifyAction(action, advisorDl, coordDl, now);
+      total++;
+      if (computed.stage == _Stage.closed) completed++;
+      if (computed.stage != _Stage.closed && computed.overdue) overdue++;
+    }
+  }
+  return _KpiStats(totalRequests: total, totalCompleted: completed, totalOverdue: overdue);
 }
 
 /// نفس فكرة [_computeRoleProgress] لكن لتوزيع نوع الإجراء (إضافة/حذف/تعديل) -
@@ -468,19 +510,100 @@ class _LastUpdateBar extends StatelessWidget {
   }
 }
 
-/// 4 بطاقات تشغيلية Compact - أصغر بنحو 20% من النسخة السابقة، مع مؤشر دائري
-/// مصغَّر لبطاقة نسبة الإنجاز بدل أيقونة ثابتة.
-class _KpiRow extends StatelessWidget {
+/// فلتر واحد أعلى الصفحة (شطر/قسم/حالة) يتحكم بالمؤشرات + حالة الإنجاز حسب
+/// نوع الإجراء + متابعة سير العمل معًا - بلا تكرار الفلتر بأي قسم منها
+/// (سليمان 2026-08-21: "فلتر واحد فقط أعلى الصفحة يتحكم بكل شيء"). الترتيب
+/// (يمين إلى يسار بالعربية): شريحة "الكل" (إعادة تعيين عامة) ← الشطر ←
+/// الأقسام العلمية ← الحالة (ذوو الإعاقة/الخريجون).
+class _FilterableDashboardContent extends StatefulWidget {
   final _DashboardData data;
-  const _KpiRow({required this.data});
+  const _FilterableDashboardContent({required this.data});
+
+  @override
+  State<_FilterableDashboardContent> createState() => _FilterableDashboardContentState();
+}
+
+class _FilterableDashboardContentState extends State<_FilterableDashboardContent> {
+  _ShatrFilter _shatr = _ShatrFilter.all;
+  // null = "الكل" - نفس تمييز فلتر القسم بقية اللوحة.
+  String? _department;
+  _PriorityFilter _priority = _PriorityFilter.all;
+
+  bool get _hasFilter => _shatr != _ShatrFilter.all || _department != null || _priority != _PriorityFilter.all;
+
+  List<Map<String, dynamic>> get _filteredTickets {
+    return widget.data.tickets.where((t) {
+      if (_shatr != _ShatrFilter.all) {
+        final shatrRaw = (t['shatr'] ?? '').toString();
+        final wantMale = _shatr == _ShatrFilter.male;
+        final isMale = shatrRaw == ExcelParserService.shatrMale;
+        if (isMale != wantMale) return false;
+      }
+      if (_department != null) {
+        final dept = _DashboardData._displayDepartment((t['department'] ?? '').toString());
+        if (dept != _department) return false;
+      }
+      if (_priority == _PriorityFilter.graduate && t['expected_graduate'] != true) return false;
+      if (_priority == _PriorityFilter.disability && t['has_disability'] != true) return false;
+      return true;
+    }).toList();
+  }
+
+  void _resetAll() => setState(() {
+        _shatr = _ShatrFilter.all;
+        _department = null;
+        _priority = _PriorityFilter.all;
+      });
 
   @override
   Widget build(BuildContext context) {
-    final total = data.totalRequests;
-    final completed = data.totalCompleted;
+    final filtered = _filteredTickets;
+    final kpi = _computeKpiStats(filtered, widget.data.downloads);
+    final actionTypeStats = _computeActionTypeStats(filtered);
+    final roleProgress = _computeRoleProgress(filtered);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(14)),
+          child: Wrap(
+            spacing: 10,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              _ResetAllChip(active: !_hasFilter, onTap: _resetAll),
+              _ShatrFilterDropdown(value: _shatr, onChanged: (v) => setState(() => _shatr = v)),
+              _DepartmentFilterDropdown(value: _department, onChanged: (v) => setState(() => _department = v)),
+              _PriorityFilterDropdown(value: _priority, onChanged: (v) => setState(() => _priority = v)),
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+        _KpiRow(kpi: kpi),
+        const SizedBox(height: 18),
+        _ActionTypeSection(stats: actionTypeStats),
+        const SizedBox(height: 18),
+        _WorkflowSection(roleProgress: roleProgress),
+      ],
+    );
+  }
+}
+
+/// 4 بطاقات تشغيلية Compact - أصغر بنحو 20% من النسخة السابقة، مع مؤشر دائري
+/// مصغَّر لبطاقة نسبة الإنجاز بدل أيقونة ثابتة.
+class _KpiRow extends StatelessWidget {
+  final _KpiStats kpi;
+  const _KpiRow({required this.kpi});
+
+  @override
+  Widget build(BuildContext context) {
+    final total = kpi.totalRequests;
+    final completed = kpi.totalCompleted;
     final rate = total == 0 ? 0 : (completed / total * 100).round();
     final pending = total - completed;
-    final overdue = data.totalOverdue;
+    final overdue = kpi.totalOverdue;
 
     final cards = <Widget>[
       _KpiCard(
@@ -498,7 +621,7 @@ class _KpiRow extends StatelessWidget {
         accent: AppColors.gold,
       ),
       _KpiCard(
-        title: 'نسبة الإنجاز',
+        title: 'نسبة الإغلاق النهائي',
         value: '$rate%',
         meta: '$completed من أصل $total طلبًا',
         icon: Icons.donut_large_outlined,
@@ -619,47 +742,12 @@ class _RoleProgress {
   int get notStarted => breakdown[TicketAdvisorOutcome.notStarted] ?? 0;
 }
 
-class _WorkflowSection extends StatefulWidget {
-  final _DashboardData data;
-  const _WorkflowSection({required this.data});
-
-  @override
-  State<_WorkflowSection> createState() => _WorkflowSectionState();
-}
-
-enum _PriorityFilter { all, graduate, disability }
-
-class _WorkflowSectionState extends State<_WorkflowSection> {
-  _ShatrFilter _shatr = _ShatrFilter.all;
-  // null = "الكل" - نفس تمييز فلتر القسم بقية اللوحة.
-  String? _department;
-  _PriorityFilter _priority = _PriorityFilter.all;
-
-  List<Map<String, dynamic>> get _filteredTickets {
-    return widget.data.tickets.where((t) {
-      if (_shatr != _ShatrFilter.all) {
-        final shatrRaw = (t['shatr'] ?? '').toString();
-        final wantMale = _shatr == _ShatrFilter.male;
-        final isMale = shatrRaw == ExcelParserService.shatrMale;
-        if (isMale != wantMale) return false;
-      }
-      if (_department != null) {
-        final dept = _DashboardData._displayDepartment((t['department'] ?? '').toString());
-        if (dept != _department) return false;
-      }
-      if (_priority == _PriorityFilter.graduate && t['expected_graduate'] != true) return false;
-      if (_priority == _PriorityFilter.disability && t['has_disability'] != true) return false;
-      return true;
-    }).toList();
-  }
+class _WorkflowSection extends StatelessWidget {
+  final List<_RoleProgress> roleProgress;
+  const _WorkflowSection({required this.roleProgress});
 
   @override
   Widget build(BuildContext context) {
-    final filtered = _filteredTickets;
-    final roleProgress = _computeRoleProgress(filtered);
-    final actionTypeStats = _computeActionTypeStats(filtered);
-    final hasFilter = _shatr != _ShatrFilter.all || _department != null || _priority != _PriorityFilter.all;
-
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
       decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(14)),
@@ -669,26 +757,6 @@ class _WorkflowSectionState extends State<_WorkflowSection> {
           const _SectionTitle(title: 'متابعة سير العمل', icon: Icons.timeline_outlined),
           const SizedBox(height: 4),
           Text('حالة الطلبات فعليًا عند كل مستوى - كل رقم من واقع ما أُدخِل بالملفات', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 10,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              _ShatrFilterChips(value: _shatr, onChanged: (v) => setState(() => _shatr = v)),
-              _DepartmentFilterDropdown(value: _department, onChanged: (v) => setState(() => _department = v)),
-              _PriorityFilterDropdown(value: _priority, onChanged: (v) => setState(() => _priority = v)),
-              if (hasFilter)
-                TextButton(
-                  onPressed: () => setState(() {
-                    _shatr = _ShatrFilter.all;
-                    _department = null;
-                    _priority = _PriorityFilter.all;
-                  }),
-                  child: const Text('إعادة الكل', style: TextStyle(fontSize: 12)),
-                ),
-            ],
-          ),
           const SizedBox(height: 14),
           LayoutBuilder(builder: (context, constraints) {
             final narrow = constraints.maxWidth < 900;
@@ -706,45 +774,36 @@ class _WorkflowSectionState extends State<_WorkflowSection> {
               ],
             );
           }),
-          const SizedBox(height: 20),
-          const Divider(height: 1),
-          const SizedBox(height: 16),
-          const _SectionTitle(title: 'حالة الإنجاز حسب نوع الإجراء', icon: Icons.pie_chart_outline_rounded),
-          const SizedBox(height: 10),
-          _ActionTypeStatsRow(stats: actionTypeStats),
         ],
       ),
     );
   }
 }
 
-class _PriorityFilterDropdown extends StatelessWidget {
-  final _PriorityFilter value;
-  final ValueChanged<_PriorityFilter> onChanged;
-  const _PriorityFilterDropdown({required this.value, required this.onChanged});
+/// "حالة الإنجاز حسب نوع الإجراء" - قسم مستقل أعلى الصفحة، يشترك بنفس فلتر
+/// [_DashboardFilterBar] بلا فلتر خاص به (سليمان 2026-08-21).
+class _ActionTypeSection extends StatelessWidget {
+  final List<_ActionTypeStats> stats;
+  const _ActionTypeSection({required this.stats});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<_PriorityFilter>(
-          value: value,
-          isDense: true,
-          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Colors.grey.shade700),
-          icon: Icon(Icons.expand_more, size: 16, color: Colors.grey.shade600),
-          items: const [
-            DropdownMenuItem(value: _PriorityFilter.all, child: Text('الحالة: الكل')),
-            DropdownMenuItem(value: _PriorityFilter.graduate, child: Text('الخريجون')),
-            DropdownMenuItem(value: _PriorityFilter.disability, child: Text('ذوو الإعاقة')),
-          ],
-          onChanged: (v) => onChanged(v ?? _PriorityFilter.all),
-        ),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(14)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _SectionTitle(title: 'حالة الإنجاز حسب نوع الإجراء', icon: Icons.pie_chart_outline_rounded),
+          const SizedBox(height: 10),
+          _ActionTypeStatsRow(stats: stats),
+        ],
       ),
     );
   }
 }
+
+enum _PriorityFilter { all, graduate, disability }
 
 class _DepartmentFilterDropdown extends StatelessWidget {
   final String? value;
@@ -768,6 +827,84 @@ class _DepartmentFilterDropdown extends StatelessWidget {
           ],
           onChanged: onChanged,
         ),
+      ),
+    );
+  }
+}
+
+class _ShatrFilterDropdown extends StatelessWidget {
+  final _ShatrFilter value;
+  final ValueChanged<_ShatrFilter> onChanged;
+  const _ShatrFilterDropdown({required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<_ShatrFilter>(
+          value: value,
+          isDense: true,
+          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Colors.grey.shade700),
+          icon: Icon(Icons.expand_more, size: 16, color: Colors.grey.shade600),
+          items: const [
+            DropdownMenuItem(value: _ShatrFilter.all, child: Text('كل الشطرين')),
+            DropdownMenuItem(value: _ShatrFilter.male, child: Text('شطر الطلاب')),
+            DropdownMenuItem(value: _ShatrFilter.female, child: Text('شطر الطالبات')),
+          ],
+          onChanged: (v) => onChanged(v ?? _ShatrFilter.all),
+        ),
+      ),
+    );
+  }
+}
+
+class _PriorityFilterDropdown extends StatelessWidget {
+  final _PriorityFilter value;
+  final ValueChanged<_PriorityFilter> onChanged;
+  const _PriorityFilterDropdown({required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<_PriorityFilter>(
+          value: value,
+          isDense: true,
+          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Colors.grey.shade700),
+          icon: Icon(Icons.expand_more, size: 16, color: Colors.grey.shade600),
+          items: const [
+            DropdownMenuItem(value: _PriorityFilter.all, child: Text('الكل')),
+            DropdownMenuItem(value: _PriorityFilter.disability, child: Text('الإعاقة')),
+            DropdownMenuItem(value: _PriorityFilter.graduate, child: Text('الخريجين')),
+          ],
+          onChanged: (v) => onChanged(v ?? _PriorityFilter.all),
+        ),
+      ),
+    );
+  }
+}
+
+/// شريحة "الكل" (إعادة تعيين كل الفلاتر الثلاثة دفعة واحدة) - أول عنصر
+/// بترتيب الفلتر (يمين الصف بالعربية RTL)، منفصلة عن فلتر الشطر نفسه (بطلب
+/// سليمان صراحةً 2026-08-21: "الكل" عنصر عام مستقل، لا خيارًا ضمن الشطر).
+class _ResetAllChip extends StatelessWidget {
+  final bool active;
+  final VoidCallback onTap;
+  const _ResetAllChip({required this.active, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(color: active ? AppColors.green : Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
+        child: Text('الكل', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: active ? Colors.white : Colors.grey.shade700)),
       ),
     );
   }
@@ -869,35 +1006,6 @@ class _DepartmentPerf {
 }
 
 enum _ShatrFilter { all, male, female }
-
-class _ShatrFilterChips extends StatelessWidget {
-  final _ShatrFilter value;
-  final ValueChanged<_ShatrFilter> onChanged;
-  const _ShatrFilterChips({required this.value, required this.onChanged});
-
-  @override
-  Widget build(BuildContext context) {
-    Widget chip(String label, _ShatrFilter v) {
-      final selected = value == v;
-      return InkWell(
-        onTap: () => onChanged(v),
-        borderRadius: BorderRadius.circular(20),
-        child: Container(
-          margin: const EdgeInsets.only(right: 6),
-          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-          decoration: BoxDecoration(color: selected ? AppColors.green : Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
-          child: Text(label, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: selected ? Colors.white : Colors.grey.shade700)),
-        ),
-      );
-    }
-
-    return Row(mainAxisSize: MainAxisSize.min, children: [
-      chip('الكل', _ShatrFilter.all),
-      chip('شطر الطلاب', _ShatrFilter.male),
-      chip('شطر الطالبات', _ShatrFilter.female),
-    ]);
-  }
-}
 
 /// حالة الإنجاز حسب نوع الإجراء - قسم مستعاد من التصميم الأول (بطلب سليمان
 /// صراحةً: يجيب "في أي نوع من الطلبات يوجد التأخير؟" بخلاف أداء الأقسام
@@ -1309,26 +1417,16 @@ class _ManagementCaseRow extends StatelessWidget {
   }
 }
 
-class _ActivityItem {
-  final String time;
-  final String text;
-  final IconData icon;
-  final Color color;
-  const _ActivityItem({required this.time, required this.text, required this.icon, required this.color});
-}
-
 enum _FeedTab { alerts, activity }
 
-/// النشاطات والتنبيهات - **لا تزال Mock عمدًا** (بموافقة سليمان صراحةً
-/// 2026-08-20): تحتاج سجل حركات لحظي (متى/من/ماذا فعل) لا يحتفظ به النظام
-/// حاليًا - قاعدة البيانات تخزّن الحالة الأخيرة لكل تذكرة فقط، لا تاريخ
-/// التغييرات عليها. بقية أقسام اللوحة كلها مربوطة ببيانات حقيقية.
-/// أصبحت تبويبين مستقلّين ("التنبيهات" الافتراضي و"آخر النشاطات") بدل قائمة
-/// مختلطة، لأن التنبيه (يحتاج انتباهًا) والنشاط العادي (سجل لما حدث) ليسا
-/// بنفس الأهمية (سليمان 2026-08-19). قائمة العمل الفعلية تبقى حصرًا بقسم
-/// "تحتاج تدخل إدارة الوحدة" - التنبيه هنا إشعار فقط، لا قائمة عمل ثانية.
-/// ارتفاع القسم طبيعي (لا يُساوى بارتفاع القسم المجاور)، ويعرض 5 عناصر كحد
-/// أقصى + زر "عرض الكل" يتبع التبويب النشط.
+/// النشاطات والتنبيهات - كانت تعرض بيانات وهمية (Mock) ثابتة بالكود؛ حُذفت
+/// (سليمان 2026-08-21: يتناقض بصريًا مع صندوق "تحتاج تدخل إدارة الوحدة"
+/// المجاور حين يعرض هو "0" حقيقية وهذا القسم "5 تنبيهات" مزيَّفة - غير
+/// احترافي). تُعرَض الآن حالة "قيد التطوير" صريحة بدل ذلك، لحين توفّر سجل
+/// حركات لحظي حقيقي (متى/من/ماذا فعل) - قاعدة البيانات تخزّن الحالة الأخيرة
+/// لكل تذكرة فقط حاليًا، لا تاريخ التغييرات عليها. بقية أقسام اللوحة كلها
+/// مربوطة ببيانات حقيقية. التبويبان ("التنبيهات"/"آخر النشاطات") أُبقيا
+/// لأن التصميم نفسه لا يزال صالحًا فور توفّر مصدر بيانات حقيقي.
 class _ActivityFeedSection extends StatefulWidget {
   const _ActivityFeedSection();
 
@@ -1339,25 +1437,8 @@ class _ActivityFeedSection extends StatefulWidget {
 class _ActivityFeedSectionState extends State<_ActivityFeedSection> {
   _FeedTab _tab = _FeedTab.alerts;
 
-  static const _alerts = [
-    _ActivityItem(time: 'منذ 20 دقيقة', text: 'تم تصعيد حالة إلى إدارة الوحدة', icon: Icons.priority_high_rounded, color: AppColors.errorRed),
-    _ActivityItem(time: 'منذ ساعتين', text: 'طلب تجاوز مدة المعالجة', icon: Icons.warning_amber_rounded, color: AppColors.gold),
-    _ActivityItem(time: 'منذ 3 ساعات', text: 'طالب مرتبط بمرشد غير مطابق', icon: Icons.person_search_outlined, color: AppColors.gold),
-    _ActivityItem(time: 'منذ 5 ساعات', text: 'حالة تحتاج قرارًا من إدارة الوحدة', icon: Icons.gavel_outlined, color: AppColors.errorRed),
-    _ActivityItem(time: 'منذ يوم واحد', text: 'طلب غير مسند إلى مرشد', icon: Icons.person_off_outlined, color: AppColors.gold),
-  ];
-
-  static const _activities = [
-    _ActivityItem(time: '10:12 ص', text: 'تم إنهاء طلب إضافة مقرر', icon: Icons.check_circle_outline, color: AppColors.green),
-    _ActivityItem(time: '09:30 ص', text: 'تم تحديث بيانات المقررات الدراسية', icon: Icons.sync_outlined, color: Color(0xFF2563EB)),
-    _ActivityItem(time: '08:47 ص', text: 'تم إسناد حالة إلى منسّق القسم العلمي', icon: Icons.assignment_ind_outlined, color: Color(0xFF2563EB)),
-    _ActivityItem(time: '08:20 ص', text: 'تم إنهاء طلب حذف مقرر', icon: Icons.check_circle_outline, color: AppColors.green),
-    _ActivityItem(time: '07:55 ص', text: 'تم اعتماد مراجعة منسّق الكلية', icon: Icons.verified_outlined, color: Color(0xFF2563EB)),
-  ];
-
   @override
   Widget build(BuildContext context) {
-    final items = _tab == _FeedTab.alerts ? _alerts : _activities;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(14)),
@@ -1366,16 +1447,21 @@ class _ActivityFeedSectionState extends State<_ActivityFeedSection> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _buildTabStrip(),
-          const SizedBox(height: 8),
-          for (var i = 0; i < items.length; i++) _ActivityRow(item: items[i], isLast: i == items.length - 1),
-          const SizedBox(height: 6),
+          const SizedBox(height: 16),
           Center(
-            child: TextButton(
-              onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(_tab == _FeedTab.alerts ? 'عرض جميع التنبيهات - سيُفعَّل عند توفّر سجل حركات لحظي' : 'عرض جميع النشاطات - سيُفعَّل عند توفّر سجل حركات لحظي')),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Column(
+                children: [
+                  Icon(Icons.hourglass_empty_rounded, size: 28, color: Colors.grey.shade400),
+                  const SizedBox(height: 8),
+                  Text(
+                    'قيد التطوير - ستُفعَّل عند توفّر سجل حركات لحظي',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 11.5, color: Colors.grey.shade500),
+                  ),
+                ],
               ),
-              style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), minimumSize: const Size(0, 28)),
-              child: Text(_tab == _FeedTab.alerts ? 'عرض جميع التنبيهات' : 'عرض جميع النشاطات', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
             ),
           ),
         ],
@@ -1410,32 +1496,3 @@ class _ActivityFeedSectionState extends State<_ActivityFeedSection> {
   }
 }
 
-class _ActivityRow extends StatelessWidget {
-  final _ActivityItem item;
-  final bool isLast;
-  const _ActivityRow({required this.item, required this.isLast});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: isLast ? 0 : 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Container(
-            width: 24,
-            height: 24,
-            decoration: BoxDecoration(color: item.color.withValues(alpha: 0.1), shape: BoxShape.circle),
-            child: Icon(item.icon, size: 12, color: item.color),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(item.text, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600)),
-          ),
-          const SizedBox(width: 6),
-          Text(item.time, style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
-        ],
-      ),
-    );
-  }
-}
