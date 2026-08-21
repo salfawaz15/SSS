@@ -110,12 +110,12 @@ class _TicketActionStatsPanelState extends State<TicketActionStatsPanel> {
       });
 
     return Container(
-      margin: const EdgeInsets.only(top: 14),
+      margin: const EdgeInsets.only(top: 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _buildToolbar(),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           if (stats.totalActions == 0)
             _EmptyState(onReset: () => setState(() {
               _shatr = null;
@@ -123,9 +123,9 @@ class _TicketActionStatsPanelState extends State<TicketActionStatsPanel> {
             }))
           else ...[
             _buildKpiRow(stats, reportData),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             _buildStatusCard(stats),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             LayoutBuilder(
               builder: (context, constraints) {
                 final isNarrow = constraints.maxWidth < 900;
@@ -148,18 +148,18 @@ class _TicketActionStatsPanelState extends State<TicketActionStatsPanel> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Expanded(flex: 155, child: bestCard),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 8),
                       Expanded(flex: 100, child: deptCard),
                     ],
                   ),
                 );
               },
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 12),
             _TeamPerformanceSection(reportData: reportData),
             _AdvisorFullTable(advisors: advisorStats),
             if (stats.advisorMismatchCount > 0) ...[
-              const SizedBox(height: 14),
+              const SizedBox(height: 10),
               _MismatchAlert(count: stats.advisorMismatchCount),
             ],
           ],
@@ -254,11 +254,11 @@ class _TicketActionStatsPanelState extends State<TicketActionStatsPanel> {
                     ? 3
                     : 5;
         return Wrap(
-          spacing: 12,
-          runSpacing: 12,
+          spacing: 8,
+          runSpacing: 8,
           children: [
             for (final c in cards)
-              SizedBox(width: (constraints.maxWidth - (columns - 1) * 12) / columns, child: c),
+              SizedBox(width: (constraints.maxWidth - (columns - 1) * 8) / columns, child: c),
           ],
         );
       },
@@ -300,15 +300,15 @@ class _TicketActionStatsPanelState extends State<TicketActionStatsPanel> {
                   for (var i = 0; i < types.length; i++) ...[
                     Expanded(child: _StatusGauge(label: 'طلبات ${types[i]}', stats: stats.byActionType[types[i]]!)),
                     if (i < types.length - 1)
-                      Container(width: 1, height: 78, color: _Tokens.border, margin: const EdgeInsets.symmetric(horizontal: 6)),
+                      Container(width: 1, height: 60, color: _Tokens.border, margin: const EdgeInsets.symmetric(horizontal: 6)),
                   ],
                 ],
               );
             },
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
               color: const Color(0xFFF8FAF9),
               border: Border.all(color: _Tokens.border),
@@ -361,10 +361,10 @@ class _FilterField extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontSize: 11, color: _Tokens.textSecondary, fontWeight: FontWeight.w500)),
-        const SizedBox(height: 5),
+        Text(label, style: const TextStyle(fontSize: 10.5, color: _Tokens.textSecondary, fontWeight: FontWeight.w500)),
+        const SizedBox(height: 3),
         Container(
-          height: 38,
+          height: 32,
           padding: const EdgeInsets.symmetric(horizontal: 4),
           decoration: BoxDecoration(
             color: Colors.white,
@@ -405,7 +405,7 @@ class _KpiCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      constraints: const BoxConstraints(minHeight: 92),
+      constraints: const BoxConstraints(minHeight: 70),
       decoration: BoxDecoration(
         color: _Tokens.cardBg,
         border: Border.all(color: _Tokens.border),
@@ -417,7 +417,7 @@ class _KpiCard extends StatelessWidget {
         children: [
           Positioned(top: 0, right: 16, left: 16, child: Container(height: 3, decoration: BoxDecoration(color: accent, borderRadius: const BorderRadius.vertical(bottom: Radius.circular(4))))),
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 15, 14, 12),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 9),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -425,19 +425,19 @@ class _KpiCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(label, style: const TextStyle(fontSize: 11.5, color: _Tokens.textSecondary), maxLines: 1, overflow: TextOverflow.ellipsis),
-                      const SizedBox(height: 5),
-                      Text(value, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: _Tokens.textPrimary, height: 1)),
-                      const SizedBox(height: 4),
-                      Text(note, style: const TextStyle(fontSize: 10, color: _Tokens.textMuted)),
+                      Text(label, style: const TextStyle(fontSize: 11, color: _Tokens.textSecondary), maxLines: 1, overflow: TextOverflow.ellipsis),
+                      const SizedBox(height: 3),
+                      Text(value, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: _Tokens.textPrimary, height: 1)),
+                      const SizedBox(height: 2),
+                      Text(note, style: const TextStyle(fontSize: 9.5, color: _Tokens.textMuted)),
                     ],
                   ),
                 ),
                 Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(color: accent.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
-                  child: Icon(icon, size: 18, color: accent),
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(color: accent.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(9)),
+                  child: Icon(icon, size: 16, color: accent),
                 ),
               ],
             ),
@@ -460,7 +460,7 @@ class _CardShell extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(15),
+      padding: const EdgeInsets.all(11),
       decoration: BoxDecoration(
         color: _Tokens.cardBg,
         border: Border.all(color: _Tokens.border),
@@ -472,23 +472,23 @@ class _CardShell extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(icon, size: 16, color: _Tokens.gold500),
-              const SizedBox(width: 7),
+              Icon(icon, size: 15, color: _Tokens.gold500),
+              const SizedBox(width: 6),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: _Tokens.textPrimary)),
+                    Text(title, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: _Tokens.textPrimary)),
                     if (subtitle != null) ...[
-                      const SizedBox(height: 2),
-                      Text(subtitle!, style: const TextStyle(fontSize: 10, color: _Tokens.textMuted)),
+                      const SizedBox(height: 1),
+                      Text(subtitle!, style: const TextStyle(fontSize: 9.5, color: _Tokens.textMuted)),
                     ],
                   ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           child,
         ],
       ),
@@ -515,36 +515,36 @@ class _StatusGauge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Column(
         children: [
-          Text(label, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: _Tokens.textPrimary)),
-          const SizedBox(height: 8),
+          Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: _Tokens.textPrimary)),
+          const SizedBox(height: 6),
           SizedBox(
-            width: 92,
-            height: 92,
+            width: 72,
+            height: 72,
             child: Stack(
               alignment: Alignment.center,
               children: [
                 PieChart(
                   PieChartData(
                     sectionsSpace: 2,
-                    centerSpaceRadius: 32,
+                    centerSpaceRadius: 24,
                     sections: [
-                      if (completed > 0) PieChartSectionData(value: completed.toDouble(), color: _Tokens.success, showTitle: false, radius: 14),
-                      if (progress > 0) PieChartSectionData(value: progress.toDouble(), color: _Tokens.warning, showTitle: false, radius: 14),
-                      if (notStarted > 0) PieChartSectionData(value: notStarted.toDouble(), color: _Tokens.danger, showTitle: false, radius: 14),
+                      if (completed > 0) PieChartSectionData(value: completed.toDouble(), color: _Tokens.success, showTitle: false, radius: 11),
+                      if (progress > 0) PieChartSectionData(value: progress.toDouble(), color: _Tokens.warning, showTitle: false, radius: 11),
+                      if (notStarted > 0) PieChartSectionData(value: notStarted.toDouble(), color: _Tokens.danger, showTitle: false, radius: 11),
                       if (completed == 0 && progress == 0 && notStarted == 0)
-                        PieChartSectionData(value: 1, color: _Tokens.track, showTitle: false, radius: 14),
+                        PieChartSectionData(value: 1, color: _Tokens.track, showTitle: false, radius: 11),
                     ],
                   ),
                 ),
-                Text('$pct%', textDirection: TextDirection.ltr, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: _Tokens.textPrimary)),
+                Text('$pct%', textDirection: TextDirection.ltr, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: _Tokens.textPrimary)),
               ],
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           _legendLine('مكتمل', completed, _Tokens.success),
-          const SizedBox(height: 3),
+          const SizedBox(height: 2),
           _legendLine('قيد التنفيذ', progress, _Tokens.warning),
-          const SizedBox(height: 3),
+          const SizedBox(height: 2),
           _legendLine('لم يبدأ', notStarted, _Tokens.danger),
         ],
       ),
@@ -773,7 +773,7 @@ class _AdvisorFullTable extends StatelessWidget {
     if (sorted.isEmpty) return const SizedBox.shrink();
 
     return Padding(
-      padding: const EdgeInsets.only(top: 20),
+      padding: const EdgeInsets.only(top: 12),
       child: _CardShell(
         title: 'عدد الحالات لدى كل مرشد',
         icon: Icons.groups_2_outlined,
@@ -781,29 +781,29 @@ class _AdvisorFullTable extends StatelessWidget {
           child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: DataTable(
-            headingRowHeight: 36,
-            dataRowMinHeight: 34,
-            dataRowMaxHeight: 40,
+            headingRowHeight: 30,
+            dataRowMinHeight: 26,
+            dataRowMaxHeight: 32,
             headingRowColor: WidgetStateProperty.all(_Tokens.pageBg),
             columns: const [
-              DataColumn(label: Text('المرشد', style: TextStyle(fontSize: 11.5))),
-              DataColumn(label: Text('القسم', style: TextStyle(fontSize: 11.5))),
-              DataColumn(label: Text('الشطر', style: TextStyle(fontSize: 11.5))),
-              DataColumn(label: Text('عدد الحالات', style: TextStyle(fontSize: 11.5))),
-              DataColumn(label: Text('المنجزة', style: TextStyle(fontSize: 11.5))),
-              DataColumn(label: Text('محوَّلة لمنسّق القسم', style: TextStyle(fontSize: 11.5))),
-              DataColumn(label: Text('لم يُعمَل عليها', style: TextStyle(fontSize: 11.5))),
+              DataColumn(label: Text('المرشد', style: TextStyle(fontSize: 11))),
+              DataColumn(label: Text('القسم', style: TextStyle(fontSize: 11))),
+              DataColumn(label: Text('الشطر', style: TextStyle(fontSize: 11))),
+              DataColumn(label: Text('عدد الحالات', style: TextStyle(fontSize: 11))),
+              DataColumn(label: Text('المنجزة', style: TextStyle(fontSize: 11))),
+              DataColumn(label: Text('محوَّلة لمنسّق القسم', style: TextStyle(fontSize: 11))),
+              DataColumn(label: Text('لم يُعمَل عليها', style: TextStyle(fontSize: 11))),
             ],
             rows: [
               for (final a in sorted)
                 DataRow(cells: [
-                  DataCell(Text(a.advisorName, style: const TextStyle(fontSize: 12))),
-                  DataCell(Text(_deptShortLabel(a.department), style: const TextStyle(fontSize: 12))),
-                  DataCell(Text(_shatrShortLabel(a.shatr), style: const TextStyle(fontSize: 12))),
-                  DataCell(Text('${a.total}', style: const TextStyle(fontSize: 12))),
-                  DataCell(Text('${a.completed}', style: const TextStyle(color: _Tokens.success, fontWeight: FontWeight.w700, fontSize: 12))),
-                  DataCell(Text('${a.escalatedToCoordinator}', style: const TextStyle(color: _Tokens.warning, fontWeight: FontWeight.w700, fontSize: 12))),
-                  DataCell(Text('${a.notStarted}', style: const TextStyle(color: _Tokens.danger, fontWeight: FontWeight.w700, fontSize: 12))),
+                  DataCell(Text(a.advisorName, style: const TextStyle(fontSize: 11.5))),
+                  DataCell(Text(_deptShortLabel(a.department), style: const TextStyle(fontSize: 11.5))),
+                  DataCell(Text(_shatrShortLabel(a.shatr), style: const TextStyle(fontSize: 11.5))),
+                  DataCell(Text('${a.total}', style: const TextStyle(fontSize: 11.5))),
+                  DataCell(Text('${a.completed}', style: const TextStyle(color: _Tokens.success, fontWeight: FontWeight.w700, fontSize: 11.5))),
+                  DataCell(Text('${a.escalatedToCoordinator}', style: const TextStyle(color: _Tokens.warning, fontWeight: FontWeight.w700, fontSize: 11.5))),
+                  DataCell(Text('${a.notStarted}', style: const TextStyle(color: _Tokens.danger, fontWeight: FontWeight.w700, fontSize: 11.5))),
                 ]),
             ],
           ),
@@ -837,11 +837,11 @@ class _TeamPerformanceSection extends StatelessWidget {
         children: [
           if (advisors.isNotEmpty) _TeamGroup(title: 'المرشدون الأكاديميون', icon: Icons.person_outline, rows: advisors),
           if (coordinators.isNotEmpty) ...[
-            const SizedBox(height: 14),
+            const SizedBox(height: 10),
             _TeamGroup(title: 'منسّقو الأقسام', icon: Icons.supervisor_account_outlined, rows: coordinators),
           ],
           if (college.isNotEmpty) ...[
-            const SizedBox(height: 14),
+            const SizedBox(height: 10),
             _TeamGroup(title: 'منسّقو الكلية', icon: Icons.apartment_outlined, rows: college),
           ],
         ],
@@ -866,10 +866,10 @@ class _TeamGroup extends StatelessWidget {
           children: [
             Icon(icon, size: 14, color: _Tokens.textSecondary),
             const SizedBox(width: 6),
-            Text('$title (${rows.length})', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: _Tokens.textSecondary)),
+            Text('$title (${rows.length})', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _Tokens.textSecondary)),
           ],
         ),
-        const SizedBox(height: 7),
+        const SizedBox(height: 5),
         Container(
           decoration: BoxDecoration(border: Border.all(color: _Tokens.border), borderRadius: BorderRadius.circular(9)),
           clipBehavior: Clip.antiAlias,
@@ -878,7 +878,7 @@ class _TeamGroup extends StatelessWidget {
               for (var i = 0; i < rows.length; i++)
                 Container(
                   color: i.isEven ? Colors.white : _Tokens.pageBg,
-                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   child: _TeamRow(row: rows[i]),
                 ),
             ],
