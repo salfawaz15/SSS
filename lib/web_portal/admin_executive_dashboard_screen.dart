@@ -665,8 +665,7 @@ class _KpiCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
-                      crossAxisAlignment: CrossAxisAlignment.baseline,
-                      textBaseline: TextBaseline.alphabetic,
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Expanded(child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.grey.shade700))),
                         const SizedBox(width: 8),
@@ -1026,7 +1025,7 @@ class _ActionTypeCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              _MiniDonut(percent: stats.rate, color: _color, size: 46, strokeWidth: 5.5, centerText: '${(stats.rate * 100).round()}%'),
+              _MiniDonut(percent: stats.rate, color: _color, size: 46, strokeWidth: 5.5),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
@@ -1034,8 +1033,7 @@ class _ActionTypeCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
-                      crossAxisAlignment: CrossAxisAlignment.baseline,
-                      textBaseline: TextBaseline.alphabetic,
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Expanded(child: Text('${stats.label} — ${stats.total} طلبًا', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.grey.shade700))),
                         const SizedBox(width: 8),
