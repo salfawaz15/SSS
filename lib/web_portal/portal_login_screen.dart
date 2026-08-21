@@ -481,14 +481,15 @@ class BrandPanel extends StatelessWidget {
                   borderRadius: BorderRadius.circular(16),
                   onTap: () => Navigator.of(context).maybePop(),
                   child: Container(
-                    padding: EdgeInsets.symmetric(horizontal: compact ? 14 : 18, vertical: compact ? 10 : 14),
-                    constraints: BoxConstraints(maxWidth: compact ? 210 : 260),
+                    constraints: BoxConstraints(maxWidth: compact ? 260 : 340),
                     // بلا خلفية بيضاء ولا حدود - الشعار (نسخته الشفافة) يندمج
                     // مباشرة بخلفية اللوحة الخضراء الغامقة بدل الظهور كبطاقة
-                    // منفصلة "فوق" شعار آخر (سليمان 2026-08-21).
+                    // منفصلة "فوق" شعار آخر (سليمان 2026-08-21). حجم أكبر
+                    // بكثير من المحاولة الأولى (34/44) التي بدت صغيرة جدًا
+                    // وغير مقروءة وسط الخلفية والدوائر الزخرفية.
                     child: Image.asset(
                       'assets/images/unit_logo_transparent.png',
-                      height: compact ? 34 : 44,
+                      height: compact ? 64 : 88,
                       fit: BoxFit.contain,
                     ),
                   ),
