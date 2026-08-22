@@ -5,7 +5,7 @@ import '../models/hardship_case.dart';
 import '../services/excel_parser_service.dart';
 import '../services/firestore_ticket_service.dart';
 import '../services/hardship_case_service.dart';
-import '../services/report_data_service.dart' show TicketAdvisorOutcome, ticketOutcomeForField;
+import '../services/report_data_service.dart' show isCompletedStatus;
 import '../services/support_case_service.dart';
 import '../theme/app_theme.dart';
 import 'admin_nav.dart';
@@ -206,22 +206,41 @@ class _DashboardData {
   factory _DashboardData.compute(List<Map<String, dynamic>> tickets) => _DashboardData(tickets: tickets);
 }
 
-/// نتيجة إجراءات دور واحد (مرشد/منسّق قسم/منسّق كلية) لمجموعة تذاكر معيّنة -
-/// تُحسَب من [tickets] مباشرة عبر [ticketOutcomeForField]، فتصلح لكل من
-/// الإجمالي العام وأي فلترة لاحقة (شطر/قسم) بلا حاجة لإعادة استعلام
-/// Firestore - الفلترة تحدث محليًا على القائمة نفسها.
+/// نتيجة إجراء واحد مستقل (لا التذكرة كلها) لعمود حالة معيّن - ثلاث حالات
+/// فقط، بلا "تنفيذ جزئي" إطلاقًا (سليمان 2026-08-22: "كل صف بملف Excel =
+/// حالة/إجراء مستقل كامل، فـ'الجزئي' لا معنى له على مستوى الصف الواحد -
+/// يظهر فقط لو جُمِّعت عدة إجراءات معًا، وهذا بالضبط ما لا نريده هنا").
+/// `escalated` تعني "لم يُنفَّذ بهذا المستوى فانتقلت للمستوى التالي" - ليست
+/// بالضرورة رفضًا.
+enum _ActionOutcome { complete, escalated, notStarted }
+
+_ActionOutcome _actionOutcomeForField(Map<String, dynamic> action, String statusField) {
+  final status = (action[statusField] ?? '').toString().trim();
+  if (status.isEmpty) return _ActionOutcome.notStarted;
+  if (isCompletedStatus(status)) return _ActionOutcome.complete;
+  return _ActionOutcome.escalated;
+}
+
+/// نتيجة إجراءات دور واحد (مرشد/منسّق قسم/منسّق كلية) - تُحسَب الآن على
+/// مستوى كل إجراء/صف مستقل بمفرده (لا تجميع إجراءات التذكرة الواحدة معًا
+/// كما كان سابقًا)، فتصلح لكل من الإجمالي العام وأي فلترة لاحقة (شطر/قسم)
+/// بلا حاجة لإعادة استعلام Firestore - الفلترة تحدث محليًا على القائمة نفسها.
 List<_RoleProgress> _computeRoleProgress(List<Map<String, dynamic>> tickets) {
-  final advisor = {for (final o in TicketAdvisorOutcome.values) o: 0};
-  final coordinator = {for (final o in TicketAdvisorOutcome.values) o: 0};
-  final college = {for (final o in TicketAdvisorOutcome.values) o: 0};
+  final advisor = {for (final o in _ActionOutcome.values) o: 0};
+  final coordinator = {for (final o in _ActionOutcome.values) o: 0};
+  final college = {for (final o in _ActionOutcome.values) o: 0};
 
   for (final ticket in tickets) {
-    final advisorOutcome = ticketOutcomeForField(ticket, 'advisor_status');
-    advisor[advisorOutcome] = (advisor[advisorOutcome] ?? 0) + 1;
-    final coordinatorOutcome = ticketOutcomeForField(ticket, 'coordinator_status');
-    coordinator[coordinatorOutcome] = (coordinator[coordinatorOutcome] ?? 0) + 1;
-    final collegeOutcome = ticketOutcomeForField(ticket, 'college_status');
-    college[collegeOutcome] = (college[collegeOutcome] ?? 0) + 1;
+    final actions = (ticket['actions'] as List?) ?? const [];
+    for (final raw in actions) {
+      final action = Map<String, dynamic>.from(raw as Map);
+      final advisorOutcome = _actionOutcomeForField(action, 'advisor_status');
+      advisor[advisorOutcome] = (advisor[advisorOutcome] ?? 0) + 1;
+      final coordinatorOutcome = _actionOutcomeForField(action, 'coordinator_status');
+      coordinator[coordinatorOutcome] = (coordinator[coordinatorOutcome] ?? 0) + 1;
+      final collegeOutcome = _actionOutcomeForField(action, 'college_status');
+      college[collegeOutcome] = (college[collegeOutcome] ?? 0) + 1;
+    }
   }
 
   return [
@@ -255,26 +274,28 @@ _KpiStats _computeKpiStats(List<Map<String, dynamic>> tickets) {
       final action = Map<String, dynamic>.from(raw as Map);
       total++;
       if (_DashboardData._stageOf(action) == _Stage.closed) completed++;
+      if (_actionSkippedByAdvisor(action)) advisorSkipped++;
     }
-    if (_advisorSkippedTicket(ticket)) advisorSkipped++;
   }
   return _KpiStats(totalRequests: total, totalCompleted: completed, advisorSkippedCount: advisorSkipped);
 }
 
-/// هل تخطَّى الطالب مرحلة المرشد كليًا؟ - المرشد لم يعمل على أي من إجراءات
-/// هذا الطالب إطلاقًا، لكن منسّق القسم أو منسّق الكلية أنجز شيئًا منها -
-/// يعني المرشد بالاسم (`ticket['advisor']`) هو من يحتاج متابعة، لا "التأخر".
-bool _advisorSkippedTicket(Map<String, dynamic> ticket) {
-  if (ticketOutcomeForField(ticket, 'advisor_status') != TicketAdvisorOutcome.notStarted) return false;
-  return ticketOutcomeForField(ticket, 'coordinator_status') != TicketAdvisorOutcome.notStarted ||
-      ticketOutcomeForField(ticket, 'college_status') != TicketAdvisorOutcome.notStarted;
+/// هل تجاوز هذا الإجراء المستقل مستوى المرشد دون أن يعمل عليه؟ - المرشد لم
+/// يعمل عليه إطلاقًا (حالته فارغة)، لكن منسّق القسم أو منسّق الكلية أنجزا/
+/// عالجا شيئًا فيه - يعني المرشد بالاسم (`ticket['advisor']`) هو من يحتاج
+/// متابعة على هذا الإجراء تحديدًا، لا "التأخر" (سليمان 2026-08-22: كل صف/
+/// إجراء مستقل، لا تجميع على مستوى الطالب).
+bool _actionSkippedByAdvisor(Map<String, dynamic> action) {
+  if (_actionOutcomeForField(action, 'advisor_status') != _ActionOutcome.notStarted) return false;
+  return _actionOutcomeForField(action, 'coordinator_status') != _ActionOutcome.notStarted ||
+      _actionOutcomeForField(action, 'college_status') != _ActionOutcome.notStarted;
 }
 
-/// نفس فكرة [_advisorSkippedTicket] لمنسّق القسم - لم يعمل على أي إجراء
-/// إطلاقًا، لكن منسّق الكلية أنجز شيئًا منها بدلًا عنه.
-bool _coordinatorSkippedTicket(Map<String, dynamic> ticket) {
-  if (ticketOutcomeForField(ticket, 'coordinator_status') != TicketAdvisorOutcome.notStarted) return false;
-  return ticketOutcomeForField(ticket, 'college_status') != TicketAdvisorOutcome.notStarted;
+/// نفس فكرة [_actionSkippedByAdvisor] لمنسّق القسم - لم يعمل على هذا
+/// الإجراء إطلاقًا، لكن منسّق الكلية عالج شيئًا فيه بدلًا عنه.
+bool _actionSkippedByCoordinator(Map<String, dynamic> action) {
+  if (_actionOutcomeForField(action, 'coordinator_status') != _ActionOutcome.notStarted) return false;
+  return _actionOutcomeForField(action, 'college_status') != _ActionOutcome.notStarted;
 }
 
 /// سجل مساءلة مرشد واحد بالاسم - كم طالبًا تخطّى المرشد حالته كليًا فأُنجزت
@@ -382,13 +403,18 @@ List<_AdvisorAccountability> _computeAdvisorAccountability(List<Map<String, dyna
   final counts = <String, int>{};
   final meta = <String, ({String name, String dept, String shatr})>{};
   for (final ticket in tickets) {
-    if (!_advisorSkippedTicket(ticket)) continue;
+    final actions = (ticket['actions'] as List?) ?? const [];
+    final skippedCount = actions
+        .map((raw) => Map<String, dynamic>.from(raw as Map))
+        .where(_actionSkippedByAdvisor)
+        .length;
+    if (skippedCount == 0) continue;
     final name = (ticket['advisor'] ?? '').toString().trim();
     if (name.isEmpty) continue;
     final dept = _DashboardData._displayDepartment((ticket['department'] ?? '').toString());
     final shatr = _shatrDisplayLabel((ticket['shatr'] ?? '').toString());
     final key = '$name|$dept|$shatr';
-    counts[key] = (counts[key] ?? 0) + 1;
+    counts[key] = (counts[key] ?? 0) + skippedCount;
     meta[key] = (name: name, dept: dept, shatr: shatr);
   }
   final list = counts.entries.map((e) {
@@ -403,11 +429,16 @@ List<_CoordinatorAccountability> _computeCoordinatorAccountability(List<Map<Stri
   final counts = <String, int>{};
   final meta = <String, ({String dept, String shatr})>{};
   for (final ticket in tickets) {
-    if (!_coordinatorSkippedTicket(ticket)) continue;
+    final actions = (ticket['actions'] as List?) ?? const [];
+    final skippedCount = actions
+        .map((raw) => Map<String, dynamic>.from(raw as Map))
+        .where(_actionSkippedByCoordinator)
+        .length;
+    if (skippedCount == 0) continue;
     final dept = _DashboardData._displayDepartment((ticket['department'] ?? '').toString());
     final shatr = _shatrDisplayLabel((ticket['shatr'] ?? '').toString());
     final key = '$dept|$shatr';
-    counts[key] = (counts[key] ?? 0) + 1;
+    counts[key] = (counts[key] ?? 0) + skippedCount;
     meta[key] = (dept: dept, shatr: shatr);
   }
   final list = counts.entries.map((e) {
@@ -456,7 +487,7 @@ class _SectionTitle extends StatelessWidget {
   final IconData icon;
   final Widget? trailing;
 
-  const _SectionTitle({required this.title, required this.icon, this.trailing});
+  const _SectionTitle({required this.title, required this.icon}) : trailing = null;
 
   @override
   Widget build(BuildContext context) {
@@ -493,8 +524,7 @@ class _MiniDonut extends StatelessWidget {
     required this.color,
     this.size = 32,
     this.strokeWidth = 4.5,
-    this.centerText,
-  });
+  }) : centerText = null;
 
   @override
   Widget build(BuildContext context) {
@@ -777,9 +807,9 @@ class _KpiRow extends StatelessWidget {
         accent: AppColors.green,
       ),
       _KpiCard(
-        title: 'طلاب تخطّى المرشد حالاتهم',
+        title: 'حالات تجاوزت مستوى المرشد دون إجراء',
         value: '$skipped',
-        meta: skipped == 0 ? 'لا توجد حالات تخطّت المرشد - $scopeLabel' : 'أُنجزت لاحقًا عند منسّق القسم ضمن $scopeLabel - راجع القائمة أدناه',
+        meta: skipped == 0 ? 'لا توجد حالات تجاوزت المرشد - $scopeLabel' : 'عُولجت لاحقًا عند منسّق القسم ضمن $scopeLabel - راجع القائمة أدناه',
         icon: Icons.person_off_outlined,
         accent: AppColors.errorRed,
       ),
@@ -1067,19 +1097,19 @@ class _KpiCard extends StatelessWidget {
 /// متابعة سير العمل - أُعيد تصميمها (سليمان 2026-08-21: "أريد فعلًا أتابع سير
 /// العمل للمرشدين والمنسّقين ومنسّقي الكلية") من شريط 6 مراحل بأرقام مجردة
 /// إلى ثلاث بطاقات دور واحدة لكل مستوى تصعيد (مرشد ← منسّق قسم ← منسّق كلية)،
-/// كل بطاقة تُظهر دائمًا وبلا حاجة لأي نقر تصنيف كل طالب من واقع البيانات
-/// الفعلية: منفَّذ بالكامل/تنفيذ جزئي/مرفوض بالكامل/لم يُعمَل عليه بعد -
-/// بنفس منطق [ticketOutcomeForField] لكل من الأعمدة الثلاثة.
+/// كل بطاقة تُظهر دائمًا وبلا حاجة لأي نقر تصنيف كل إجراء مستقل من واقع
+/// البيانات الفعلية على ثلاث حالات فقط: تم التنفيذ/تعذّر التنفيذ (تم
+/// التصعيد)/لم يُعمَل عليه بعد - بلا "تنفيذ جزئي" (سليمان 2026-08-22) -
+/// بنفس منطق [_actionOutcomeForField] لكل من الأعمدة الثلاثة.
 class _RoleProgress {
   final String role;
-  final Map<TicketAdvisorOutcome, int> breakdown;
+  final Map<_ActionOutcome, int> breakdown;
   const _RoleProgress({required this.role, required this.breakdown});
 
   int get total => breakdown.values.fold(0, (a, b) => a + b);
-  int get complete => breakdown[TicketAdvisorOutcome.complete] ?? 0;
-  int get partial => breakdown[TicketAdvisorOutcome.partial] ?? 0;
-  int get rejected => breakdown[TicketAdvisorOutcome.rejected] ?? 0;
-  int get notStarted => breakdown[TicketAdvisorOutcome.notStarted] ?? 0;
+  int get complete => breakdown[_ActionOutcome.complete] ?? 0;
+  int get escalated => breakdown[_ActionOutcome.escalated] ?? 0;
+  int get notStarted => breakdown[_ActionOutcome.notStarted] ?? 0;
 }
 
 class _WorkflowSection extends StatelessWidget {
@@ -1358,8 +1388,7 @@ class _RoleProgressCard extends StatelessWidget {
   const _RoleProgressCard({required this.progress});
 
   static const _completeColor = AppColors.green;
-  static const _partialColor = AppColors.gold;
-  static const _rejectedColor = Color(0xFFD9534F);
+  static const _escalatedColor = AppColors.gold;
   static const _notStartedColor = Color(0xFF9AA5B1);
 
   @override
@@ -1383,27 +1412,14 @@ class _RoleProgressCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          // شبكة عمودين × صفّين بدل عمود رأسي واحد بأربعة صفوف - يقلّص ارتفاع
-          // القسم تقريبًا للنصف بلا أي تصغير للخط أو الأشرطة (سليمان
-          // 2026-08-22: "متابعة سير العمل لا أستطيع رؤيتها كاملة إلا
-          // بالتمرير"), يمسّ هذه البطاقة فقط بلا أي أثر على بقية الصفحة.
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: _outcomeRow('منفَّذ بالكامل', progress.complete, progress.total, _completeColor)),
-              const SizedBox(width: 14),
-              Expanded(child: _outcomeRow('تنفيذ جزئي', progress.partial, progress.total, _partialColor)),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: _outcomeRow('مرفوض بالكامل', progress.rejected, progress.total, _rejectedColor)),
-              const SizedBox(width: 14),
-              Expanded(child: _outcomeRow('لم يُعمَل عليه بعد', progress.notStarted, progress.total, _notStartedColor)),
-            ],
-          ),
+          // ثلاث حالات فقط بعد إلغاء "تنفيذ جزئي" (سليمان 2026-08-22: كل
+          // إجراء/صف مستقل يُصنَّف لحالة واحدة حصرًا) - صف عمودي مضغوط يبقي
+          // البطاقة بنفس الحجم المعتمَد بلا حاجة لشبكة عمودين.
+          _outcomeRow('تم التنفيذ', progress.complete, progress.total, _completeColor),
+          const SizedBox(height: 8),
+          _outcomeRow('تعذّر التنفيذ / تم التصعيد', progress.escalated, progress.total, _escalatedColor),
+          const SizedBox(height: 8),
+          _outcomeRow('لم يُعمَل عليه بعد', progress.notStarted, progress.total, _notStartedColor),
         ],
       ),
     );
