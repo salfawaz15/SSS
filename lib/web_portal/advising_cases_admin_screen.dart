@@ -834,18 +834,38 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
     );
   }
 
+  static const _kAllQuotaStatuses = 'كل الحالات';
+  static const List<String> _quotaStatusOptions = [_kAllQuotaStatuses, 'فوق النصاب', 'دون النصاب', 'متوازن'];
+  String _quotaStatusFilter = _kAllQuotaStatuses;
+
   Widget _tabQuota() {
     final list = _analysis.quotaReport
         .where((q) => _deptMatches(q.advisor.department) &&
             _advisorMatches(q.advisor.name) &&
-            _matchesSearch(q.advisor.name, q.advisor.staffNumber))
+            _matchesSearch(q.advisor.name, q.advisor.staffNumber) &&
+            (_quotaStatusFilter == _kAllQuotaStatuses || _quotaStatusLabel(q.status) == _quotaStatusFilter))
         .toList();
-    return _buildPanel(
-      title: 'تقرير النصاب (فوق/دون الحصة العادلة)',
-      headers: const ['المرشد', 'القسم', 'العدد الحالي', 'الحصة العادلة', 'الحالة'],
-      rows: [
-        for (final q in list)
-          [displayName(q.advisor.name), q.advisor.department, '${q.actualCount}', '${q.fairShare.round()}', _quotaStatusLabel(q.status)],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 240,
+          child: DropdownMenu<String>(
+            label: const Text('حالة النصاب'),
+            initialSelection: _quotaStatusFilter,
+            dropdownMenuEntries: _quotaStatusOptions.map((o) => DropdownMenuEntry(value: o, label: o)).toList(),
+            onSelected: (v) => setState(() => _quotaStatusFilter = v ?? _kAllQuotaStatuses),
+          ),
+        ),
+        const SizedBox(height: 14),
+        _buildPanel(
+          title: 'تقرير النصاب (فوق/دون الحصة العادلة)',
+          headers: const ['المرشد', 'القسم', 'العدد الحالي', 'الحصة العادلة', 'الحالة'],
+          rows: [
+            for (final q in list)
+              [displayName(q.advisor.name), q.advisor.department, '${q.actualCount}', '${q.fairShare.round()}', _quotaStatusLabel(q.status)],
+          ],
+        ),
       ],
     );
   }
