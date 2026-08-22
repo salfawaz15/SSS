@@ -18,6 +18,8 @@ import '../services/instructor_schedule_pdf_service.dart';
 import '../services/instructor_schedule_table.dart';
 import '../services/outside_course_repository.dart';
 import '../theme/app_theme.dart';
+import '../theme/dashboard_table.dart';
+import '../theme/dashboard_tokens.dart';
 import '../theme/filter_pills.dart';
 import '../utils/name_display.dart';
 import 'admin_nav.dart';
@@ -380,52 +382,11 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
                           padding: const EdgeInsets.only(bottom: 10),
                           child: Text(_reportTitle(), style: AppTextStyles.h3(color: AppColors.greenDark)),
                         ),
-                        Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: AppColors.gold.withValues(alpha: 0.6)),
-                      ),
-                      clipBehavior: Clip.antiAlias,
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: DataTable(
-                          headingRowColor: WidgetStateProperty.all(AppColors.green),
-                          headingTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                          columns: [
-                            DataColumn(label: _centerHeader('اسم المقرر')),
-                            DataColumn(label: _centerHeader('الشعبة')),
-                            DataColumn(label: _centerHeader('المقرر')),
-                            DataColumn(label: _centerHeader('عدد الساعات')),
-                            DataColumn(label: _centerHeader('النشاط')),
-                            DataColumn(label: _centerHeader('اعلى حد')),
-                            DataColumn(label: _centerHeader('المسجلين')),
-                            DataColumn(label: _centerHeader('اليوم')),
-                            DataColumn(label: _centerHeader('الوقت')),
-                            DataColumn(label: _centerHeader('المحاضر')),
-                            if (_shatrFilter == _kAllShatr) DataColumn(label: _centerHeader('الشطر')),
-                          ],
-                          rows: [
-                            for (var i = 0; i < rows.length; i++)
-                              DataRow(
-                                color: WidgetStateProperty.all(i.isEven ? Colors.white : const Color(0xFFF7F5EF)),
-                                cells: [
-                                  DataCell(Center(child: Text(rows[i].record.courseName, textAlign: TextAlign.center))),
-                                  DataCell(_sectionCell(rows[i].record)),
-                                  DataCell(Center(child: Text(rows[i].record.courseCode, textAlign: TextAlign.center))),
-                                  DataCell(_hoursCell(rows[i].record)),
-                                  DataCell(_activityCell(rows[i].record)),
-                                  DataCell(_maxCapacityCell(rows[i].record)),
-                                  DataCell(_registeredCell(rows[i].record)),
-                                  DataCell(_dayCell(rows[i].record)),
-                                  DataCell(_timeCell(rows[i].record)),
-                                  DataCell(_instructorCell(rows[i].record)),
-                                  if (_shatrFilter == _kAllShatr) DataCell(Center(child: _shatrChip(rows[i].shatr))),
-                                ],
-                              ),
-                          ],
+                        _scheduleDashTable(
+                          rowCount: rows.length,
+                          recordAt: (i) => rows[i].record,
+                          shatrAt: _shatrFilter == _kAllShatr ? (i) => rows[i].shatr : null,
                         ),
-                      ),
-                    ),
                       ],
                     ),
                   ),
@@ -614,48 +575,79 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
   /// - يُستخدم لعرض شعب "مواد خارج الكلية" بنفس شكل الجدول العادي بدل بطاقات
   /// متراصة لا تُظهر اليوم/الوقت/المحاضر.
   Widget _recordsDataTable(List<CourseSectionRecord> records) {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.gold.withValues(alpha: 0.6)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: DataTable(
-          headingRowColor: WidgetStateProperty.all(AppColors.green),
-          headingTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-          columns: [
-            DataColumn(label: _centerHeader('اسم المقرر')),
-            DataColumn(label: _centerHeader('الشعبة')),
-            DataColumn(label: _centerHeader('المقرر')),
-            DataColumn(label: _centerHeader('عدد الساعات')),
-            DataColumn(label: _centerHeader('النشاط')),
-            DataColumn(label: _centerHeader('اعلى حد')),
-            DataColumn(label: _centerHeader('المسجلين')),
-            DataColumn(label: _centerHeader('اليوم')),
-            DataColumn(label: _centerHeader('الوقت')),
-            DataColumn(label: _centerHeader('المحاضر')),
-          ],
-          rows: [
-            for (var i = 0; i < records.length; i++)
-              DataRow(
-                color: WidgetStateProperty.all(i.isEven ? Colors.white : const Color(0xFFF7F5EF)),
-                cells: [
-                  DataCell(Center(child: Text(records[i].courseName, textAlign: TextAlign.center))),
-                  DataCell(_sectionCell(records[i])),
-                  DataCell(Center(child: Text(records[i].courseCode, textAlign: TextAlign.center))),
-                  DataCell(_hoursCell(records[i])),
-                  DataCell(_activityCell(records[i])),
-                  DataCell(_maxCapacityCell(records[i])),
-                  DataCell(_registeredCell(records[i])),
-                  DataCell(_dayCell(records[i])),
-                  DataCell(_timeCell(records[i])),
-                  DataCell(_instructorCell(records[i])),
-                ],
-              ),
-          ],
-        ),
+    return _scheduleDashTable(rowCount: records.length, recordAt: (i) => records[i]);
+  }
+
+  /// جدول تسكين الشعب بهوية [DashTable]/[DashTableCard] الموحَّدة (نفس هوية
+  /// جدولَي أعضاء هيئة التدريس/الإداريين بـcollege_roster_admin_screen.dart)
+  /// - مشترك بين جدول التسكين الرئيسي و"مواد خارج الكلية" (نفس الأعمدة
+  /// والترتيب بالضبط)، بديلاً عن تكرار بناء DataTable مرتين. `shatrAt` اختياري:
+  /// null يعني إخفاء عمود الشطر تمامًا (حالة "مواد خارج الكلية" وحالة فلترة
+  /// شطر واحد بالجدول الرئيسي).
+  ///
+  /// عمود "أعلى حد" يعرض شريط تقدّم ملوَّن (نسبة المسجلين/أعلى حد) بدل رقم
+  /// عادي - أخضر ≤50%، برتقالي بين 50% و<100%، أحمر عند الاكتمال/التجاوز
+  /// (سليمان 2026-08-23: اعتمد هذا التصميم من معاينة HTML). عمود "النشاط"
+  /// يستخدم [DashBadgeCell] (نظري = أخضر، عملي = ذهبي) بدل نص عادي. منطق
+  /// "الخلية المقسومة" (نظري/عملي بنفس الصف عبر `_splitCell`) محفوظ بالكامل
+  /// داخل كل دالة خلية (`_activityCell`/`_maxCapacityCell`/...).
+  Widget _scheduleDashTable({
+    required int rowCount,
+    required CourseSectionRecord Function(int) recordAt,
+    Shatr Function(int)? shatrAt,
+  }) {
+    final showShatr = shatrAt != null;
+    final columns = <DashTableColumn>[
+      const DashTableColumn(key: 'courseName', label: 'اسم المقرر', flex: 22),
+      const DashTableColumn(key: 'section', label: 'الشعبة', flex: 8),
+      const DashTableColumn(key: 'code', label: 'المقرر', flex: 10),
+      const DashTableColumn(key: 'hours', label: 'عدد الساعات', flex: 8),
+      const DashTableColumn(key: 'activity', label: 'النشاط', flex: 10),
+      const DashTableColumn(key: 'maxCapacity', label: 'اعلى حد', flex: 15),
+      const DashTableColumn(key: 'registered', label: 'المسجلين', flex: 8),
+      const DashTableColumn(key: 'day', label: 'اليوم', flex: 10),
+      const DashTableColumn(key: 'time', label: 'الوقت', flex: 12),
+      const DashTableColumn(key: 'instructor', label: 'المحاضر', flex: 16),
+      if (showShatr) const DashTableColumn(key: 'shatr', label: 'الشطر', flex: 8),
+    ];
+
+    Widget cell(BuildContext context, int i, String key) {
+      final r = recordAt(i);
+      switch (key) {
+        case 'courseName':
+          return Text(r.courseName, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12.5));
+        case 'section':
+          return _sectionCell(r);
+        case 'code':
+          return Text(r.courseCode, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12.5));
+        case 'hours':
+          return _hoursCell(r);
+        case 'activity':
+          return _activityCell(r);
+        case 'maxCapacity':
+          return _maxCapacityCell(r);
+        case 'registered':
+          return _registeredCell(r);
+        case 'day':
+          return _dayCell(r);
+        case 'time':
+          return _timeCell(r);
+        case 'instructor':
+          return _instructorCell(r);
+        case 'shatr':
+          return _shatrChip(shatrAt!(i));
+        default:
+          return const SizedBox.shrink();
+      }
+    }
+
+    final minWidth = 1050.0 + (showShatr ? 90.0 : 0.0);
+    return DashTableCard(
+      minWidth: minWidth,
+      table: DashTable(
+        columns: columns,
+        rowCount: rowCount,
+        cellBuilder: cell,
       ),
     );
   }
@@ -827,9 +819,6 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
     );
   }
 
-  /// عنوان عمود موسَّط داخل خلية الرأس (بدل المحاذاة الافتراضية).
-  Widget _centerHeader(String label) => Center(child: Text(label, textAlign: TextAlign.center));
-
   /// عند وجود شعبة عملية مرتبطة، تُقسَّم الخلية إلى صفّين: الأعلى للنظري
   /// والأسفل للعملي (بدل دمجهما في سطر واحد) حسب طلب المستخدم صراحةً، مع
   /// توسيط كل المحتوى أفقيًا وعموديًا داخل الخلية.
@@ -928,16 +917,38 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
 
   Widget _activityCell(CourseSectionRecord r) {
     if (r.practicalSection == null) {
-      return _singleCenteredCell(const Text('نظري'), _singleValueCellMinHeight(r));
+      return _singleCenteredCell(const DashBadgeCell(label: 'نظري', color: DashTokens.green900), _singleValueCellMinHeight(r));
     }
-    return _splitCell(const Text('نظري'), const Text('عملي'));
+    return _splitCell(
+      const DashBadgeCell(label: 'نظري', color: DashTokens.green900),
+      const DashBadgeCell(label: 'عملي', color: DashTokens.gold600),
+    );
+  }
+
+  /// لون شريط تقدّم الإشغال حسب نسبة المسجلين لأعلى حد - أخضر ≤50%، برتقالي
+  /// بين 50% و<100%، أحمر عند الاكتمال (=100%) أو التجاوز (سليمان
+  /// 2026-08-23: تصميم معتمَد من معاينة HTML).
+  Color _capacityColor(int maxCapacity, int registered) {
+    if (maxCapacity <= 0) return DashTokens.textMuted;
+    final ratio = registered / maxCapacity;
+    if (ratio >= 1.0) return Colors.red.shade700;
+    if (ratio > 0.5) return Colors.orange.shade700;
+    return DashTokens.success;
+  }
+
+  Widget _capacityProgressCell(int maxCapacity, int registered) {
+    final ratio = maxCapacity <= 0 ? 0.0 : registered / maxCapacity;
+    return DashProgressCell(value: ratio, color: _capacityColor(maxCapacity, registered));
   }
 
   Widget _maxCapacityCell(CourseSectionRecord r) {
     if (r.practicalSection == null) {
-      return _singleCenteredCell(Text('${r.theoryMaxCapacity}'), _singleValueCellMinHeight(r));
+      return _singleCenteredCell(_capacityProgressCell(r.theoryMaxCapacity, r.theoryRegistered), _singleValueCellMinHeight(r));
     }
-    return _splitCell(Text('${r.theoryMaxCapacity}'), Text('${r.practicalMaxCapacity ?? 0}'));
+    return _splitCell(
+      _capacityProgressCell(r.theoryMaxCapacity, r.theoryRegistered),
+      _capacityProgressCell(r.practicalMaxCapacity ?? 0, r.practicalRegistered ?? 0),
+    );
   }
 
   Widget _registeredCell(CourseSectionRecord r) {
@@ -1499,13 +1510,12 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppColors.gold.withValues(alpha: 0.6)),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: SingleChildScrollView(
+        // بطاقة موحَّدة (حدود/ظل DashTokens) بدل الحد الذهبي المستقل السابق
+        // - سليمان 2026-08-23: التصميم الداخلي (DataTable برأس أخضر، الخلية
+        // المقسومة نظري/عملي، تلوين الصفوف بالتبادل) "جميل جدًا" فبقي بلا
+        // تغيير، فقط الإطار الخارجي تُوحِّد مع بقية الموقع.
+        DashTableCard(
+          table: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: DataTable(
               dataRowMinHeight: 44,
@@ -1567,9 +1577,9 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
-              color: AppColors.green.withValues(alpha: 0.08),
+              color: DashTokens.success.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: AppColors.gold.withValues(alpha: 0.5)),
+              border: Border.all(color: DashTokens.border),
             ),
             child: Text('مجموع الساعات المعتمدة: $totalHours',
                 style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.green)),

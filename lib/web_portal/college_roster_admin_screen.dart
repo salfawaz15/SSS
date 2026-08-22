@@ -10,6 +10,8 @@ import '../models/course_section_record.dart';
 import '../services/college_roster_repository.dart';
 import '../services/course_schedule_repository.dart';
 import '../theme/app_theme.dart';
+import '../theme/dashboard_table.dart';
+import '../theme/dashboard_tokens.dart';
 import '../theme/filter_pills.dart';
 import '../utils/name_display.dart';
 import 'admin_nav.dart';
@@ -433,83 +435,63 @@ class _CollegeRosterAdminScreenState extends State<CollegeRosterAdminScreen> {
     );
   }
 
+  /// كل عمود قابل للفرز مرتبط بمفتاح دلالي (`_sortKey`) لا رقم ثابت - لأن
+  /// عمودَي القسم/الشطر يظهران أو يختفيان حسب الفلتر النشط فيتحرّك ترقيم
+  /// الأعمدة الفعلي (سليمان 2026-08-09: فرز الجدول بالضغط على رأس أي عمود،
+  /// زي المواقع الاحترافية).
+  ///
+  /// الهوية البصرية: هذا الجدول أول تطبيق لمكوّن [DashTable]/[DashTableCard]
+  /// العام (`theme/dashboard_table.dart`) - نفس تصميم بطاقة "أفضل 5 مرشدين
+  /// إنجازًا" (`ticket_action_stats_panel.dart`)، بديلاً عن `DataTable`
+  /// القياسي السابق. `showFirstRowStar: false` لأن هذا الجدول غير مرتَّب
+  /// حسب إنجاز/ترتيب تنازلي.
   Widget _buildFacultyTable() {
     final rows = _filtered;
     if (rows.isEmpty) {
       return const Center(child: Text('لا توجد بيانات - ارفع الملف الرسمي أولاً'));
     }
+    final showDept = _deptFilter == _kAllDepartments;
+    final showShatr = _shatrFilter == _kAllShatr;
+    final columns = <DashTableColumn>[
+      const DashTableColumn(key: 'name', label: 'الاسم', flex: 20, sortable: true, align: TextAlign.right),
+      if (showDept) const DashTableColumn(key: 'department', label: 'القسم / الجهة', flex: 16, sortable: true),
+      if (showShatr) const DashTableColumn(key: 'shatr', label: 'الشطر', flex: 8),
+      const DashTableColumn(key: 'position', label: 'المنصب', flex: 20, sortable: true),
+      const DashTableColumn(key: 'advisingLoad', label: 'عبء الإرشاد', flex: 12, sortable: true),
+      const DashTableColumn(key: 'teachingLoad', label: 'العبء الدراسي', flex: 10, sortable: true),
+    ];
+
+    Widget cell(BuildContext context, int i, String key) {
+      final m = rows[i];
+      switch (key) {
+        case 'name':
+          return Text(m.name, textAlign: TextAlign.right, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: DashTokens.textPrimary));
+        case 'department':
+          return Text(FacultySortOrder.displayDepartment(m.department), textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: DashTokens.textSecondary));
+        case 'shatr':
+          return Text(m.shatr.ifEmptyDash(), style: const TextStyle(fontSize: 12, color: DashTokens.textSecondary));
+        case 'position':
+          return Text(_positionsDisplay(m).ifEmptyDash(), textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: DashTokens.textSecondary));
+        case 'advisingLoad':
+          return _loadChip(m);
+        case 'teachingLoad':
+          return _teachingLoadChip(m);
+        default:
+          return const SizedBox.shrink();
+      }
+    }
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
-      child: Center(
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppColors.gold.withValues(alpha: 0.6)),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Builder(
-              builder: (context) {
-                // كل عمود قابل للفرز مرتبط بمفتاح دلالي (`_sortKey`) لا رقم
-                // ثابت - لأن عمودَي القسم/الشطر يظهران أو يختفيان حسب الفلتر
-                // النشط فيتحرّك ترقيم الأعمدة الفعلي (سليمان 2026-08-09:
-                // فرز الجدول بالضغط على رأس أي عمود، زي المواقع الاحترافية).
-                final sortableColumns = <({String key, String label})>[
-                  (key: 'name', label: 'الاسم'),
-                  if (_deptFilter == _kAllDepartments) (key: 'department', label: 'القسم / الجهة'),
-                  (key: 'position', label: 'المنصب'),
-                  (key: 'advisingLoad', label: 'عبء الإرشاد'),
-                  (key: 'teachingLoad', label: 'العبء الدراسي'),
-                ];
-                int? sortColumnIndex;
-                var idx = 0;
-                final columns = <DataColumn>[];
-                for (final c in sortableColumns) {
-                  if (c.key == _sortKey) sortColumnIndex = idx;
-                  columns.add(DataColumn(
-                    label: Expanded(child: Center(child: Text(c.label))),
-                    onSort: (_, _) => _onSort(c.key),
-                  ));
-                  idx++;
-                  if (c.key == 'department' && _shatrFilter == _kAllShatr) {
-                    columns.add(const DataColumn(label: Expanded(child: Center(child: Text('الشطر')))));
-                    idx++;
-                  }
-                }
-                return DataTable(
-                  headingRowColor: WidgetStateProperty.all(AppColors.green),
-                  headingTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                  sortColumnIndex: sortColumnIndex,
-                  sortAscending: _sortAscending,
-                  columns: columns,
-                  rows: [
-                    for (var i = 0; i < rows.length; i++)
-                      DataRow(
-                        color: WidgetStateProperty.all(_isAbsentMember(rows[i])
-                            ? Colors.grey.shade200
-                            : (i.isEven ? Colors.white : const Color(0xFFF7F5EF))),
-                        cells: [
-                          DataCell(Center(child: Text(rows[i].name, textAlign: TextAlign.center))),
-                          if (_deptFilter == _kAllDepartments)
-                            DataCell(Center(
-                                child: Text(FacultySortOrder.displayDepartment(rows[i].department),
-                                    textAlign: TextAlign.center))),
-                          if (_shatrFilter == _kAllShatr)
-                            DataCell(Center(child: Text(rows[i].shatr.isEmpty ? '—' : rows[i].shatr))),
-                          DataCell(Center(
-                              child: Text(
-                                  _positionsDisplay(rows[i]).ifEmptyDash(),
-                                  textAlign: TextAlign.center))),
-                          DataCell(Center(child: _loadChip(rows[i]))),
-                          DataCell(Center(child: _teachingLoadChip(rows[i]))),
-                        ],
-                      ),
-                  ],
-                );
-              },
-            ),
-          ),
+      child: DashTableCard(
+        table: DashTable(
+          columns: columns,
+          rowCount: rows.length,
+          sortKey: _sortKey,
+          sortAscending: _sortAscending,
+          onSort: _onSort,
+          cellBuilder: cell,
+          rowBackground: (i) => _isAbsentMember(rows[i]) ? Colors.grey.shade100 : null,
         ),
       ),
     );
@@ -517,58 +499,51 @@ class _CollegeRosterAdminScreenState extends State<CollegeRosterAdminScreen> {
 
   /// جدول الإداريين - مستقل تمامًا عن جدول أعضاء هيئة التدريس: لا عبء إرشاد
   /// ولا شطر ولا أي بيانات خاصة بعضو هيئة التدريس، فقط بيانات الإداري نفسه.
+  /// بلا فرز (بطلب سليمان صراحةً - ترتيب ملف الإكسل الأصلي يبقى كما هو)،
+  /// لذا كل الأعمدة هنا `sortable: false`.
   Widget _buildAdminTable() {
     final rows = _filtered;
     if (rows.isEmpty) {
       return const Center(child: Text('لا توجد بيانات إدارية - ارفع الملف الرسمي أولاً'));
     }
+    final showDept = _deptFilter == _kAllDepartments;
+    final showShatr = _shatrFilter == _kAllShatr;
+    final columns = <DashTableColumn>[
+      const DashTableColumn(key: 'name', label: 'الاسم', flex: 18, align: TextAlign.right),
+      if (showDept) const DashTableColumn(key: 'department', label: 'الجهة', flex: 14),
+      if (showShatr) const DashTableColumn(key: 'shatr', label: 'الشطر', flex: 8),
+      const DashTableColumn(key: 'position', label: 'المسمى الوظيفي', flex: 18),
+      const DashTableColumn(key: 'office', label: 'رقم المكتب', flex: 10),
+      const DashTableColumn(key: 'notes', label: 'ملاحظات', flex: 16),
+    ];
+
+    Widget cell(BuildContext context, int i, String key) {
+      final m = rows[i];
+      switch (key) {
+        case 'name':
+          return Text(m.name, textAlign: TextAlign.right, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: DashTokens.textPrimary));
+        case 'department':
+          return Text(FacultySortOrder.displayDepartment(m.department), textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: DashTokens.textSecondary));
+        case 'shatr':
+          return Text(m.shatr.ifEmptyDash(), style: const TextStyle(fontSize: 12, color: DashTokens.textSecondary));
+        case 'position':
+          return Text(_positionsDisplay(m).ifEmptyDash(), textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: DashTokens.textSecondary));
+        case 'office':
+          return Text(m.office.ifEmptyDash(), style: const TextStyle(fontSize: 12, color: DashTokens.textSecondary));
+        case 'notes':
+          return Text(m.notes.ifEmptyDash(), textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: DashTokens.textSecondary));
+        default:
+          return const SizedBox.shrink();
+      }
+    }
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
-      child: Center(
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppColors.gold.withValues(alpha: 0.6)),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: DataTable(
-              headingRowColor: WidgetStateProperty.all(AppColors.green),
-              headingTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-              columns: [
-                const DataColumn(label: Expanded(child: Center(child: Text('الاسم')))),
-                if (_deptFilter == _kAllDepartments)
-                  const DataColumn(label: Expanded(child: Center(child: Text('الجهة')))),
-                if (_shatrFilter == _kAllShatr)
-                  const DataColumn(label: Expanded(child: Center(child: Text('الشطر')))),
-                const DataColumn(label: Expanded(child: Center(child: Text('المسمى الوظيفي')))),
-                const DataColumn(label: Expanded(child: Center(child: Text('رقم المكتب')))),
-                const DataColumn(label: Expanded(child: Center(child: Text('ملاحظات')))),
-              ],
-              rows: [
-                for (var i = 0; i < rows.length; i++)
-                  DataRow(
-                    color: WidgetStateProperty.all(i.isEven ? Colors.white : const Color(0xFFF7F5EF)),
-                    cells: [
-                      DataCell(Center(child: Text(rows[i].name, textAlign: TextAlign.center))),
-                      if (_deptFilter == _kAllDepartments)
-                        DataCell(Center(
-                            child: Text(FacultySortOrder.displayDepartment(rows[i].department),
-                                textAlign: TextAlign.center))),
-                      if (_shatrFilter == _kAllShatr)
-                        DataCell(Center(child: Text(rows[i].shatr.ifEmptyDash()))),
-                      DataCell(Center(
-                          child: Text(
-                              _positionsDisplay(rows[i]).ifEmptyDash(),
-                              textAlign: TextAlign.center))),
-                      DataCell(Center(child: Text(rows[i].office.ifEmptyDash()))),
-                      DataCell(Center(child: Text(rows[i].notes.ifEmptyDash(), textAlign: TextAlign.center))),
-                    ],
-                  ),
-              ],
-            ),
-          ),
+      child: DashTableCard(
+        table: DashTable(
+          columns: columns,
+          rowCount: rows.length,
+          cellBuilder: cell,
         ),
       ),
     );
