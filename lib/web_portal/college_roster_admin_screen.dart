@@ -453,7 +453,7 @@ class _CollegeRosterAdminScreenState extends State<CollegeRosterAdminScreen> {
     final showDept = _deptFilter == _kAllDepartments;
     final showShatr = _shatrFilter == _kAllShatr;
     final columns = <DashTableColumn>[
-      const DashTableColumn(key: 'name', label: 'الاسم', flex: 20, sortable: true, align: TextAlign.right),
+      const DashTableColumn(key: 'name', label: 'الاسم', flex: 20, sortable: true),
       if (showDept) const DashTableColumn(key: 'department', label: 'القسم / الجهة', flex: 16, sortable: true),
       if (showShatr) const DashTableColumn(key: 'shatr', label: 'الشطر', flex: 8),
       const DashTableColumn(key: 'position', label: 'المنصب', flex: 20, sortable: true),
@@ -465,7 +465,7 @@ class _CollegeRosterAdminScreenState extends State<CollegeRosterAdminScreen> {
       final m = rows[i];
       switch (key) {
         case 'name':
-          return Text(m.name, textAlign: TextAlign.right, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: DashTokens.textPrimary));
+          return Text(m.name, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: DashTokens.textPrimary));
         case 'department':
           return Text(FacultySortOrder.displayDepartment(m.department), textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: DashTokens.textSecondary));
         case 'shatr':
@@ -509,7 +509,7 @@ class _CollegeRosterAdminScreenState extends State<CollegeRosterAdminScreen> {
     final showDept = _deptFilter == _kAllDepartments;
     final showShatr = _shatrFilter == _kAllShatr;
     final columns = <DashTableColumn>[
-      const DashTableColumn(key: 'name', label: 'الاسم', flex: 18, align: TextAlign.right),
+      const DashTableColumn(key: 'name', label: 'الاسم', flex: 18),
       if (showDept) const DashTableColumn(key: 'department', label: 'الجهة', flex: 14),
       if (showShatr) const DashTableColumn(key: 'shatr', label: 'الشطر', flex: 8),
       const DashTableColumn(key: 'position', label: 'المسمى الوظيفي', flex: 18),
@@ -521,7 +521,7 @@ class _CollegeRosterAdminScreenState extends State<CollegeRosterAdminScreen> {
       final m = rows[i];
       switch (key) {
         case 'name':
-          return Text(m.name, textAlign: TextAlign.right, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: DashTokens.textPrimary));
+          return Text(m.name, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: DashTokens.textPrimary));
         case 'department':
           return Text(FacultySortOrder.displayDepartment(m.department), textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: DashTokens.textSecondary));
         case 'shatr':

@@ -1412,14 +1412,21 @@ class _RoleProgressCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          // ثلاث حالات فقط بعد إلغاء "تنفيذ جزئي" (سليمان 2026-08-22: كل
-          // إجراء/صف مستقل يُصنَّف لحالة واحدة حصرًا) - صف عمودي مضغوط يبقي
-          // البطاقة بنفس الحجم المعتمَد بلا حاجة لشبكة عمودين.
-          _outcomeRow('تم التنفيذ', progress.complete, progress.total, _completeColor),
-          const SizedBox(height: 8),
+          // ثلاث حالات فقط بعد إلغاء "تنفيذ جزئي" (سليمان 2026-08-22) - شبكة
+          // صفّين (2+1) بدل عمود رأسي 3 صفوف، لتبقى البطاقة بنفس ارتفاع
+          // الصفّين المعتمَد أصلًا بدل أن تطول رغم قلة الحالات (سليمان
+          // 2026-08-23: لاحظ أن حذف "جزئي" مع عمود رأسي دفع الأقسام التالية
+          // خارج الشاشة بلا تمرير).
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: _outcomeRow('تم التنفيذ', progress.complete, progress.total, _completeColor)),
+              const SizedBox(width: 14),
+              Expanded(child: _outcomeRow('لم يُعمَل عليه بعد', progress.notStarted, progress.total, _notStartedColor)),
+            ],
+          ),
+          const SizedBox(height: 10),
           _outcomeRow('تعذّر التنفيذ / تم التصعيد', progress.escalated, progress.total, _escalatedColor),
-          const SizedBox(height: 8),
-          _outcomeRow('لم يُعمَل عليه بعد', progress.notStarted, progress.total, _notStartedColor),
         ],
       ),
     );
