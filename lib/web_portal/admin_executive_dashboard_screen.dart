@@ -70,13 +70,12 @@ class AdminExecutiveDashboardScreen extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               const _DashboardPageHeading(),
-                              const SizedBox(height: 12),
+                              const SizedBox(height: 8),
                               _FilterableDashboardContent(
                                 data: data,
                                 hardshipCases: hardshipSnap.data!,
                                 supportCases: supportSnap.data!,
                               ),
-                              const SizedBox(height: 12),
                             ],
                           ),
                         ),
@@ -531,7 +530,9 @@ class _FilterableDashboardContent extends StatefulWidget {
 }
 
 class _FilterableDashboardContentState extends State<_FilterableDashboardContent> {
-  _Domain _domain = _Domain.deleteAdd;
+  // "الإرشاد" افتراضيًا (سليمان 2026-08-22): الإرشاد نشاط مستمر طوال الفصل،
+  // بخلاف الحذف والإضافة (نافذة زمنية محدودة) - يُتوقَّع مراجعته أكثر.
+  _Domain _domain = _Domain.advising;
   _ShatrFilter _shatr = _ShatrFilter.all;
   // null = "الكل" - نفس تمييز فلتر القسم بقية اللوحة.
   String? _department;
@@ -608,45 +609,73 @@ class _FilterableDashboardContentState extends State<_FilterableDashboardContent
   Widget build(BuildContext context) {
     final scopeLabel = _filterScopeLabel();
 
+    final toggle = SegmentedButton<_Domain>(
+      segments: const [
+        ButtonSegment(value: _Domain.advising, label: Text('مؤشرات الإرشاد'), icon: Icon(Icons.volunteer_activism_outlined)),
+        ButtonSegment(value: _Domain.deleteAdd, label: Text('مؤشرات الحذف والإضافة'), icon: Icon(Icons.assignment_outlined)),
+      ],
+      selected: {_domain},
+      onSelectionChanged: (s) => setState(() => _domain = s.first),
+      style: SegmentedButton.styleFrom(
+        selectedBackgroundColor: AppColors.greenDark,
+        selectedForegroundColor: Colors.white,
+      ),
+    );
+
+    final filters = Wrap(
+      spacing: 10,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        const Text('تصفية العرض:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF59615D))),
+        _ResetAllChip(active: !_hasFilter, onTap: _resetAll),
+        _ShatrFilterDropdown(value: _shatr, onChanged: (v) => setState(() => _shatr = v)),
+        _DepartmentFilterDropdown(value: _department, onChanged: (v) => setState(() => _department = v)),
+        if (_domain == _Domain.deleteAdd) _PriorityFilterDropdown(value: _priority, onChanged: (v) => setState(() => _priority = v)),
+        if (_domain == _Domain.advising) ...[
+          _CaseTypeFilterDropdown(value: _caseType, onChanged: (v) => setState(() => _caseType = v)),
+          _CaseStatusFilterDropdown(value: _caseStatus, onChanged: (v) => setState(() => _caseStatus = v)),
+        ],
+      ],
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Center(
-          child: SegmentedButton<_Domain>(
-            segments: const [
-              ButtonSegment(value: _Domain.deleteAdd, label: Text('مؤشرات الحذف والإضافة'), icon: Icon(Icons.assignment_outlined)),
-              ButtonSegment(value: _Domain.advising, label: Text('مؤشرات الإرشاد'), icon: Icon(Icons.volunteer_activism_outlined)),
-            ],
-            selected: {_domain},
-            onSelectionChanged: (s) => setState(() => _domain = s.first),
-            style: SegmentedButton.styleFrom(
-              selectedBackgroundColor: AppColors.greenDark,
-              selectedForegroundColor: Colors.white,
-            ),
-          ),
-        ),
-        const SizedBox(height: 14),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(14)),
-          child: Wrap(
-            spacing: 10,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              const Text('تصفية العرض:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF59615D))),
-              _ResetAllChip(active: !_hasFilter, onTap: _resetAll),
-              _ShatrFilterDropdown(value: _shatr, onChanged: (v) => setState(() => _shatr = v)),
-              _DepartmentFilterDropdown(value: _department, onChanged: (v) => setState(() => _department = v)),
-              if (_domain == _Domain.deleteAdd) _PriorityFilterDropdown(value: _priority, onChanged: (v) => setState(() => _priority = v)),
-              if (_domain == _Domain.advising) ...[
-                _CaseTypeFilterDropdown(value: _caseType, onChanged: (v) => setState(() => _caseType = v)),
-                _CaseStatusFilterDropdown(value: _caseStatus, onChanged: (v) => setState(() => _caseStatus = v)),
+        // التبديل وشريط الفلاتر بصف واحد بدل صفّين منفصلين (سليمان
+        // 2026-08-22: يوفّر مساحة رأسية) - يبقيان منفصلين رأسيًا فقط على
+        // الشاشات الضيقة (<900px) حيث لا تتّسع المساحة لدمجهما بصف واحد
+        // مقروء.
+        LayoutBuilder(builder: (context, constraints) {
+          if (constraints.maxWidth < 900) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(child: toggle),
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(14)),
+                  child: filters,
+                ),
               ],
-            ],
-          ),
-        ),
-        const SizedBox(height: 18),
+            );
+          }
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(14)),
+            child: Row(
+              children: [
+                toggle,
+                const SizedBox(width: 16),
+                Container(width: 1, height: 30, color: Colors.grey.shade200),
+                const SizedBox(width: 16),
+                Expanded(child: filters),
+              ],
+            ),
+          );
+        }),
+        const SizedBox(height: 14),
         if (_domain == _Domain.deleteAdd) ..._buildDeleteAddContent(scopeLabel) else ..._buildAdvisingContent(scopeLabel),
       ],
     );
@@ -662,11 +691,11 @@ class _FilterableDashboardContentState extends State<_FilterableDashboardContent
 
     return [
       _KpiRow(kpi: kpi, scopeLabel: scopeLabel),
-      const SizedBox(height: 18),
+      const SizedBox(height: 14),
       _ActionTypeSection(stats: actionTypeStats),
-      const SizedBox(height: 18),
+      const SizedBox(height: 14),
       _WorkflowSection(roleProgress: roleProgress),
-      const SizedBox(height: 18),
+      const SizedBox(height: 14),
       // TODO(معاينة مؤقتة سليمان 2026-08-21): بيانات وهمية لرؤية شكل الحالة
       // غير الفارغة فقط - أزلها وأعد `advisorAccountability`/`coordinatorAccountability`
       // الحقيقيتين قبل أي نشر.
@@ -695,9 +724,9 @@ class _FilterableDashboardContentState extends State<_FilterableDashboardContent
 
     return [
       _AdvisingKpiRow(kpi: kpi, scopeLabel: scopeLabel),
-      const SizedBox(height: 18),
+      const SizedBox(height: 14),
       _ActionTypeSection(stats: typeStats, title: 'توزيع الحالات حسب النوع', unitLabel: 'حالة'),
-      const SizedBox(height: 18),
+      const SizedBox(height: 14),
       _AdvisingStatusSection(breakdown: statusBreakdown),
     ];
   }

@@ -281,25 +281,39 @@ class _BackHomeActionState extends State<_BackHomeAction> {
 
   @override
   Widget build(BuildContext context) {
+    // InkWell بدل GestureDetector الخام - يمنح تركيز لوحة المفاتيح (Tab)
+    // وتفعيلًا بـEnter/Space تلقائيًا، بلا أي تأثير بصري إضافي غير مرغوب
+    // (splash/highlight مُعطَّلان صراحةً للحفاظ على نفس مظهر شفافية التمرير
+    // السابق فقط - بند "حالات focus/hover/keyboard" 2026-08-22).
     return MouseRegion(
-      cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        onTap: () => Navigator.of(context).maybePop(),
-        child: AnimatedOpacity(
-          duration: const Duration(milliseconds: 150),
-          opacity: _hovered ? 0.78 : 1,
-          child: const Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'العودة للرئيسية',
-                style: TextStyle(color: AppColors.greenDark, fontSize: 15, fontWeight: FontWeight.w600),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => Navigator.of(context).maybePop(),
+          borderRadius: BorderRadius.circular(6),
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: Colors.transparent,
+          hoverColor: Colors.transparent,
+          focusColor: AppColors.gold.withValues(alpha: 0.12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 150),
+              opacity: _hovered ? 0.78 : 1,
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'العودة للرئيسية',
+                    style: TextStyle(color: AppColors.greenDark, fontSize: 15, fontWeight: FontWeight.w600),
+                  ),
+                  SizedBox(width: 8),
+                  Icon(Icons.arrow_back, size: 17, color: AppColors.greenDark),
+                ],
               ),
-              SizedBox(width: 8),
-              Icon(Icons.arrow_back, size: 17, color: AppColors.greenDark),
-            ],
+            ),
           ),
         ),
       ),
