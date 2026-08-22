@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../data/faculty_sort_order.dart';
+import '../models/college_roster_member.dart';
 import '../models/course_section_record.dart';
+import '../services/college_roster_repository.dart';
 import '../services/course_schedule_repository.dart' show CourseScheduleRepository, Shatr;
 import '../theme/dashboard_tokens.dart';
+import '../theme/filter_pills.dart';
+import '../utils/name_display.dart';
 import 'admin_nav.dart';
 import 'course_schedule_admin_screen.dart';
 import 'portal_header.dart';
@@ -28,7 +33,14 @@ class _AcademicServicesHubScreenState extends State<AcademicServicesHubScreen> {
   int _scheduledSections = 0;
   int _unscheduledSections = 0;
   List<CourseSectionRecord> _unscheduledList = const [];
-  List<({String name, int count})> _topLoadFaculty = const [];
+  List<CourseSectionRecord> _maleRecords = const [];
+  List<CourseSectionRecord> _femaleRecords = const [];
+  Map<String, CollegeRosterMember> _rosterByName = const {};
+
+  // فلتر "أعلى الأعباء التدريسية" - شطر/قسم/الكل (سليمان 2026-08-23)، بنفس
+  // هوية الفلاتر الموحَّدة لكل الموقع [FilterResetChip]/[FilterPillDropdown].
+  Shatr? _shatrFilter;
+  String? _deptFilter;
 
   @override
   void initState() {
@@ -41,10 +53,18 @@ class _AcademicServicesHubScreenState extends State<AcademicServicesHubScreen> {
       final results = await Future.wait([
         CourseScheduleRepository.loadSchedule(Shatr.male),
         CourseScheduleRepository.loadSchedule(Shatr.female),
+        CollegeRosterRepository.load(),
       ]);
       if (!mounted) return;
 
-      final all = <CourseSectionRecord>[...results[0], ...results[1]];
+      final maleRecords = results[0] as List<CourseSectionRecord>;
+      final femaleRecords = results[1] as List<CourseSectionRecord>;
+      final roster = results[2] as List<CollegeRosterMember>;
+      final rosterByName = {
+        for (final m in roster) _normalizeNameKey(displayName(m.name)): m,
+      };
+
+      final all = <CourseSectionRecord>[...maleRecords, ...femaleRecords];
       final facultyNames = <String>{
         for (final r in all) ...[
           if ((r.instructorName ?? '').trim().isNotEmpty) r.instructorName!.trim(),
@@ -61,24 +81,15 @@ class _AcademicServicesHubScreenState extends State<AcademicServicesHubScreen> {
       final unscheduled = all.where((r) => (r.instructorName ?? '').trim().isEmpty).toList()
         ..sort((a, b) => a.courseCode.compareTo(b.courseCode));
 
-      final loadCounts = <String, int>{};
-      for (final r in all) {
-        for (final name in [r.instructorName, r.practicalInstructorName]) {
-          final n = (name ?? '').trim();
-          if (n.isEmpty) continue;
-          loadCounts[n] = (loadCounts[n] ?? 0) + 1;
-        }
-      }
-      final topLoad = loadCounts.entries.map((e) => (name: e.key, count: e.value)).toList()
-        ..sort((a, b) => b.count.compareTo(a.count));
-
       setState(() {
         _totalCourses = courseCodes.length;
         _facultyCount = facultyNames.length;
         _scheduledSections = scheduled;
         _unscheduledSections = all.length - scheduled;
         _unscheduledList = unscheduled;
-        _topLoadFaculty = topLoad.take(5).toList();
+        _maleRecords = maleRecords;
+        _femaleRecords = femaleRecords;
+        _rosterByName = rosterByName;
         _loadingStats = false;
       });
     } catch (_) {
@@ -86,6 +97,49 @@ class _AcademicServicesHubScreenState extends State<AcademicServicesHubScreen> {
       // جدول دراسي بعد) - تبقى الأرقام صفرًا وتختفي مؤشر التحميل فقط.
       if (mounted) setState(() => _loadingStats = false);
     }
+  }
+
+  // نفس منطق تطبيع الاسم المعتمَد بـ`course_schedule_admin_screen.dart`
+  // (`_rosterFor`) لمطابقة اختلافات الهمزة/التاء المربوطة بين ملف منسوبي
+  // الكلية وملف الجدول الدراسي.
+  String _normalizeNameKey(String s) => s
+      .replaceAll(RegExp(r'\s+'), '')
+      .replaceAll(RegExp('[أإآ]'), 'ا')
+      .replaceAll('ة', 'ه');
+
+  String _departmentFor(String instructorName) {
+    final m = _rosterByName[_normalizeNameKey(displayName(instructorName))];
+    final dept = m?.department ?? '';
+    return dept.trim().isEmpty ? '' : FacultySortOrder.displayDepartment(dept);
+  }
+
+  List<String> get _departmentOptions {
+    final set = <String>{
+      for (final m in _rosterByName.values)
+        if (m.department.trim().isNotEmpty) FacultySortOrder.displayDepartment(m.department),
+    };
+    final list = set.toList()..sort((a, b) => FacultySortOrder.departmentRank(a).compareTo(FacultySortOrder.departmentRank(b)));
+    return list;
+  }
+
+  List<({String name, int count})> _computeTopLoad() {
+    final records = switch (_shatrFilter) {
+      Shatr.male => _maleRecords,
+      Shatr.female => _femaleRecords,
+      null => <CourseSectionRecord>[..._maleRecords, ..._femaleRecords],
+    };
+    final counts = <String, int>{};
+    for (final r in records) {
+      for (final name in [r.instructorName, r.practicalInstructorName]) {
+        final n = (name ?? '').trim();
+        if (n.isEmpty) continue;
+        if (_deptFilter != null && _departmentFor(n) != _deptFilter) continue;
+        counts[n] = (counts[n] ?? 0) + 1;
+      }
+    }
+    final list = counts.entries.map((e) => (name: e.key, count: e.value)).toList()
+      ..sort((a, b) => b.count.compareTo(a.count));
+    return list.take(5).toList();
   }
 
   @override
@@ -99,7 +153,7 @@ class _AcademicServicesHubScreenState extends State<AcademicServicesHubScreen> {
           padding: const EdgeInsets.all(16),
           child: Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1400),
+              constraints: const BoxConstraints(maxWidth: 1600),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -115,9 +169,37 @@ class _AcademicServicesHubScreenState extends State<AcademicServicesHubScreen> {
                   const SizedBox(height: 12),
                   LayoutBuilder(builder: (context, constraints) {
                     final unscheduled = _buildUnscheduledList(context);
-                    final topLoad = _buildTopLoadFaculty(context);
+                    final topLoad = _buildTopLoadFaculty(context, _computeTopLoad());
+                    final topLoadHeader = Row(
+                      children: [
+                        const Expanded(child: DashSectionHeader(title: 'أعلى الأعباء التدريسية', icon: Icons.leaderboard_outlined)),
+                        FilterBarShell(children: [
+                          FilterResetChip(
+                            active: _shatrFilter == null && _deptFilter == null,
+                            onTap: () => setState(() {
+                              _shatrFilter = null;
+                              _deptFilter = null;
+                            }),
+                          ),
+                          FilterPillDropdown<Shatr>(
+                            label: 'الشطر',
+                            value: _shatrFilter,
+                            items: const [Shatr.male, Shatr.female],
+                            itemLabel: (s) => s == Shatr.male ? 'شطر الطلاب' : 'شطر الطالبات',
+                            onChanged: (v) => setState(() => _shatrFilter = v),
+                          ),
+                          FilterPillDropdown<String>(
+                            label: 'القسم',
+                            value: _deptFilter,
+                            items: _departmentOptions,
+                            itemLabel: (d) => d,
+                            onChanged: (v) => setState(() => _deptFilter = v),
+                          ),
+                        ]),
+                      ],
+                    );
                     if (constraints.maxWidth < 900) {
-                      return Column(children: [unscheduled, const SizedBox(height: 20), const DashSectionHeader(title: 'أعلى الأعباء التدريسية', icon: Icons.leaderboard_outlined), const SizedBox(height: 12), topLoad]);
+                      return Column(children: [unscheduled, const SizedBox(height: 20), topLoadHeader, const SizedBox(height: 12), topLoad]);
                     }
                     return Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -129,7 +211,7 @@ class _AcademicServicesHubScreenState extends State<AcademicServicesHubScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              const DashSectionHeader(title: 'أعلى الأعباء التدريسية', icon: Icons.leaderboard_outlined),
+                              topLoadHeader,
                               const SizedBox(height: 12),
                               topLoad,
                             ],
@@ -275,15 +357,15 @@ class _AcademicServicesHubScreenState extends State<AcademicServicesHubScreen> {
   /// محتوى ثانٍ فعلي يملأ الفراغ الجانبي بجانب "شعب تحتاج تسكين" على
   /// الشاشات الواسعة (سليمان 2026-08-23: فراغات بيضاء كبيرة رغم أهمية
   /// الصفحة)، بنفس هوية القائمة (بلا بطاقة KPI جديدة أو تصميم منفصل).
-  Widget _buildTopLoadFaculty(BuildContext context) {
+  Widget _buildTopLoadFaculty(BuildContext context, List<({String name, int count})> topLoad) {
     if (_loadingStats) {
       return const Padding(padding: EdgeInsets.symmetric(vertical: 24), child: Center(child: CircularProgressIndicator()));
     }
-    if (_topLoadFaculty.isEmpty) {
+    if (topLoad.isEmpty) {
       return Container(
         decoration: BoxDecoration(color: DashTokens.cardBg, border: Border.all(color: DashTokens.border), borderRadius: BorderRadius.circular(DashTokens.radiusLg)),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-        child: const Text('لا توجد بيانات - ارفع جدولًا دراسيًا أولاً', style: TextStyle(fontSize: 13, color: DashTokens.textSecondary)),
+        child: const Text('لا توجد بيانات مطابقة لهذا الفلتر', style: TextStyle(fontSize: 13, color: DashTokens.textSecondary)),
       );
     }
     return Container(
@@ -291,16 +373,16 @@ class _AcademicServicesHubScreenState extends State<AcademicServicesHubScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: Column(
         children: [
-          for (var i = 0; i < _topLoadFaculty.length; i++) ...[
+          for (var i = 0; i < topLoad.length; i++) ...[
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 10),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('${_topLoadFaculty[i].count} شعبة', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: DashTokens.gold600)),
+                  Text('${topLoad[i].count} شعبة', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: DashTokens.gold600)),
                   Expanded(
                     child: Text(
-                      _topLoadFaculty[i].name,
+                      topLoad[i].name,
                       textAlign: TextAlign.right,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -310,7 +392,7 @@ class _AcademicServicesHubScreenState extends State<AcademicServicesHubScreen> {
                 ],
               ),
             ),
-            if (i != _topLoadFaculty.length - 1) Container(height: 1, color: DashTokens.border, margin: const EdgeInsets.symmetric(vertical: 2)),
+            if (i != topLoad.length - 1) Container(height: 1, color: DashTokens.border, margin: const EdgeInsets.symmetric(vertical: 2)),
           ],
         ],
       ),

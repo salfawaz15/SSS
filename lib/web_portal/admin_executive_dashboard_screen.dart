@@ -743,24 +743,27 @@ class _FilterableDashboardContentState extends State<_FilterableDashboardContent
       const SizedBox(height: 14),
       _ActionTypeSection(stats: actionTypeStats),
       const SizedBox(height: 14),
-      _WorkflowSection(roleProgress: roleProgress),
-      const SizedBox(height: 14),
-      // TODO(معاينة مؤقتة سليمان 2026-08-21): بيانات وهمية لرؤية شكل الحالة
-      // غير الفارغة فقط - أزلها وأعد `advisorAccountability`/`coordinatorAccountability`
-      // الحقيقيتين قبل أي نشر.
-      _MainGrid(
-        advisorList: advisorAccountability.isNotEmpty
-            ? advisorAccountability
-            : const [
-                _AdvisorAccountability(advisorName: 'أ. نموذج تجريبي', department: 'قسم الإدارة', shatrLabel: 'شطر الطلاب', skippedCount: 3),
-                _AdvisorAccountability(advisorName: 'د. نموذج تجريبي 2', department: 'قسم المحاسبة', shatrLabel: 'شطر الطالبات', skippedCount: 1),
-              ],
-        coordinatorList: coordinatorAccountability.isNotEmpty
-            ? coordinatorAccountability
-            : const [
-                _CoordinatorAccountability(department: 'قسم التسويق', shatrLabel: 'شطر الطلاب', skippedCount: 2),
-              ],
-      ),
+      // "متابعة سير العمل" و"حالات تجاوزت مستوى المعالجة دون إجراء" جنبًا
+      // إلى جنب على الشاشات الواسعة بدل تكديسهما رأسيًا - بطلب سليمان
+      // صراحةً (2026-08-23، بمخطط توضيحي): "كل المحتويات بصفحة واحدة بلا
+      // تمرير". كلا القسمين له ارتفاع مضغوط ثابت فعليًا (بطاقات 2+1 هنا،
+      // SizedBox(height:260) بالتمرير الداخلي هناك) فيتناسبان أفقيًا بلا
+      // إشكال.
+      LayoutBuilder(builder: (context, constraints) {
+        final workflow = _WorkflowSection(roleProgress: roleProgress);
+        final accountability = _MainGrid(advisorList: advisorAccountability, coordinatorList: coordinatorAccountability);
+        if (constraints.maxWidth < 1000) {
+          return Column(children: [workflow, const SizedBox(height: 14), accountability]);
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(flex: 3, child: workflow),
+            const SizedBox(width: 14),
+            Expanded(flex: 2, child: accountability),
+          ],
+        );
+      }),
     ];
   }
 
