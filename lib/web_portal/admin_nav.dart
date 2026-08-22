@@ -57,27 +57,19 @@ List<PortalNavItem> buildAdminNavItems(BuildContext context, {required String cu
       onTap: () => Navigator.of(context).popUntil((r) => r.settings.name == kPortalRootRouteName || r.isFirst),
     ),
     PortalNavItem(
-      label: 'الحذف والإضافة',
-      icon: Icons.assignment_outlined,
-      selected: current == 'delete-add',
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const AdminWorkspaceScreen()),
-      ),
-    ),
-    PortalNavItem(
-      label: 'تقارير',
-      icon: Icons.assessment_outlined,
-      selected: current == 'reports-hub',
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const ReportsHubScreen()),
-      ),
-    ),
-    PortalNavItem(
       label: 'لوحة الإرشاد',
       icon: Icons.fact_check_outlined,
       selected: current == 'hardship' || current == 'support' || current == 'advising-cases' || current == 'advising-hub',
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => const AdvisingHubScreen()),
+      ),
+    ),
+    PortalNavItem(
+      label: 'الحذف والإضافة',
+      icon: Icons.assignment_outlined,
+      selected: current == 'delete-add',
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const AdminWorkspaceScreen()),
       ),
     ),
     if (isSuperAdmin)
@@ -111,6 +103,14 @@ List<PortalNavItem> buildAdminNavItems(BuildContext context, {required String cu
           MaterialPageRoute(builder: (_) => const UploadHubScreen()),
         ),
       ),
+    PortalNavItem(
+      label: 'تقارير',
+      icon: Icons.assessment_outlined,
+      selected: current == 'reports-hub',
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const ReportsHubScreen()),
+      ),
+    ),
     // حصريًا حساب المدير العام (salfawaz/super_admin) - ليس حساب "الإدارة"
     // العادي (admin@)، بطلب سليمان صراحةً (2026-08-15). أُعيدت تسميتها من
     // "تجربة الصفحات" إلى "الوصول التشغيلي" (سليمان 2026-08-19) لأن وظيفتها

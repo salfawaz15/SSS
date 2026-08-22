@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../data/academic_department_names.dart';
+import '../models/hardship_case.dart';
 import '../services/excel_parser_service.dart';
 import '../services/firestore_ticket_service.dart';
+import '../services/hardship_case_service.dart';
 import '../services/report_data_service.dart' show TicketAdvisorOutcome, ticketOutcomeForField;
+import '../services/support_case_service.dart';
 import '../theme/app_theme.dart';
 import 'admin_nav.dart';
 import 'portal_header.dart';
@@ -43,23 +46,44 @@ class AdminExecutiveDashboardScreen extends StatelessWidget {
           if (!ticketsSnap.hasData) {
             return const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator()));
           }
-          final data = _DashboardData.compute(ticketsSnap.data!);
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1600),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
+          // بيانات الإرشاد (حالات خاصة + دعم نفسي) مبنيّة فوق نفس بيانات
+          // الحذف/الإضافة عبر تبديل (Toggle) بدل صفحة منفصلة - سليمان
+          // 2026-08-22: "يبقى بنفس التصميم، فقط تبديل بين الحذف والإضافة
+          // والإرشاد بنفس طريقة صفحة المنسوبين".
+          return StreamBuilder<List<HardshipCase>>(
+            stream: HardshipCaseService.watchAllCases(),
+            builder: (context, hardshipSnap) {
+              return StreamBuilder<List<HardshipCase>>(
+                stream: SupportCaseService.watchAllCases(),
+                builder: (context, supportSnap) {
+                  if (!hardshipSnap.hasData || !supportSnap.hasData) {
+                    return const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator()));
+                  }
+                  final data = _DashboardData.compute(ticketsSnap.data!);
+                  return ListView(
+                    padding: const EdgeInsets.all(16),
                     children: [
-                      _FilterableDashboardContent(data: data),
-                      const SizedBox(height: 12),
+                      Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 1600),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _FilterableDashboardContent(
+                                data: data,
+                                hardshipCases: hardshipSnap.data!,
+                                supportCases: supportSnap.data!,
+                              ),
+                              const SizedBox(height: 12),
+                            ],
+                          ),
+                        ),
+                      ),
                     ],
-                  ),
-                ),
-              ),
-            ],
+                  );
+                },
+              );
+            },
           );
         },
       ),
@@ -235,6 +259,80 @@ class _CoordinatorAccountability {
 
 String _shatrDisplayLabel(String shatrRaw) => shatrRaw == ExcelParserService.shatrMale ? 'شطر الطلاب' : 'شطر الطالبات';
 
+/// مؤشرات وضع "الإرشاد" (حالات خاصة + دعم نفسي معًا) - نفس دور [_KpiStats]
+/// لكن لبنية بيانات مختلفة تمامًا (حالة واحدة بسجل تاريخي بدل مسار
+/// مرشد←منسّق قسم←منسّق كلية)، فلا "طلبات تحتاج إجراء" بمعنى إداري بل
+/// "حالات لم تُغلق بعد" (كل حالة ما عدا `improved`).
+class _AdvisingKpiStats {
+  final int total;
+  final int completed;
+  final int needsFollowUp;
+  const _AdvisingKpiStats({required this.total, required this.completed, required this.needsFollowUp});
+}
+
+_AdvisingKpiStats _computeAdvisingKpiStats(List<HardshipCase> hardship, List<HardshipCase> support) {
+  final all = [...hardship, ...support];
+  final completed = all.where((c) => c.status == HardshipStatus.improved).length;
+  final needsFollowUp = all.where((c) => c.status == HardshipStatus.needsOngoingFollowUp).length;
+  return _AdvisingKpiStats(total: all.length, completed: completed, needsFollowUp: needsFollowUp);
+}
+
+/// توزيع حسب النوع (حالات خاصة/دعم نفسي) - يعيد استخدام [_ActionTypeStats]
+/// حرفيًا (نفس الحقول: مكتمل/قيد التنفيذ/لم يبدأ) رغم اختلاف المجال، لأن
+/// الشكل مطابق تمامًا فلا داعي لصنف جديد.
+List<_ActionTypeStats> _computeAdvisingTypeStats(List<HardshipCase> hardship, List<HardshipCase> support) {
+  _ActionTypeStats build(String label, List<HardshipCase> cases) {
+    final completed = cases.where((c) => c.status == HardshipStatus.improved).length;
+    final notStarted = cases.where((c) => c.status == HardshipStatus.newCase).length;
+    final processing = cases.length - completed - notStarted;
+    return _ActionTypeStats(label: label, completed: completed, processing: processing, notStarted: notStarted);
+  }
+
+  return [
+    build('حالات خاصة', hardship),
+    build('دعم نفسي', support),
+  ];
+}
+
+/// توزيع كل حالات الإرشاد حسب حالتها الحالية (7 حالات ممكنة) - بديل
+/// "متابعة سير العمل" (أدوار ثلاثة) غير المنطبق هنا، فحالة الإرشاد الواحدة
+/// تمر بحالة واحدة بسجل تاريخي لا ثلاثة أدوار متوازية.
+class _AdvisingStatusCount {
+  final HardshipStatus status;
+  final int count;
+  const _AdvisingStatusCount({required this.status, required this.count});
+}
+
+List<_AdvisingStatusCount> _computeAdvisingStatusBreakdown(List<HardshipCase> hardship, List<HardshipCase> support) {
+  final all = [...hardship, ...support];
+  return [
+    for (final s in HardshipStatus.values) _AdvisingStatusCount(status: s, count: all.where((c) => c.status == s).length),
+  ];
+}
+
+/// حالات "جديدة" لم يُعمل عليها بعد إطلاقًا (أول حالة بمسار المتابعة) -
+/// بديل "من لم يعمل على حالاته" غير المنطبق هنا (لا اسم مرشد/منسّق مسؤول
+/// لكل حالة إرشاد، فقط منشئ الحالة `created_by`) - يُجمَّع بمستوى القسم فقط،
+/// نفس أسلوب [_CoordinatorAccountability].
+List<_CoordinatorAccountability> _computeAdvisingPendingByDepartment(List<HardshipCase> hardship, List<HardshipCase> support) {
+  final counts = <String, int>{};
+  final meta = <String, ({String dept, String shatr})>{};
+  for (final c in [...hardship, ...support]) {
+    if (c.status != HardshipStatus.newCase) continue;
+    final dept = _DashboardData._displayDepartment(c.department);
+    final shatr = _shatrDisplayLabel(c.shatr);
+    final key = '$dept|$shatr';
+    counts[key] = (counts[key] ?? 0) + 1;
+    meta[key] = (dept: dept, shatr: shatr);
+  }
+  final list = counts.entries.map((e) {
+    final m = meta[e.key]!;
+    return _CoordinatorAccountability(department: m.dept, shatrLabel: m.shatr, skippedCount: e.value);
+  }).toList();
+  list.sort((a, b) => b.skippedCount.compareTo(a.skippedCount));
+  return list;
+}
+
 List<_AdvisorAccountability> _computeAdvisorAccountability(List<Map<String, dynamic>> tickets) {
   final counts = <String, int>{};
   final meta = <String, ({String name, String dept, String shatr})>{};
@@ -389,15 +487,20 @@ class _MiniDonut extends StatelessWidget {
 /// (سليمان 2026-08-21: "فلتر واحد فقط أعلى الصفحة يتحكم بكل شيء"). الترتيب
 /// (يمين إلى يسار بالعربية): شريحة "الكل" (إعادة تعيين عامة) ← الشطر ←
 /// الأقسام العلمية ← الحالة (ذوو الإعاقة/الخريجون).
+enum _Domain { deleteAdd, advising }
+
 class _FilterableDashboardContent extends StatefulWidget {
   final _DashboardData data;
-  const _FilterableDashboardContent({required this.data});
+  final List<HardshipCase> hardshipCases;
+  final List<HardshipCase> supportCases;
+  const _FilterableDashboardContent({required this.data, required this.hardshipCases, required this.supportCases});
 
   @override
   State<_FilterableDashboardContent> createState() => _FilterableDashboardContentState();
 }
 
 class _FilterableDashboardContentState extends State<_FilterableDashboardContent> {
+  _Domain _domain = _Domain.deleteAdd;
   _ShatrFilter _shatr = _ShatrFilter.all;
   // null = "الكل" - نفس تمييز فلتر القسم بقية اللوحة.
   String? _department;
@@ -423,6 +526,19 @@ class _FilterableDashboardContentState extends State<_FilterableDashboardContent
     }).toList();
   }
 
+  bool _caseMatchesFilter(HardshipCase c) {
+    if (_shatr != _ShatrFilter.all) {
+      final wantMale = _shatr == _ShatrFilter.male;
+      final isMale = c.shatr == ExcelParserService.shatrMale;
+      if (isMale != wantMale) return false;
+    }
+    if (_department != null && _DashboardData._displayDepartment(c.department) != _department) return false;
+    return true;
+  }
+
+  List<HardshipCase> get _filteredHardshipCases => widget.hardshipCases.where(_caseMatchesFilter).toList();
+  List<HardshipCase> get _filteredSupportCases => widget.supportCases.where(_caseMatchesFilter).toList();
+
   void _resetAll() => setState(() {
         _shatr = _ShatrFilter.all;
         _department = null;
@@ -443,17 +559,26 @@ class _FilterableDashboardContentState extends State<_FilterableDashboardContent
 
   @override
   Widget build(BuildContext context) {
-    final filtered = _filteredTickets;
-    final kpi = _computeKpiStats(filtered);
-    final actionTypeStats = _computeActionTypeStats(filtered);
-    final roleProgress = _computeRoleProgress(filtered);
-    final advisorAccountability = _computeAdvisorAccountability(filtered);
-    final coordinatorAccountability = _computeCoordinatorAccountability(filtered);
     final scopeLabel = _filterScopeLabel();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        Center(
+          child: SegmentedButton<_Domain>(
+            segments: const [
+              ButtonSegment(value: _Domain.deleteAdd, label: Text('الحذف والإضافة'), icon: Icon(Icons.assignment_outlined)),
+              ButtonSegment(value: _Domain.advising, label: Text('الإرشاد'), icon: Icon(Icons.volunteer_activism_outlined)),
+            ],
+            selected: {_domain},
+            onSelectionChanged: (s) => setState(() => _domain = s.first),
+            style: SegmentedButton.styleFrom(
+              selectedBackgroundColor: AppColors.greenDark,
+              selectedForegroundColor: Colors.white,
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(14)),
@@ -465,35 +590,64 @@ class _FilterableDashboardContentState extends State<_FilterableDashboardContent
               _ResetAllChip(active: !_hasFilter, onTap: _resetAll),
               _ShatrFilterDropdown(value: _shatr, onChanged: (v) => setState(() => _shatr = v)),
               _DepartmentFilterDropdown(value: _department, onChanged: (v) => setState(() => _department = v)),
-              _PriorityFilterDropdown(value: _priority, onChanged: (v) => setState(() => _priority = v)),
+              if (_domain == _Domain.deleteAdd) _PriorityFilterDropdown(value: _priority, onChanged: (v) => setState(() => _priority = v)),
             ],
           ),
         ),
         const SizedBox(height: 18),
-        _KpiRow(kpi: kpi, scopeLabel: scopeLabel),
-        const SizedBox(height: 18),
-        _ActionTypeSection(stats: actionTypeStats),
-        const SizedBox(height: 18),
-        _WorkflowSection(roleProgress: roleProgress),
-        const SizedBox(height: 18),
-        // TODO(معاينة مؤقتة سليمان 2026-08-21): بيانات وهمية لرؤية شكل الحالة
-        // غير الفارغة فقط - أزلها وأعد `advisorAccountability`/`coordinatorAccountability`
-        // الحقيقيتين قبل أي نشر.
-        _MainGrid(
-          advisorList: advisorAccountability.isNotEmpty
-              ? advisorAccountability
-              : const [
-                  _AdvisorAccountability(advisorName: 'أ. نموذج تجريبي', department: 'قسم الإدارة', shatrLabel: 'شطر الطلاب', skippedCount: 3),
-                  _AdvisorAccountability(advisorName: 'د. نموذج تجريبي 2', department: 'قسم المحاسبة', shatrLabel: 'شطر الطالبات', skippedCount: 1),
-                ],
-          coordinatorList: coordinatorAccountability.isNotEmpty
-              ? coordinatorAccountability
-              : const [
-                  _CoordinatorAccountability(department: 'قسم التسويق', shatrLabel: 'شطر الطلاب', skippedCount: 2),
-                ],
-        ),
+        if (_domain == _Domain.deleteAdd) ..._buildDeleteAddContent(scopeLabel) else ..._buildAdvisingContent(scopeLabel),
       ],
     );
+  }
+
+  List<Widget> _buildDeleteAddContent(String scopeLabel) {
+    final filtered = _filteredTickets;
+    final kpi = _computeKpiStats(filtered);
+    final actionTypeStats = _computeActionTypeStats(filtered);
+    final roleProgress = _computeRoleProgress(filtered);
+    final advisorAccountability = _computeAdvisorAccountability(filtered);
+    final coordinatorAccountability = _computeCoordinatorAccountability(filtered);
+
+    return [
+      _KpiRow(kpi: kpi, scopeLabel: scopeLabel),
+      const SizedBox(height: 18),
+      _ActionTypeSection(stats: actionTypeStats),
+      const SizedBox(height: 18),
+      _WorkflowSection(roleProgress: roleProgress),
+      const SizedBox(height: 18),
+      // TODO(معاينة مؤقتة سليمان 2026-08-21): بيانات وهمية لرؤية شكل الحالة
+      // غير الفارغة فقط - أزلها وأعد `advisorAccountability`/`coordinatorAccountability`
+      // الحقيقيتين قبل أي نشر.
+      _MainGrid(
+        advisorList: advisorAccountability.isNotEmpty
+            ? advisorAccountability
+            : const [
+                _AdvisorAccountability(advisorName: 'أ. نموذج تجريبي', department: 'قسم الإدارة', shatrLabel: 'شطر الطلاب', skippedCount: 3),
+                _AdvisorAccountability(advisorName: 'د. نموذج تجريبي 2', department: 'قسم المحاسبة', shatrLabel: 'شطر الطالبات', skippedCount: 1),
+              ],
+        coordinatorList: coordinatorAccountability.isNotEmpty
+            ? coordinatorAccountability
+            : const [
+                _CoordinatorAccountability(department: 'قسم التسويق', shatrLabel: 'شطر الطلاب', skippedCount: 2),
+              ],
+      ),
+    ];
+  }
+
+  List<Widget> _buildAdvisingContent(String scopeLabel) {
+    final hardship = _filteredHardshipCases;
+    final support = _filteredSupportCases;
+    final kpi = _computeAdvisingKpiStats(hardship, support);
+    final typeStats = _computeAdvisingTypeStats(hardship, support);
+    final statusBreakdown = _computeAdvisingStatusBreakdown(hardship, support);
+
+    return [
+      _AdvisingKpiRow(kpi: kpi, scopeLabel: scopeLabel),
+      const SizedBox(height: 18),
+      _ActionTypeSection(stats: typeStats, title: 'توزيع الحالات حسب النوع'),
+      const SizedBox(height: 18),
+      _AdvisingStatusSection(breakdown: statusBreakdown),
+    ];
   }
 }
 
@@ -563,6 +717,143 @@ class _KpiRow extends StatelessWidget {
           }),
         ],
       ),
+    );
+  }
+}
+
+/// نفس هيكل [_KpiRow] بالضبط (حاوية + عنوان + شرح + بطاقات) لوضع "الإرشاد" -
+/// 3 بطاقات: الإجمالي، نسبة الإغلاق، وحالات تحتاج متابعة مستمرة (بدل
+/// "طلاب تخطّى المرشد" غير المنطبقة هنا).
+class _AdvisingKpiRow extends StatelessWidget {
+  final _AdvisingKpiStats kpi;
+  final String scopeLabel;
+  const _AdvisingKpiRow({required this.kpi, required this.scopeLabel});
+
+  @override
+  Widget build(BuildContext context) {
+    final total = kpi.total;
+    final completed = kpi.completed;
+    final rate = total == 0 ? 0 : (completed / total * 100).round();
+    final pending = total - completed;
+
+    final cards = <Widget>[
+      _KpiCard(
+        title: 'إجمالي حالات الإرشاد',
+        value: '$total',
+        meta: 'حالات خاصة ودعم نفسي معًا - $scopeLabel',
+        icon: Icons.volunteer_activism_outlined,
+        accent: AppColors.green,
+      ),
+      _KpiCard(
+        title: 'حالات تحتاج متابعة مستمرة',
+        value: '${kpi.needsFollowUp}',
+        meta: kpi.needsFollowUp == 0 ? 'لا توجد حالات تحتاج متابعة مستمرة - $scopeLabel' : 'من أصل $pending حالة لم تُغلق بعد - $scopeLabel',
+        icon: Icons.support_agent_outlined,
+        accent: AppColors.errorRed,
+      ),
+      _KpiCard(
+        title: 'نسبة الإغلاق (تحسّنت الحالة)',
+        value: '$rate%',
+        meta: '$completed من أصل $total حالة - $scopeLabel',
+        icon: Icons.donut_large_outlined,
+        accent: AppColors.greenDark,
+        donutPercent: rate / 100,
+      ),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(14)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _SectionTitle(title: 'مؤشرات الإرشاد', icon: Icons.volunteer_activism_outlined),
+          const SizedBox(height: 4),
+          Text(
+            'يجمع حالات "الحالات الخاصة" و"الدعم النفسي" معًا - كل حالة تمر بحالة واحدة بسجل تاريخي '
+            '(جديدة ← قيد الدراسة ← ... ← تحسّنت/أُغلقت)، بلا مسار إداري متعدّد الأدوار كالحذف والإضافة.',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+          ),
+          const SizedBox(height: 12),
+          LayoutBuilder(builder: (context, constraints) {
+            final columns = constraints.maxWidth < 650 ? 1 : (constraints.maxWidth < 1100 ? 2 : 3);
+            return Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                for (final c in cards) SizedBox(width: (constraints.maxWidth - (columns - 1) * 12) / columns, child: c),
+              ],
+            );
+          }),
+        ],
+      ),
+    );
+  }
+}
+
+/// توزيع حالات الإرشاد حسب حالتها الحالية - بديل "متابعة سير العمل" (أدوار
+/// ثلاثة) غير المنطبق هنا. صف واحد من أشرطة تقدّم أفقية بدل 3 بطاقات دور.
+class _AdvisingStatusSection extends StatelessWidget {
+  final List<_AdvisingStatusCount> breakdown;
+  const _AdvisingStatusSection({required this.breakdown});
+
+  static const _statusColors = {
+    HardshipStatus.newCase: Color(0xFF9AA5B1),
+    HardshipStatus.underReview: AppColors.gold,
+    HardshipStatus.contactedStudent: AppColors.gold,
+    HardshipStatus.contactedFamily: AppColors.gold,
+    HardshipStatus.referred: Color(0xFF6B4FA0),
+    HardshipStatus.improved: AppColors.green,
+    HardshipStatus.needsOngoingFollowUp: AppColors.errorRed,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final total = breakdown.fold<int>(0, (s, b) => s + b.count);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(14)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _SectionTitle(title: 'توزيع حالات الإرشاد حسب الحالة', icon: Icons.donut_small_outlined),
+          const SizedBox(height: 4),
+          Text('كل حالة إرشاد بمسار واحد تسلسلي - هذا توزيعها الحالي حسب آخر حالة مسجَّلة لها.', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+          const SizedBox(height: 12),
+          for (final b in breakdown) ...[
+            _statusRow(b, total),
+            if (b != breakdown.last) const SizedBox(height: 10),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _statusRow(_AdvisingStatusCount b, int total) {
+    final rate = total == 0 ? 0.0 : b.count / total;
+    final color = _statusColors[b.status] ?? Colors.grey;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(width: 9, height: 9, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+            const SizedBox(width: 6),
+            Expanded(child: Text(b.status.label, style: const TextStyle(fontSize: 12.5))),
+            Text('${b.count}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: color)),
+          ],
+        ),
+        const SizedBox(height: 4),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: Stack(
+            children: [
+              Container(height: 6, color: Colors.grey.shade200),
+              FractionallySizedBox(widthFactor: rate.clamp(0.0, 1.0), child: Container(height: 6, color: color)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -709,7 +1000,8 @@ class _WorkflowSection extends StatelessWidget {
 /// [_DashboardFilterBar] بلا فلتر خاص به (سليمان 2026-08-21).
 class _ActionTypeSection extends StatelessWidget {
   final List<_ActionTypeStats> stats;
-  const _ActionTypeSection({required this.stats});
+  final String title;
+  const _ActionTypeSection({required this.stats, this.title = 'حالة الإنجاز حسب نوع الإجراء'});
 
   @override
   Widget build(BuildContext context) {
@@ -719,7 +1011,7 @@ class _ActionTypeSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const _SectionTitle(title: 'حالة الإنجاز حسب نوع الإجراء', icon: Icons.pie_chart_outline_rounded),
+          _SectionTitle(title: title, icon: Icons.pie_chart_outline_rounded),
           const SizedBox(height: 10),
           _ActionTypeStatsRow(stats: stats),
         ],
