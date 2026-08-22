@@ -22,28 +22,6 @@ import 'portal_accounts.dart';
 import 'portal_header.dart';
 import 'upload_dialogs.dart';
 
-/// يُبقي شريط الفلاتر ظاهرًا أثناء التمرير عبر قائمة طويلة (سليمان
-/// 2026-08-22: "الفلاتر أداة تشغيل يجب أن تبقى متاحة") - ارتفاع ثابت بخلفية
-/// بيضاء (لا شفافة) حتى لا يظهر محتوى الجدول من خلفه أثناء التمرير.
-class _StickyFilterBarDelegate extends SliverPersistentHeaderDelegate {
-  final double height;
-  final Widget child;
-  const _StickyFilterBarDelegate({required this.height, required this.child});
-
-  @override
-  double get minExtent => height;
-  @override
-  double get maxExtent => height;
-
-  @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
-    return ColoredBox(color: DashTokens.pageBg, child: child);
-  }
-
-  @override
-  bool shouldRebuild(covariant _StickyFilterBarDelegate oldDelegate) => oldDelegate.child != child || oldDelegate.height != height;
-}
-
 const String _kAllShatr = 'كل الشطرين';
 const String _kAllDepartments = 'كل الأقسام';
 const String _kAllAdvisors = 'كل المرشدين';
@@ -338,47 +316,30 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
                 : Center(
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: kAdvisingWorkspaceMaxWidth),
-                      // CustomScrollView بدل Column(هيدر ثابت) + Expanded(ListView) -
-                      // العنوان وشبكة المؤشرات كانا مثبَّتين دائمًا بلا تمرير (لا
-                      // يُفسحان مجالًا للجدول إطلاقًا)، وشريط الفلاتر يختفي فور
-                      // التمرير رغم أنه أداة تشغيل تُستخدَم طوال مراجعة القائمة.
-                      // الآن: العنوان + المؤشرات يمرّان مع الصفحة (سليمان
-                      // 2026-08-22: "الجدول يبدأ منخفضًا جدًا")، وشريط الفلاتر وحده
-                      // مثبَّت (`pinned: true`) فيبقى متاحًا طوال مراجعة قائمة طويلة.
-                      child: CustomScrollView(
-                        slivers: [
-                          SliverToBoxAdapter(
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  const AdvisingPageHeader(
-                                    breadcrumbTrail: 'متابعة حالات الإرشاد',
-                                    title: 'متابعة حالات الإرشاد',
-                                    description: 'كشف بيانات الطلبة، النصاب، إعادة التوزيع، والتقارير التفصيلية.',
-                                    icon: Icons.fact_check_outlined,
-                                  ),
-                                  const SizedBox(height: 16),
-                                  _buildStatsGrid(tabs),
-                                ],
-                              ),
+                      child: Column(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                const AdvisingPageHeader(
+                                  breadcrumbTrail: 'متابعة حالات الإرشاد',
+                                  title: 'متابعة حالات الإرشاد',
+                                  description: 'كشف بيانات الطلبة، النصاب، إعادة التوزيع، والتقارير التفصيلية.',
+                                  icon: Icons.fact_check_outlined,
+                                ),
+                                const SizedBox(height: 16),
+                                _buildStatsGrid(tabs),
+                                const SizedBox(height: 16),
+                                _buildFilterBar(),
+                              ],
                             ),
                           ),
-                          SliverPersistentHeader(
-                            pinned: true,
-                            delegate: _StickyFilterBarDelegate(
-                              height: 106,
-                              child: Padding(
-                                padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-                                child: _buildFilterBar(),
-                              ),
-                            ),
-                          ),
-                          SliverToBoxAdapter(
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-                              child: tabs[_sectionIndex].$2(),
+                          Expanded(
+                            child: ListView(
+                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                              children: [tabs[_sectionIndex].$2()],
                             ),
                           ),
                         ],

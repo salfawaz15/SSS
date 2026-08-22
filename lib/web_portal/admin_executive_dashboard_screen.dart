@@ -11,6 +11,18 @@ import '../theme/app_theme.dart';
 import 'admin_nav.dart';
 import 'portal_header.dart';
 
+/// نسبة إنجاز صحيحة - تقريب عادي (round) لكن بسقف صارم: لا تظهر 100% إلا
+/// عند اكتمال حقيقي تام (completed == total) - سليمان 2026-08-22: التقريب
+/// العادي وحده كان يُظهر "100%" رغم بقاء حالات فعلية غير مكتملة (مثال:
+/// 8739 من أصل 8742 = 99.97% ← كانت تظهر 100% مضلِّلة).
+/// لا تستدعِها بـ`total == 0` - يستدعيها المتصل عبر حارس منفصل يقرر بنفسه
+/// ماذا يعني "بلا بيانات" لسياقه (0% ببعض البطاقات، 100% بأخرى كالتغطية).
+int completionPercent(int completed, int total) {
+  if (completed == total) return 100;
+  final pct = (completed / total * 100).round();
+  return pct >= 100 ? 99 : pct;
+}
+
 /// لوحة الإدارة الرئيسية (Executive Dashboard) - أول ما يراه مدير الوحدة بعد
 /// الدخول. أُعيدت صياغتها مرتين بطلب سليمان (2026-08-19): الأولى تحويلها من
 /// صفحة روابط إلى لوحة مراقبة وقرار حقيقية، والثانية (هذه النسخة) لتصحيح
@@ -100,16 +112,23 @@ class _DashboardPageHeading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // العنوان والوصف بصف واحد بدل سطرين منفصلين - يوفّر سطرًا كاملاً من
+    // الارتفاع الرأسي (سليمان 2026-08-22: اقتراح مباشر بصورة توضيحية).
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 2, 4, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.baseline,
+        textBaseline: TextBaseline.alphabetic,
         children: [
-          Text('لوحة الإدارة', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.greenDark)),
-          const SizedBox(height: 4),
-          Text(
-            'متابعة مؤشرات الأداء وسير معالجة الطلبات وحالات الإرشاد.',
-            style: TextStyle(fontSize: 14, color: Color(0xFF747A76)),
+          const Text('لوحة الإدارة', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.greenDark)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'متابعة مؤشرات الأداء وسير معالجة الطلبات وحالات الإرشاد.',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 13, color: Color(0xFF747A76)),
+            ),
           ),
         ],
       ),
@@ -743,7 +762,9 @@ class _KpiRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final total = kpi.totalRequests;
     final completed = kpi.totalCompleted;
-    final rate = total == 0 ? 0 : (completed / total * 100).round();
+    // floor لا round - لا تظهر 100% إلا عند الاكتمال الحقيقي التام (سليمان
+    // 2026-08-22).
+    final rate = total == 0 ? 0 : completionPercent(completed, total);
     final pending = total - completed;
     final skipped = kpi.advisorSkippedCount;
 
@@ -814,7 +835,8 @@ class _AdvisingKpiRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final total = kpi.total;
     final completed = kpi.completed;
-    final rate = total == 0 ? 0 : (completed / total * 100).round();
+    // floor لا round - نفس مبدأ عدم إظهار 100% إلا عند الاكتمال التام.
+    final rate = total == 0 ? 0 : completionPercent(completed, total);
     final pending = total - completed;
 
     final cards = <Widget>[
@@ -907,11 +929,11 @@ class _AdvisingStatusSection extends StatelessWidget {
           const _SectionTitle(title: 'توزيع حالات الإرشاد حسب الحالة', icon: Icons.donut_small_outlined),
           const SizedBox(height: 4),
           Text('كل حالة إرشاد بمسار واحد تسلسلي - هذا توزيعها الحالي حسب آخر حالة مسجَّلة لها.', style: TextStyle(fontSize: 12, color: const Color(0xFF747A76))),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           LayoutBuilder(builder: (context, constraints) {
             final isWide = constraints.maxWidth >= 900;
             final columns = isWide ? 2 : 1;
-            final gap = 10.0;
+            final gap = 8.0;
             final cardWidth = (constraints.maxWidth - gap * (columns - 1)) / columns;
             return Wrap(
               spacing: gap,
@@ -1360,14 +1382,28 @@ class _RoleProgressCard extends StatelessWidget {
               Text('${progress.total}', style: TextStyle(fontSize: 13, color: const Color(0xFF747A76))),
             ],
           ),
-          const SizedBox(height: 12),
-          _outcomeRow('منفَّذ بالكامل', progress.complete, progress.total, _completeColor),
-          const SizedBox(height: 8),
-          _outcomeRow('تنفيذ جزئي', progress.partial, progress.total, _partialColor),
-          const SizedBox(height: 8),
-          _outcomeRow('مرفوض بالكامل', progress.rejected, progress.total, _rejectedColor),
-          const SizedBox(height: 8),
-          _outcomeRow('لم يُعمَل عليه بعد', progress.notStarted, progress.total, _notStartedColor),
+          const SizedBox(height: 10),
+          // شبكة عمودين × صفّين بدل عمود رأسي واحد بأربعة صفوف - يقلّص ارتفاع
+          // القسم تقريبًا للنصف بلا أي تصغير للخط أو الأشرطة (سليمان
+          // 2026-08-22: "متابعة سير العمل لا أستطيع رؤيتها كاملة إلا
+          // بالتمرير"), يمسّ هذه البطاقة فقط بلا أي أثر على بقية الصفحة.
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: _outcomeRow('منفَّذ بالكامل', progress.complete, progress.total, _completeColor)),
+              const SizedBox(width: 14),
+              Expanded(child: _outcomeRow('تنفيذ جزئي', progress.partial, progress.total, _partialColor)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: _outcomeRow('مرفوض بالكامل', progress.rejected, progress.total, _rejectedColor)),
+              const SizedBox(width: 14),
+              Expanded(child: _outcomeRow('لم يُعمَل عليه بعد', progress.notStarted, progress.total, _notStartedColor)),
+            ],
+          ),
         ],
       ),
     );
@@ -1492,7 +1528,7 @@ class _ActionTypeCard extends StatelessWidget {
                       children: [
                         Expanded(child: Text('${stats.label} — ${stats.total} $unitLabel', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.grey.shade700))),
                         const SizedBox(width: 8),
-                        Text('${(stats.rate * 100).round()}%', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.greenDark)),
+                        Text('${stats.total == 0 ? 0 : completionPercent(stats.completed, stats.total)}%', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.greenDark)),
                       ],
                     ),
                     const SizedBox(height: 3),

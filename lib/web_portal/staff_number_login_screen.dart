@@ -232,7 +232,10 @@ class _StaffNumberLoginScreenState extends State<StaffNumberLoginScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       child: _buildFormPanel(),
                     ),
-                    const SizedBox(height: 170, child: BrandPanel(compact: true)),
+                    // 182 لا 170 - كان المحتوى (شعار+عنوان+وصف) يتجاوز الحاوية
+                    // بـ1px فعليًا (RenderFlex overflow، تأكَّد حيًّا)، إصلاح
+                    // موضعي بلا أي تعديل على تصميم BrandPanel نفسه.
+                    const SizedBox(height: 182, child: BrandPanel(compact: true)),
                   ],
                 ),
               );

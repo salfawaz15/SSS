@@ -109,8 +109,10 @@ class AdvisingSubNavigation extends StatelessWidget {
     // وأكثر ثباتًا مع 6 تبويبات نصّها قصير.
     return Container(
       width: double.infinity,
-      color: DashTokens.cardBg,
-      decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: DashTokens.border))),
+      decoration: const BoxDecoration(
+        color: DashTokens.cardBg,
+        border: Border(bottom: BorderSide(color: DashTokens.border)),
+      ),
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: kAdvisingWorkspaceMaxWidth),

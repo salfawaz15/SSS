@@ -177,7 +177,10 @@ class _AdvisingHubScreenState extends State<AdvisingHubScreen> {
   }
 
   Widget _buildMetricsGrid(BuildContext context) {
-    final coveragePct = _totalActiveStudents == 0 ? 100 : ((_correctlyAssigned / _totalActiveStudents) * 100).round();
+    // floor لا round - سليمان 2026-08-22: "8739 من أصل 8742" (99.97%) كانت
+    // تظهر 100% بالتقريب العادي رغم وجود 3 حالات فعليًا غير مكتملة، وهذا
+    // مضلِّل. floor يضمن ألا تظهر 100% إلا عند الاكتمال الحقيقي التام.
+    final coveragePct = _totalActiveStudents == 0 ? 100 : ((_correctlyAssigned / _totalActiveStudents) * 100).floor();
     final needsCorrection = _wrongDeptCount + _withoutAdvisorCount;
 
     final tiles = [
@@ -228,7 +231,10 @@ class _AdvisingHubScreenState extends State<AdvisingHubScreen> {
           itemCount: tiles.length,
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: crossAxisCount,
-            mainAxisExtent: 115,
+            // 119 لا 115 - كانت البطاقات تُظهر "BOTTOM OVERFLOWED BY 1.00
+            // PIXELS" فعليًا (تأكَّد حيًّا) لأن ارتفاع الخلية كان أضيق بكسل
+            // واحد من محتوى AdvisingMetricCard الفعلي (سليمان 2026-08-22).
+            mainAxisExtent: 119,
             crossAxisSpacing: 14,
             mainAxisSpacing: 14,
           ),
@@ -429,16 +435,23 @@ class _AdvisingHubScreenState extends State<AdvisingHubScreen> {
             ),
           ),
           if (isNarrow) const SizedBox(height: 14) else const SizedBox(width: 32),
-          Expanded(
-            child: Text(
-              isBalanced
-                  ? 'التوزيع ضمن نطاق مقبول حاليًا؛ لا توجد حالة تركّز حالات على مرشد واحد تستدعي تدخلًا فوريًا.'
-                  : 'التوزيع يتجاوز النطاق المقبول - يُنصَح بمراجعة تقرير النصاب لمعرفة المرشدين الأكثر انحرافًا.',
-              style: const TextStyle(fontSize: 11.5, color: DashTokens.textSecondary, height: 1.7),
-            ),
-          ),
         ];
-        return isNarrow ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children) : Row(crossAxisAlignment: CrossAxisAlignment.center, children: children);
+        // نص لا Expanded - يُستخدَم Container بلا ارتفاع ثابت داخل
+        // SingleChildScrollView (ارتفاع غير مُقيَّد)، وExpanded داخل Column
+        // بارتفاع غير مُقيَّد يرمي استثناء "incoming height constraints are
+        // unbounded" حقيقيًا (تأكَّد حيًّا عبر فحص متصفح فعلي على عرض 390px -
+        // سليمان 2026-08-22: كان يُسقط رسم لوحة الإرشاد بالكامل على الجوال).
+        // Column(stretch) يمدّد النص بعرض كامل دون الحاجة لـExpanded أصلًا.
+        final noteText = Text(
+          isBalanced
+              ? 'التوزيع ضمن نطاق مقبول حاليًا؛ لا توجد حالة تركّز حالات على مرشد واحد تستدعي تدخلًا فوريًا.'
+              : 'التوزيع يتجاوز النطاق المقبول - يُنصَح بمراجعة تقرير النصاب لمعرفة المرشدين الأكثر انحرافًا.',
+          style: const TextStyle(fontSize: 11.5, color: DashTokens.textSecondary, height: 1.7),
+        );
+        if (isNarrow) {
+          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [...children, noteText]);
+        }
+        return Row(crossAxisAlignment: CrossAxisAlignment.center, children: [...children, Expanded(child: noteText)]);
       }),
     );
   }
