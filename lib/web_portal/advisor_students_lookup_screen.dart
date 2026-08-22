@@ -115,7 +115,9 @@ class _AdvisorStudentsLookupScreenState extends State<AdvisorStudentsLookupScree
   List<_AdvisorGroup> get _filteredGroups {
     if (_query.trim().isEmpty) return const [];
     final q = _normalize(_query);
-    return _allGroups.where((g) => _normalize(g.name).contains(q)).toList();
+    // البحث برقم المرشد أيضًا (لا الاسم فقط) - البيانات متاحة أصلًا
+    // (AdvisingCaseRecord.advisorId من تقرير "طلاب تابعين لمرشد").
+    return _allGroups.where((g) => _normalize(g.name).contains(q) || (g.advisorId.isNotEmpty && g.advisorId.contains(q))).toList();
   }
 
   @override
@@ -206,7 +208,7 @@ class _AdvisorStudentsLookupScreenState extends State<AdvisorStudentsLookupScree
                   decoration: const InputDecoration(
                     isDense: true,
                     border: InputBorder.none,
-                    hintText: 'ابحث باسم المرشد أو جزء من الاسم...',
+                    hintText: 'ابحث باسم المرشد أو رقمه...',
                   ),
                   onChanged: (v) => setState(() {
                     _query = v;
@@ -237,10 +239,10 @@ class _AdvisorStudentsLookupScreenState extends State<AdvisorStudentsLookupScree
           AdvisingEmptyState(
             icon: Icons.search,
             title: 'ابدأ بالبحث عن مرشد',
-            description: 'اكتب اسم المرشد أو جزءًا من الاسم لعرض بياناته وقائمة الطلبة المرتبطين به.\nإجمالي المرشدين المتاحين للبحث: ${_allGroups.length}',
+            description: 'اكتب اسم المرشد أو رقمه لعرض بياناته وقائمة الطلبة المرتبطين به.\nإجمالي المرشدين المتاحين للبحث: ${_allGroups.length}',
           )
         else if (results.isEmpty)
-          AdvisingEmptyState(icon: Icons.search_off, title: 'لا يوجد مرشد مطابق', description: 'لم يُعثر على مرشد باسم "$_query" - جرّب تدقيق الاسم.')
+          AdvisingEmptyState(icon: Icons.search_off, title: 'لا يوجد مرشد مطابق', description: 'لم يُعثر على مرشد بالاسم أو الرقم "$_query" - جرّب تدقيق البحث.')
         else
           Wrap(
             spacing: 8,

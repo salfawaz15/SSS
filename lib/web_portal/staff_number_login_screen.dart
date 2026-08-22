@@ -7,7 +7,6 @@ import '../theme/app_theme.dart';
 import 'hidden_admin_login_screen.dart';
 import 'portal_footer.dart';
 import 'portal_login_screen.dart' show BrandPanel;
-import 'public_landing_screen.dart' show PortalAcademicCalendarPage;
 
 /// مفتاح تخزين محلي (متصفح المستخدم فقط) يُسجَّل بعد أول دخول ناجح على هذا
 /// الجهاز - يُستخدَم فقط لتخصيص نص الترحيب ("مرحبًا بعودتك" بدل "تسجيل
@@ -99,6 +98,20 @@ class _StaffNumberLoginScreenState extends State<StaffNumberLoginScreen> {
     }
   }
 
+  static const _kFieldRadius = 10.0;
+  static const _kFieldMinHeight = 54.0;
+
+  InputDecoration _fieldDecoration({required String label, required IconData icon, Widget? suffixIcon}) {
+    return InputDecoration(
+      labelText: label,
+      floatingLabelBehavior: FloatingLabelBehavior.always,
+      prefixIcon: Icon(icon),
+      suffixIcon: suffixIcon,
+      constraints: const BoxConstraints(minHeight: _kFieldMinHeight),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(_kFieldRadius)),
+    );
+  }
+
   Widget _buildFormPanel() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(40, 44, 40, 40),
@@ -106,36 +119,33 @@ class _StaffNumberLoginScreenState extends State<StaffNumberLoginScreen> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Icon(Icons.badge_outlined, size: 40, color: AppColors.green),
-          const SizedBox(height: 12),
+          const Icon(Icons.badge_outlined, size: 45, color: AppColors.green),
+          const SizedBox(height: 14),
           Text(
             _hasSignedInBefore ? 'مرحبًا بعودتك' : 'تسجيل الدخول',
             textAlign: TextAlign.center,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 22),
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 24),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 7),
           Text(
             _hasSignedInBefore ? 'سجّل دخولك مجددًا للمتابعة' : 'أدخل رقم المنسوب وكلمة المرور',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 13.5),
+            style: TextStyle(color: Colors.grey.shade600, fontSize: 14.5),
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 32),
           TextField(
             controller: _staffNumberCtrl,
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: 'رقم المنسوب',
-              prefixIcon: Icon(Icons.badge_outlined),
-            ),
+            decoration: _fieldDecoration(label: 'رقم المنسوب', icon: Icons.badge_outlined),
             onSubmitted: (_) => _signIn(),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           TextField(
             controller: _passwordCtrl,
             obscureText: _obscurePassword,
-            decoration: InputDecoration(
-              labelText: 'كلمة المرور',
-              prefixIcon: const Icon(Icons.lock_outline),
+            decoration: _fieldDecoration(
+              label: 'كلمة المرور',
+              icon: Icons.lock_outline,
               suffixIcon: IconButton(
                 icon: Icon(_obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined),
                 onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
@@ -147,14 +157,15 @@ class _StaffNumberLoginScreenState extends State<StaffNumberLoginScreen> {
             const SizedBox(height: 12),
             Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 13)),
           ],
-          const SizedBox(height: 20),
+          const SizedBox(height: 22),
           SizedBox(
-            height: 54,
+            height: _kFieldMinHeight,
             child: ElevatedButton(
               onPressed: _loading ? null : _signIn,
               style: ElevatedButton.styleFrom(
                 elevation: 2,
                 shadowColor: AppColors.green.withValues(alpha: 0.4),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(_kFieldRadius)),
               ),
               child: _loading
                   ? const SizedBox(
@@ -162,7 +173,7 @@ class _StaffNumberLoginScreenState extends State<StaffNumberLoginScreen> {
                       height: 20,
                       child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                     )
-                  : const Text('تسجيل الدخول', style: TextStyle(fontSize: 16)),
+                  : const Text('تسجيل الدخول', style: TextStyle(fontSize: 16.5)),
             ),
           ),
         ],
@@ -178,18 +189,10 @@ class _StaffNumberLoginScreenState extends State<StaffNumberLoginScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         foregroundColor: AppColors.green,
-        leading: Navigator.of(context).canPop()
-            ? BackButton(onPressed: () => Navigator.of(context).maybePop())
-            : null,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.calendar_month_outlined),
-            tooltip: 'التقويم الجامعي',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const PortalAcademicCalendarPage()),
-            ),
-          ),
-        ],
+        automaticallyImplyLeading: false,
+        titleSpacing: 20,
+        title: Navigator.of(context).canPop() ? const _BackHomeAction() : null,
+        centerTitle: false,
       ),
       bottomNavigationBar: const PortalFooterBar(),
       body: Stack(
@@ -209,7 +212,7 @@ class _StaffNumberLoginScreenState extends State<StaffNumberLoginScreen> {
                         child: SingleChildScrollView(
                           padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 32),
                           child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 440),
+                            constraints: const BoxConstraints(maxWidth: 490),
                             child: _buildFormPanel(),
                           ),
                         ),
@@ -219,14 +222,17 @@ class _StaffNumberLoginScreenState extends State<StaffNumberLoginScreen> {
                 );
               }
 
+              // نموذج الدخول أولًا على الجوال/التابلت - المستخدم يصل لحقول
+              // الدخول فورًا بلا حاجة للتمرير عبر اللوحة الخضراء، والهوية
+              // تظهر بعده كسياق ثانوي (بطلب سليمان الصريح 2026-08-22).
               return SingleChildScrollView(
                 child: Column(
                   children: [
-                    const SizedBox(height: 205, child: BrandPanel(compact: true)),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       child: _buildFormPanel(),
                     ),
+                    const SizedBox(height: 170, child: BrandPanel(compact: true)),
                   ],
                 ),
               );
@@ -254,6 +260,48 @@ class _StaffNumberLoginScreenState extends State<StaffNumberLoginScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// رابط "العودة للرئيسية" - يستبدل السهم المستقل السابق الذي كان معزولًا
+/// بلا توضيح لوجهته (بطلب سليمان الصريح 2026-08-22): إجراء ثانوي مُدمَج
+/// (لا زر أساسي بارز) بلون الهوية الأخضر الداكن مع تأثير شفافية خفيف عند
+/// المرور بالفأرة.
+class _BackHomeAction extends StatefulWidget {
+  const _BackHomeAction();
+
+  @override
+  State<_BackHomeAction> createState() => _BackHomeActionState();
+}
+
+class _BackHomeActionState extends State<_BackHomeAction> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: () => Navigator.of(context).maybePop(),
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 150),
+          opacity: _hovered ? 0.78 : 1,
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'العودة للرئيسية',
+                style: TextStyle(color: AppColors.greenDark, fontSize: 15, fontWeight: FontWeight.w600),
+              ),
+              SizedBox(width: 8),
+              Icon(Icons.arrow_back, size: 17, color: AppColors.greenDark),
+            ],
+          ),
+        ),
       ),
     );
   }

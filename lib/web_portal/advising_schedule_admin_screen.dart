@@ -19,7 +19,7 @@ import 'admin_nav.dart';
 import 'advising_workspace.dart';
 import 'portal_accounts.dart';
 import 'portal_header.dart';
-import 'upload_flows.dart';
+import 'upload_hub_screen.dart';
 
 // دمج "عبد" مع الكلمة التالية بلا مسافة ("عبد الرحمن" -> "عبدالرحمن") قبل
 // تقسيم الكلمات - وإلا تفشل المطابقة صامتًا بين ملف مصدر يكتبها بمسافة
@@ -143,7 +143,6 @@ class _AdvisingScheduleAdminScreenState extends State<AdvisingScheduleAdminScree
   }
 
   bool _downloadingTemplate = false;
-  bool _uploadingTemplate = false;
 
   /// يبني خريطة (قسم، شطر) ← (اسم ← رقم مكتب) لكل أعضاء هيئة التدريس - بلا
   /// أي استثناء لأصحاب المناصب (قد يترك أحدهم منصبه). الأسماء من ملف
@@ -312,16 +311,15 @@ class _AdvisingScheduleAdminScreenState extends State<AdvisingScheduleAdminScree
                 color: AppColors.greenDark,
               ),
               _ToolbarButton(
-                onPressed: _uploadingTemplate
-                    ? null
-                    : () => runUploadAdvisingSchedule(
-                          context: context,
-                          setUploading: (v) => setState(() => _uploadingTemplate = v),
-                          onSuccess: _load,
-                        ),
-                loading: _uploadingTemplate,
+                // رفع الجدول مركزي بصفحة "رفع وتنزيل الملفات" فقط - لا تنفيذ
+                // رفع مستقل ثانٍ هنا لنفس البيانات (تجنّب تكرار منطق الرفع
+                // والتحقق - سليمان 2026-08-22). هذا الزر ينقل فقط لتلك الصفحة.
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const UploadHubScreen()),
+                ),
+                loading: false,
                 icon: Icons.upload_file,
-                label: 'رفع نموذج معبّأ',
+                label: 'الانتقال إلى رفع الملفات',
                 color: AppColors.greenDark,
                 filled: false,
               ),

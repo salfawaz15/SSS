@@ -420,6 +420,12 @@ class AdvisingCaseCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = hardshipCase;
+    // تركيبة أفقية (منطقة رئيسية + منطقة ثانوية جانبية) بدل التكديس الرأسي
+    // الكامل السابق - على عرض الصفحة الكامل (~1400px) كانت البطاقة تترك
+    // فراغًا أبيض كبيرًا يسار المحتوى النصي القصير نسبيًا (سليمان 2026-08-22:
+    // "البطاقة عريضة جدًا مقارنة بكمية المعلومات، فراغ داخلي كبير غير مستغَل" -
+    // بند 35). الحالة والإجراء الآن بعمود جانبي ثابت العرض يملأ يسار البطاقة
+    // بدل ترك الفراغ، والزر بشكل خلفية مملوءة خفيفة ليبدو تفاعليًا بوضوح.
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
@@ -429,35 +435,93 @@ class AdvisingCaseCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(DashTokens.radiusLg),
         boxShadow: DashTokens.cardShadow,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Text(c.studentName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5, color: DashTokens.textPrimary)),
-              ),
-              const SizedBox(width: 8),
-              AdvisingStatusChip(status: c.status),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text('${c.department} • ${c.shatr} • الرقم الجامعي: ${c.universityId}', style: const TextStyle(fontSize: 12, color: DashTokens.textSecondary)),
-          if (c.description.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(c.description, style: const TextStyle(fontSize: 12.5, color: DashTokens.textPrimary, height: 1.4)),
-          ],
-          const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: () => showAdvisingTimelineDialog(context, subjectName: c.studentName, history: c.history),
-              icon: const Icon(Icons.timeline_outlined, size: 16),
-              label: const Text('مسار المتابعة الكامل', style: TextStyle(fontSize: 12.5)),
-              style: TextButton.styleFrom(foregroundColor: DashTokens.green900),
+      child: LayoutBuilder(builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth < 560;
+
+        final primary = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(c.studentName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: DashTokens.textPrimary)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                _MetaChip(icon: Icons.badge_outlined, label: c.universityId),
+                _MetaChip(icon: Icons.apartment_outlined, label: c.department),
+                _MetaChip(icon: Icons.groups_outlined, label: c.shatr),
+              ],
             ),
-          ),
+            if (c.description.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text(c.description, style: const TextStyle(fontSize: 12.5, color: DashTokens.textPrimary, height: 1.5)),
+            ],
+          ],
+        );
+
+        final secondary = Column(
+          crossAxisAlignment: isNarrow ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AdvisingStatusChip(status: c.status),
+            const SizedBox(height: 10),
+            Material(
+              color: DashTokens.green900.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(8),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => showAdvisingTimelineDialog(context, subjectName: c.studentName, history: c.history),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.timeline_outlined, size: 15, color: DashTokens.green900),
+                      SizedBox(width: 6),
+                      Text('مسار المتابعة الكامل', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: DashTokens.green900)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+
+        if (isNarrow) {
+          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [primary, const SizedBox(height: 12), secondary]);
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: primary),
+            const SizedBox(width: 16),
+            secondary,
+          ],
+        );
+      }),
+    );
+  }
+}
+
+/// شارة معلومة صغيرة (أيقونة + نص) - تُستخدَم داخل [AdvisingCaseCard] لعرض
+/// الرقم الجامعي/القسم/الشطر بشكل منظَّم بدل سطر نصي واحد مفصول بنقاط.
+class _MetaChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  const _MetaChip({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(color: DashTokens.pageBg, borderRadius: BorderRadius.circular(6), border: Border.all(color: DashTokens.border)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: DashTokens.textMuted),
+          const SizedBox(width: 4),
+          Text(label, style: const TextStyle(fontSize: 11, color: DashTokens.textSecondary, fontWeight: FontWeight.w600)),
         ],
       ),
     );

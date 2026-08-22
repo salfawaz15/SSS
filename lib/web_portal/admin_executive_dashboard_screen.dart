@@ -69,6 +69,8 @@ class AdminExecutiveDashboardScreen extends StatelessWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
+                              const _DashboardPageHeading(),
+                              const SizedBox(height: 12),
                               _FilterableDashboardContent(
                                 data: data,
                                 hardshipCases: hardshipSnap.data!,
@@ -86,6 +88,31 @@ class AdminExecutiveDashboardScreen extends StatelessWidget {
             },
           );
         },
+      ),
+    );
+  }
+}
+
+/// عنوان الصفحة المضغوط أعلى لوحة الإدارة - `PortalScaffold.title` لا يظهر
+/// بصريًا فعليًا حين توجد `navItems` (يُستخدَم كـ`fallbackTitle` فقط)، فلا
+/// كان هناك ما يُعرّف الزائر أي صفحة يشاهد حاليًا (سليمان 2026-08-22).
+class _DashboardPageHeading extends StatelessWidget {
+  const _DashboardPageHeading();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 2, 4, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('لوحة الإدارة', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.greenDark)),
+          const SizedBox(height: 4),
+          Text(
+            'متابعة مؤشرات الأداء وسير معالجة الطلبات وحالات الإرشاد.',
+            style: TextStyle(fontSize: 14, color: Color(0xFF747A76)),
+          ),
+        ],
       ),
     );
   }
@@ -290,7 +317,7 @@ List<_ActionTypeStats> _computeAdvisingTypeStats(List<HardshipCase> hardship, Li
 
   return [
     build('حالات خاصة', hardship),
-    build('دعم نفسي', support),
+    build('الدعم النفسي والاجتماعي', support),
   ];
 }
 
@@ -489,6 +516,10 @@ class _MiniDonut extends StatelessWidget {
 /// الأقسام العلمية ← الحالة (ذوو الإعاقة/الخريجون).
 enum _Domain { deleteAdd, advising }
 
+/// فلتر "نوع الحالة" الخاص بوضع الإرشاد فقط - يميّز بين مصدرَي البيانات
+/// المنفصلَين (حالات خاصة/دعم نفسي واجتماعي) المُدمَجَين بصريًا بهذه اللوحة.
+enum _CaseTypeFilter { all, special, support }
+
 class _FilterableDashboardContent extends StatefulWidget {
   final _DashboardData data;
   final List<HardshipCase> hardshipCases;
@@ -505,8 +536,16 @@ class _FilterableDashboardContentState extends State<_FilterableDashboardContent
   // null = "الكل" - نفس تمييز فلتر القسم بقية اللوحة.
   String? _department;
   _PriorityFilter _priority = _PriorityFilter.all;
+  // فلترا وضع "الإرشاد" فقط (نوع الحالة/الحالة) - سليمان 2026-08-22.
+  _CaseTypeFilter _caseType = _CaseTypeFilter.all;
+  HardshipStatus? _caseStatus;
 
-  bool get _hasFilter => _shatr != _ShatrFilter.all || _department != null || _priority != _PriorityFilter.all;
+  bool get _hasFilter =>
+      _shatr != _ShatrFilter.all ||
+      _department != null ||
+      _priority != _PriorityFilter.all ||
+      _caseType != _CaseTypeFilter.all ||
+      _caseStatus != null;
 
   List<Map<String, dynamic>> get _filteredTickets {
     return widget.data.tickets.where((t) {
@@ -533,16 +572,21 @@ class _FilterableDashboardContentState extends State<_FilterableDashboardContent
       if (isMale != wantMale) return false;
     }
     if (_department != null && _DashboardData._displayDepartment(c.department) != _department) return false;
+    if (_caseStatus != null && c.status != _caseStatus) return false;
     return true;
   }
 
-  List<HardshipCase> get _filteredHardshipCases => widget.hardshipCases.where(_caseMatchesFilter).toList();
-  List<HardshipCase> get _filteredSupportCases => widget.supportCases.where(_caseMatchesFilter).toList();
+  List<HardshipCase> get _filteredHardshipCases =>
+      _caseType == _CaseTypeFilter.support ? const [] : widget.hardshipCases.where(_caseMatchesFilter).toList();
+  List<HardshipCase> get _filteredSupportCases =>
+      _caseType == _CaseTypeFilter.special ? const [] : widget.supportCases.where(_caseMatchesFilter).toList();
 
   void _resetAll() => setState(() {
         _shatr = _ShatrFilter.all;
         _department = null;
         _priority = _PriorityFilter.all;
+        _caseType = _CaseTypeFilter.all;
+        _caseStatus = null;
       });
 
   /// نص وصف نطاق الفلتر الحالي - يُلحَق بنصوص بطاقات المؤشرات حتى لا يبقى
@@ -554,6 +598,9 @@ class _FilterableDashboardContentState extends State<_FilterableDashboardContent
     if (_shatr != _ShatrFilter.all) parts.add(_shatr == _ShatrFilter.male ? 'شطر الطلاب' : 'شطر الطالبات');
     if (_priority == _PriorityFilter.disability) parts.add('ذوي الإعاقة');
     if (_priority == _PriorityFilter.graduate) parts.add('المتوقع تخرجهم');
+    if (_caseType == _CaseTypeFilter.special) parts.add('الحالات الخاصة');
+    if (_caseType == _CaseTypeFilter.support) parts.add('الدعم النفسي والاجتماعي');
+    if (_caseStatus != null) parts.add(_caseStatus!.label);
     return parts.isEmpty ? 'كل الأقسام والشطرين' : parts.join(' - ');
   }
 
@@ -567,8 +614,8 @@ class _FilterableDashboardContentState extends State<_FilterableDashboardContent
         Center(
           child: SegmentedButton<_Domain>(
             segments: const [
-              ButtonSegment(value: _Domain.deleteAdd, label: Text('الحذف والإضافة'), icon: Icon(Icons.assignment_outlined)),
-              ButtonSegment(value: _Domain.advising, label: Text('الإرشاد'), icon: Icon(Icons.volunteer_activism_outlined)),
+              ButtonSegment(value: _Domain.deleteAdd, label: Text('مؤشرات الحذف والإضافة'), icon: Icon(Icons.assignment_outlined)),
+              ButtonSegment(value: _Domain.advising, label: Text('مؤشرات الإرشاد'), icon: Icon(Icons.volunteer_activism_outlined)),
             ],
             selected: {_domain},
             onSelectionChanged: (s) => setState(() => _domain = s.first),
@@ -587,10 +634,15 @@ class _FilterableDashboardContentState extends State<_FilterableDashboardContent
             runSpacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
+              const Text('تصفية العرض:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF59615D))),
               _ResetAllChip(active: !_hasFilter, onTap: _resetAll),
               _ShatrFilterDropdown(value: _shatr, onChanged: (v) => setState(() => _shatr = v)),
               _DepartmentFilterDropdown(value: _department, onChanged: (v) => setState(() => _department = v)),
               if (_domain == _Domain.deleteAdd) _PriorityFilterDropdown(value: _priority, onChanged: (v) => setState(() => _priority = v)),
+              if (_domain == _Domain.advising) ...[
+                _CaseTypeFilterDropdown(value: _caseType, onChanged: (v) => setState(() => _caseType = v)),
+                _CaseStatusFilterDropdown(value: _caseStatus, onChanged: (v) => setState(() => _caseStatus = v)),
+              ],
             ],
           ),
         ),
@@ -644,7 +696,7 @@ class _FilterableDashboardContentState extends State<_FilterableDashboardContent
     return [
       _AdvisingKpiRow(kpi: kpi, scopeLabel: scopeLabel),
       const SizedBox(height: 18),
-      _ActionTypeSection(stats: typeStats, title: 'توزيع الحالات حسب النوع'),
+      _ActionTypeSection(stats: typeStats, title: 'توزيع الحالات حسب النوع', unitLabel: 'حالة'),
       const SizedBox(height: 18),
       _AdvisingStatusSection(breakdown: statusBreakdown),
     ];
@@ -702,7 +754,7 @@ class _KpiRow extends StatelessWidget {
           Text(
             'هذه الأرقام تقيس اكتمال إغلاق الحالة إداريًا بكل المستويات (مرشد ← منسّق قسم ← منسّق كلية) - '
             'لا تنفيذ المرشد وحده. لتفاصيل الإنجاز حسب كل دور راجع "متابعة سير العمل" أدناه.',
-            style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+            style: TextStyle(fontSize: 12, color: const Color(0xFF747A76)),
           ),
           const SizedBox(height: 12),
           LayoutBuilder(builder: (context, constraints) {
@@ -752,7 +804,7 @@ class _AdvisingKpiRow extends StatelessWidget {
         accent: AppColors.errorRed,
       ),
       _KpiCard(
-        title: 'نسبة الإغلاق (تحسّنت الحالة)',
+        title: 'نسبة إغلاق حالات الإرشاد',
         value: '$rate%',
         meta: '$completed من أصل $total حالة - $scopeLabel',
         icon: Icons.donut_large_outlined,
@@ -770,9 +822,8 @@ class _AdvisingKpiRow extends StatelessWidget {
           const _SectionTitle(title: 'مؤشرات الإرشاد', icon: Icons.volunteer_activism_outlined),
           const SizedBox(height: 4),
           Text(
-            'يجمع حالات "الحالات الخاصة" و"الدعم النفسي" معًا - كل حالة تمر بحالة واحدة بسجل تاريخي '
-            '(جديدة ← قيد الدراسة ← ... ← تحسّنت/أُغلقت)، بلا مسار إداري متعدّد الأدوار كالحذف والإضافة.',
-            style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+            'عرض موحد لحالات الإرشاد الخاصة والدعم النفسي والاجتماعي ومراحل معالجتها في جميع الأقسام والشطرين.',
+            style: TextStyle(fontSize: 12, color: const Color(0xFF747A76)),
           ),
           const SizedBox(height: 12),
           LayoutBuilder(builder: (context, constraints) {
@@ -792,7 +843,15 @@ class _AdvisingKpiRow extends StatelessWidget {
 }
 
 /// توزيع حالات الإرشاد حسب حالتها الحالية - بديل "متابعة سير العمل" (أدوار
-/// ثلاثة) غير المنطبق هنا. صف واحد من أشرطة تقدّم أفقية بدل 3 بطاقات دور.
+/// ثلاثة) غير المنطبق هنا.
+///
+/// **إعادة هيكلة مقصودة (سليمان 2026-08-22) - الاستثناء الوحيد المعتمَد من
+/// قاعدة "لا إعادة تصميم" لبقية دفعة اللوحة:** كانت كل حالة تمتد بعرض
+/// الصفحة الكامل بشريط تقدّم طويل جدًا وفراغ رأسي كبير، والعدد بعيد بصريًا
+/// عن اسم الحالة. الآن: بطاقات مضغوطة بعمودين على الشاشات العريضة (عمود
+/// واحد تلقائيًا تحت 900px)، نفس هوية بطاقات اللوحة تمامًا (إطار رمادي فاتح
+/// + حواف 12px + نفس الألوان الدلالية)، والعدد ملاصق لاسم الحالة مباشرة.
+/// كل الحالات تبقى ظاهرة بما فيها القيمة صفر، لكن بلا خط تقدّم ممتد بلا داع.
 class _AdvisingStatusSection extends StatelessWidget {
   final List<_AdvisingStatusCount> breakdown;
   const _AdvisingStatusSection({required this.breakdown});
@@ -818,42 +877,56 @@ class _AdvisingStatusSection extends StatelessWidget {
         children: [
           const _SectionTitle(title: 'توزيع حالات الإرشاد حسب الحالة', icon: Icons.donut_small_outlined),
           const SizedBox(height: 4),
-          Text('كل حالة إرشاد بمسار واحد تسلسلي - هذا توزيعها الحالي حسب آخر حالة مسجَّلة لها.', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+          Text('كل حالة إرشاد بمسار واحد تسلسلي - هذا توزيعها الحالي حسب آخر حالة مسجَّلة لها.', style: TextStyle(fontSize: 12, color: const Color(0xFF747A76))),
           const SizedBox(height: 12),
-          for (final b in breakdown) ...[
-            _statusRow(b, total),
-            if (b != breakdown.last) const SizedBox(height: 10),
-          ],
+          LayoutBuilder(builder: (context, constraints) {
+            final isWide = constraints.maxWidth >= 900;
+            final columns = isWide ? 2 : 1;
+            final gap = 10.0;
+            final cardWidth = (constraints.maxWidth - gap * (columns - 1)) / columns;
+            return Wrap(
+              spacing: gap,
+              runSpacing: gap,
+              children: [for (final b in breakdown) SizedBox(width: cardWidth, child: _statusCard(b, total))],
+            );
+          }),
         ],
       ),
     );
   }
 
-  Widget _statusRow(_AdvisingStatusCount b, int total) {
+  Widget _statusCard(_AdvisingStatusCount b, int total) {
     final rate = total == 0 ? 0.0 : b.count / total;
     final color = _statusColors[b.status] ?? Colors.grey;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Container(width: 9, height: 9, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-            const SizedBox(width: 6),
-            Expanded(child: Text(b.status.label, style: const TextStyle(fontSize: 12.5))),
-            Text('${b.count}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: color)),
-          ],
-        ),
-        const SizedBox(height: 4),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(4),
-          child: Stack(
-            children: [
-              Container(height: 6, color: Colors.grey.shade200),
-              FractionallySizedBox(widthFactor: rate.clamp(0.0, 1.0), child: Container(height: 6, color: color)),
-            ],
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFAFAFA),
+        border: Border.all(color: Colors.grey.shade200),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Container(width: 9, height: 9, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+          const SizedBox(width: 8),
+          Expanded(child: Text(b.status.label, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600))),
+          const SizedBox(width: 8),
+          Text('${b.count}', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: color)),
+          const SizedBox(width: 10),
+          SizedBox(
+            width: 56,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: Stack(
+                children: [
+                  Container(height: 6, color: Colors.grey.shade200),
+                  FractionallySizedBox(widthFactor: rate.clamp(0.0, 1.0), child: Container(height: 6, color: color)),
+                ],
+              ),
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -928,7 +1001,7 @@ class _KpiCard extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 3),
-                    Text(meta, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Colors.grey.shade600, height: 1.3)),
+                    Text(meta, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Color(0xFF747A76), height: 1.3)),
                   ],
                 ),
               ),
@@ -972,7 +1045,7 @@ class _WorkflowSection extends StatelessWidget {
         children: [
           const _SectionTitle(title: 'متابعة سير العمل', icon: Icons.timeline_outlined),
           const SizedBox(height: 4),
-          Text('حالة الطلبات فعليًا عند كل مستوى - كل رقم من واقع ما أُدخِل بالملفات', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+          Text('حالة الطلبات فعليًا عند كل مستوى - كل رقم من واقع ما أُدخِل بالملفات', style: TextStyle(fontSize: 12, color: const Color(0xFF747A76))),
           const SizedBox(height: 14),
           LayoutBuilder(builder: (context, constraints) {
             final narrow = constraints.maxWidth < 900;
@@ -1001,7 +1074,12 @@ class _WorkflowSection extends StatelessWidget {
 class _ActionTypeSection extends StatelessWidget {
   final List<_ActionTypeStats> stats;
   final String title;
-  const _ActionTypeSection({required this.stats, this.title = 'حالة الإنجاز حسب نوع الإجراء'});
+  // وحدة العدّ المعروضة أمام الإجمالي بكل بطاقة ("30 طلبًا"/"1 حالة") - لوحة
+  // الحذف/الإضافة تقيس طلبات فعلية، بينما الإرشاد يقيس حالات لا طلابًا
+  // بالضرورة (سليمان 2026-08-22: لا تُخلَط الكلمتان إلا حين يمثّل المؤشر
+  // فعليًا عدد طلاب فريدين).
+  final String unitLabel;
+  const _ActionTypeSection({required this.stats, this.title = 'حالة الإنجاز حسب نوع الإجراء', this.unitLabel = 'طلبًا'});
 
   @override
   Widget build(BuildContext context) {
@@ -1013,7 +1091,7 @@ class _ActionTypeSection extends StatelessWidget {
         children: [
           _SectionTitle(title: title, icon: Icons.pie_chart_outline_rounded),
           const SizedBox(height: 10),
-          _ActionTypeStatsRow(stats: stats),
+          _ActionTypeStatsRow(stats: stats, unitLabel: unitLabel),
         ],
       ),
     );
@@ -1130,6 +1208,78 @@ class _PriorityFilterDropdown extends StatelessWidget {
   }
 }
 
+/// فلتر "نوع الحالة" لوضع الإرشاد - نفس هوية بقية فلاتر الشريط بالضبط.
+class _CaseTypeFilterDropdown extends StatelessWidget {
+  final _CaseTypeFilter value;
+  final ValueChanged<_CaseTypeFilter> onChanged;
+  const _CaseTypeFilterDropdown({required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final active = value != _CaseTypeFilter.all;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(color: active ? AppColors.greenDark : Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<_CaseTypeFilter>(
+          value: value,
+          isDense: true,
+          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: active ? Colors.white : Colors.grey.shade700),
+          icon: Icon(Icons.expand_more, size: 16, color: active ? Colors.white : Colors.grey.shade600),
+          dropdownColor: Colors.white,
+          selectedItemBuilder: (context) => [
+            Text('نوع الحالة', style: TextStyle(color: active ? Colors.white : Colors.grey.shade700, fontWeight: FontWeight.w700, fontSize: 10.5)),
+            Text('الحالات الخاصة', style: TextStyle(color: active ? Colors.white : Colors.grey.shade700, fontWeight: FontWeight.w700, fontSize: 10.5)),
+            Text('الدعم النفسي والاجتماعي', style: TextStyle(color: active ? Colors.white : Colors.grey.shade700, fontWeight: FontWeight.w700, fontSize: 10.5)),
+          ],
+          items: const [
+            DropdownMenuItem(value: _CaseTypeFilter.all, child: Text('نوع الحالة', style: TextStyle(color: Colors.black87))),
+            DropdownMenuItem(value: _CaseTypeFilter.special, child: Text('الحالات الخاصة', style: TextStyle(color: Colors.black87))),
+            DropdownMenuItem(value: _CaseTypeFilter.support, child: Text('الدعم النفسي والاجتماعي', style: TextStyle(color: Colors.black87))),
+          ],
+          onChanged: (v) => onChanged(v ?? _CaseTypeFilter.all),
+        ),
+      ),
+    );
+  }
+}
+
+/// فلتر "الحالة" (حالة سير الإرشاد) لوضع الإرشاد - نفس هوية بقية فلاتر
+/// الشريط بالضبط؛ null = "الحالة" (الكل).
+class _CaseStatusFilterDropdown extends StatelessWidget {
+  final HardshipStatus? value;
+  final ValueChanged<HardshipStatus?> onChanged;
+  const _CaseStatusFilterDropdown({required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final active = value != null;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(color: active ? AppColors.greenDark : Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<HardshipStatus?>(
+          value: value,
+          isDense: true,
+          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: active ? Colors.white : Colors.grey.shade700),
+          icon: Icon(Icons.expand_more, size: 16, color: active ? Colors.white : Colors.grey.shade600),
+          dropdownColor: Colors.white,
+          selectedItemBuilder: (context) => [
+            Text('الحالة', style: TextStyle(color: active ? Colors.white : Colors.grey.shade700, fontWeight: FontWeight.w700, fontSize: 10.5)),
+            for (final s in HardshipStatus.values)
+              Text(s.label, style: TextStyle(color: active ? Colors.white : Colors.grey.shade700, fontWeight: FontWeight.w700, fontSize: 10.5)),
+          ],
+          items: [
+            const DropdownMenuItem(value: null, child: Text('الحالة', style: TextStyle(color: Colors.black87))),
+            for (final s in HardshipStatus.values) DropdownMenuItem(value: s, child: Text(s.label, style: const TextStyle(color: Colors.black87))),
+          ],
+          onChanged: onChanged,
+        ),
+      ),
+    );
+  }
+}
+
 /// شريحة "الكل" (إعادة تعيين كل الفلاتر الثلاثة دفعة واحدة) - أول عنصر
 /// بترتيب الفلتر (يمين الصف بالعربية RTL)، منفصلة عن فلتر الشطر نفسه (بطلب
 /// سليمان صراحةً 2026-08-21: "الكل" عنصر عام مستقل، لا خيارًا ضمن الشطر).
@@ -1176,9 +1326,9 @@ class _RoleProgressCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text(progress.role, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: AppColors.greenDark)),
+                child: Text(progress.role, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.greenDark)),
               ),
-              Text('${progress.total}', style: TextStyle(fontSize: 13, color: Colors.grey.shade500)),
+              Text('${progress.total}', style: TextStyle(fontSize: 13, color: const Color(0xFF747A76))),
             ],
           ),
           const SizedBox(height: 12),
@@ -1203,8 +1353,8 @@ class _RoleProgressCard extends StatelessWidget {
           children: [
             Container(width: 9, height: 9, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
             const SizedBox(width: 6),
-            Expanded(child: Text(label, style: const TextStyle(fontSize: 12.5))),
-            Text('$value', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: color)),
+            Expanded(child: Text(label, style: const TextStyle(fontSize: 14))),
+            Text('$value', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color)),
           ],
         ),
         const SizedBox(height: 4),
@@ -1244,20 +1394,21 @@ class _ActionTypeStats {
 /// بلا تكرار الفلتر (سليمان 2026-08-21).
 class _ActionTypeStatsRow extends StatelessWidget {
   final List<_ActionTypeStats> stats;
-  const _ActionTypeStatsRow({required this.stats});
+  final String unitLabel;
+  const _ActionTypeStatsRow({required this.stats, this.unitLabel = 'طلبًا'});
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (context, constraints) {
       if (constraints.maxWidth < 560) {
-        return Column(children: [for (final t in stats) Padding(padding: const EdgeInsets.only(bottom: 8), child: _ActionTypeCard(stats: t))]);
+        return Column(children: [for (final t in stats) Padding(padding: const EdgeInsets.only(bottom: 8), child: _ActionTypeCard(stats: t, unitLabel: unitLabel))]);
       }
       return Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           for (var i = 0; i < stats.length; i++) ...[
             if (i != 0) const SizedBox(width: 10),
-            Expanded(child: _ActionTypeCard(stats: stats[i])),
+            Expanded(child: _ActionTypeCard(stats: stats[i], unitLabel: unitLabel)),
           ],
         ],
       );
@@ -1270,7 +1421,8 @@ class _ActionTypeStatsRow extends StatelessWidget {
 /// 2026-08-21: "لا يوجد شكل جمالي يناسب الهوية البصرية ولا توسيط للمحتوى").
 class _ActionTypeCard extends StatelessWidget {
   final _ActionTypeStats stats;
-  const _ActionTypeCard({required this.stats});
+  final String unitLabel;
+  const _ActionTypeCard({required this.stats, this.unitLabel = 'طلبًا'});
 
   Color get _color => stats.rate >= 0.6
       ? AppColors.green
@@ -1309,7 +1461,7 @@ class _ActionTypeCard extends StatelessWidget {
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        Expanded(child: Text('${stats.label} — ${stats.total} طلبًا', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.grey.shade700))),
+                        Expanded(child: Text('${stats.label} — ${stats.total} $unitLabel', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.grey.shade700))),
                         const SizedBox(width: 8),
                         Text('${(stats.rate * 100).round()}%', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.greenDark)),
                       ],
@@ -1319,7 +1471,7 @@ class _ActionTypeCard extends StatelessWidget {
                       '${stats.completed} مكتمل • ${stats.processing} قيد المعالجة • ${stats.notStarted} لم يبدأ',
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600, height: 1.3),
+                      style: TextStyle(fontSize: 12, color: Color(0xFF747A76), height: 1.3),
                     ),
                   ],
                 ),
@@ -1372,7 +1524,7 @@ class _AccountabilitySection extends StatelessWidget {
               const SizedBox(width: 10),
               const Icon(Icons.person_off_outlined, size: 19, color: AppColors.greenDark),
               const SizedBox(width: 7),
-              const Text('من لم يعمل على حالاته', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 19, color: AppColors.greenDark)),
+              const Text('حالات تجاوزت مستوى المعالجة دون إجراء', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 19, color: AppColors.greenDark)),
               const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
@@ -1383,16 +1535,16 @@ class _AccountabilitySection extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'طلاب أُنجزت حالاتهم دون أن يعمل عليها المرشد/منسّق القسم إطلاقًا - أُنجزت لاحقًا عند من فوقه. '
+            'حالات انتقلت إلى المستوى التالي دون استكمال الإجراء في المستوى السابق. '
             'منسّق الكلية غير مُتابَع هنا (جهة تنفيذية بلا مهلة زمنية).',
-            style: TextStyle(fontSize: 11.5, color: Colors.grey.shade500),
+            style: TextStyle(fontSize: 11.5, color: const Color(0xFF747A76)),
           ),
           const SizedBox(height: 14),
           if (totalSkipped == 0)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 20),
               child: Center(
-                child: Text('لا توجد حالات تخطّت المرشد أو منسّق القسم حاليًا', style: TextStyle(fontSize: 12.5, color: Colors.grey.shade500)),
+                child: Text('لا توجد حالات تخطّت المرشد أو منسّق القسم حاليًا', style: TextStyle(fontSize: 12.5, color: const Color(0xFF747A76))),
               ),
             )
           else
@@ -1406,13 +1558,13 @@ class _AccountabilitySection extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     if (advisorList.isNotEmpty) ...[
-                      Text('مرشدون تخطّتهم حالات', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.grey.shade700)),
+                      Text('حالات لم يعالجها المرشدون', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.grey.shade700)),
                       const SizedBox(height: 8),
                       for (final a in advisorList) _AccountabilityRow(primary: a.advisorName, secondary: '${a.department} - ${a.shatrLabel}', count: a.skippedCount),
                     ],
                     if (advisorList.isNotEmpty && coordinatorList.isNotEmpty) const SizedBox(height: 16),
                     if (coordinatorList.isNotEmpty) ...[
-                      Text('أقسام تخطّى منسّقوها حالات', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.grey.shade700)),
+                      Text('حالات لم يعالجها منسقو الأقسام', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.grey.shade700)),
                       const SizedBox(height: 8),
                       for (final c in coordinatorList) _AccountabilityRow(primary: '${c.department} - ${c.shatrLabel}', secondary: 'منسّق القسم', count: c.skippedCount),
                     ],
@@ -1447,7 +1599,7 @@ class _AccountabilityRow extends StatelessWidget {
               children: [
                 Text(primary, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
                 const SizedBox(height: 2),
-                Text(secondary, style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600)),
+                Text(secondary, style: const TextStyle(fontSize: 10.5, color: Color(0xFF747A76))),
               ],
             ),
           ),
@@ -1503,7 +1655,7 @@ class _ActivityFeedSectionState extends State<_ActivityFeedSection> {
                   Text(
                     'قيد التطوير - ستُفعَّل عند توفّر سجل حركات لحظي',
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 11.5, color: Colors.grey.shade500),
+                    style: TextStyle(fontSize: 11.5, color: const Color(0xFF747A76)),
                   ),
                 ],
               ),

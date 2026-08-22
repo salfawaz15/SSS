@@ -296,12 +296,21 @@ class CollegeAdvisingClassification {
   /// طلاب كليتنا بلا مرشد إطلاقًا في هذا التقرير.
   final List<AdvisingCaseRecord> studentsWithoutAdvisor;
 
+  /// طلاب مفصولون أكاديميًا - مستبعَدون كليًا من كل القوائم أعلاه (بلا
+  /// مرشد/خطأ قسم/مرشد خارجي...)، نفس معاملة [analyze] تمامًا (سليمان
+  /// 2026-08-22: "الطالب المفصول أكاديميًا لا يجب أن يدخل في أي رقم أو
+  /// إحصائية - يختفي كأنه غير موجود نهائيًا"). كان هذا التصنيف يفتقد هذا
+  /// الاستبعاد سابقًا خلافًا لـ[analyze]، وهو السبب الجذري لتضارب الأرقام
+  /// بين "نظرة عامة" و"متابعة حالات الإرشاد" الذي رصده سليمان.
+  final List<AdvisingCaseRecord> dismissedStudents;
+
   const CollegeAdvisingClassification({
     required this.studentsCorrectlyAssigned,
     required this.studentsWithWrongDeptAdvisor,
     required this.externalAdvisorsWithOurStudents,
     required this.ourAdvisorsWithExternalStudents,
     required this.studentsWithoutAdvisor,
+    required this.dismissedStudents,
   });
 }
 
@@ -406,7 +415,12 @@ class AdvisingCaseAnalyzer {
       if (seenStudentIds.add(r.studentId)) dedupedRecords.add(r);
     }
 
-    for (final r in dedupedRecords) {
+    // الطلاب المفصولون أكاديميًا يُستبعَدون كليًا هنا أيضًا (نفس معاملة
+    // [analyze]) - راجع توثيق [CollegeAdvisingClassification.dismissedStudents].
+    final dismissed = dedupedRecords.where((r) => r.isAcademicallyDismissed).toList();
+    final activeRecords = dedupedRecords.where((r) => !r.isAcademicallyDismissed).toList();
+
+    for (final r in activeRecords) {
       // استبعاد كامل لطلاب "إدارة الأعمال التنفيذي" - طلب سليمان صراحةً
       // (2026-08-14): لا يظهرون في أي تصنيف (حتى "طلاب خارجيون") ولا يُحتسبون
       // في أي إحصائية، أيًا كان مرشدهم.
@@ -452,6 +466,7 @@ class AdvisingCaseAnalyzer {
       externalAdvisorsWithOurStudents: externalAdvisors,
       ourAdvisorsWithExternalStudents: externalStudents,
       studentsWithoutAdvisor: withoutAdvisor,
+      dismissedStudents: dismissed,
     );
   }
 

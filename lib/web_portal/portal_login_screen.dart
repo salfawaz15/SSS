@@ -8,7 +8,6 @@ import '../theme/app_theme.dart';
 import 'hidden_admin_login_screen.dart';
 import 'portal_accounts.dart';
 import 'portal_footer.dart';
-import 'public_landing_screen.dart' show PortalAcademicCalendarPage;
 import 'staff_number_login_screen.dart';
 
 /// مفاتيح تخزين "تذكرني على هذا الجهاز" محليًا في متصفح المستخدم (لا تُرسَل
@@ -195,15 +194,6 @@ class _PortalLoginScreenState extends State<PortalLoginScreen> {
         leading: Navigator.of(context).canPop()
             ? BackButton(onPressed: () => Navigator.of(context).maybePop())
             : null,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.calendar_month_outlined),
-            tooltip: 'التقويم الجامعي',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const PortalAcademicCalendarPage()),
-            ),
-          ),
-        ],
       ),
       bottomNavigationBar: const PortalFooterBar(),
       body: Stack(
@@ -481,7 +471,7 @@ class BrandPanel extends StatelessWidget {
                   borderRadius: BorderRadius.circular(14),
                   onTap: () => Navigator.of(context).maybePop(),
                   child: Container(
-                    constraints: BoxConstraints(maxWidth: compact ? 260 : 340),
+                    constraints: BoxConstraints(maxWidth: compact ? 260 : 370),
                     // شعار نظيف وفّره سليمان مباشرة (مُفرَّغ الخلفية فعليًا
                     // بأداة إزالة خلفية حقيقية - RGBA شفافية صحيحة، لا كالملفات
                     // السابقة التي بدت نظيفة على الأبيض فقط وتُظهر هالة على
@@ -497,45 +487,45 @@ class BrandPanel extends StatelessWidget {
                     // فأصبح أي `height` الآن يعكس الحجم الظاهر الحقيقي مباشرة.
                     child: Image.asset(
                       'assets/images/unit_logo_clean_transparent_cropped.png',
-                      height: compact ? 70 : 90,
+                      height: compact ? 70 : 98,
                       fit: BoxFit.contain,
                     ),
                   ),
                 ),
-                SizedBox(height: compact ? 12 : 22),
+                SizedBox(height: compact ? 12 : 24),
                 Text(
                   'وحدة الإرشاد الأكاديمي\nوالخريجين',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
-                    fontSize: compact ? 16 : 20,
+                    fontSize: compact ? 16 : 22,
                     height: 1.3,
                   ),
                 ),
-                SizedBox(height: compact ? 6 : 10),
+                SizedBox(height: compact ? 6 : 11),
                 Text(
                   'جامعة الطائف — كلية إدارة الأعمال',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.75),
-                    fontSize: compact ? 11.5 : 13,
+                    fontSize: compact ? 11.5 : 14,
                   ),
                 ),
                 if (!compact) ...[
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 20),
                   Container(
                     height: 1,
-                    width: 60,
+                    width: 66,
                     color: AppColors.gold.withValues(alpha: 0.5),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 15),
                   Text(
                     'بوابة الإرشاد الأكاديمي\nمتابعة وإحصائيات وتقارير',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.65),
-                      fontSize: 12.5,
+                      fontSize: 13.5,
                       height: 1.6,
                     ),
                   ),

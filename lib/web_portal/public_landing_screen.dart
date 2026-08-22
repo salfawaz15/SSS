@@ -143,8 +143,8 @@ class _PublicLandingScreenState extends State<PublicLandingScreen> {
       backgroundColor: const Color(0xFFF5F7F6),
       body: _PublicPageShell(
         header: [
-          _TopUtilityBar(onLogin: _openLogin),
-          const _NavBar(current: 'home'),
+          const _TopUtilityBar(),
+          _NavBar(current: 'home', onLogin: _openLogin),
         ],
         content: const Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -167,8 +167,23 @@ class _PublicLandingScreenState extends State<PublicLandingScreen> {
 /// خاص بصفحة بعينها (بطلب سليمان الصريح 2026-08-20 بعد تكرار نفس الخلل عبر
 /// عدة صفحات - `SingleChildScrollView` وحدها لا تتمدَّد لملء ارتفاع الشاشة،
 /// فتظهر خلفية Scaffold فارغة أسفل الفوتر كلما كان المحتوى أقصر من الشاشة).
-/// النمط: `ConstrainedBox(minHeight: ارتفاع الشاشة)` + `IntrinsicHeight` +
-/// `Expanded` حول المحتوى الأساسي فقط - الفوتر يبقى دائمًا آخر عنصر فعليًا.
+///
+/// **الحل الثالث والنهائي (سليمان 2026-08-22، تأكَّد حيًّا عبر Playwright):**
+/// كلا الحلَّين السابقين (`ConstrainedBox`+`IntrinsicHeight`+`Expanded`، ثم
+/// `CustomScrollView`+`SliverFillRemaining(hasScrollBody:false)`) يستدعيان
+/// قياسًا جوهريًا (Intrinsic) على شجرة `content` في مسار داخلي من Flutter
+/// نفسه (`RenderSliverFillRemainingWithoutScrollable` تستدعي
+/// `getMaxIntrinsicHeight` تمامًا كـ`IntrinsicHeight` رغم عدم ذكر ذلك
+/// بتوثيقها) - `content` يحوي عدة `LayoutBuilder` (تجاوب `_MetricsSection`/
+/// `_TracksSection`...) التي تمنع القياس الجوهري صراحةً، فيرمي استثناء
+/// "LayoutBuilder does not support returning intrinsic dimensions" يمنع أي
+/// رسم للصفحة بالكامل (تأكَّد بتشغيل حقيقي - الصفحة تظهر بيضاء فارغة تمامًا).
+/// الحل الصحيح المضمون بلا أي قياس جوهري إطلاقًا: `ConstrainedBox(minHeight:
+/// ارتفاع الشاشة)` + `Column(mainAxisSize: MainAxisSize.min, mainAxisAlignment:
+/// spaceBetween)` بلا `IntrinsicHeight` ولا `Expanded` - `mainAxisSize.min`
+/// يجعل حجم العمود الطبيعي (مجموع الأطفال) ما لم يفرض `ConstrainedBox` حدًّا
+/// أدنى أكبر، وعندها فقط يوزّع `spaceBetween` الفراغ الزائد - كل هذا تخطيط
+/// صندوقي عادي (Box Layout) بلا أي استدعاء لقياسات جوهرية بتاتًا.
 class _PublicPageShell extends StatelessWidget {
   final List<Widget> header;
   final Widget content;
@@ -178,28 +193,23 @@ class _PublicPageShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // CustomScrollView + SliverFillRemaining(hasScrollBody: false) بدل
-    // ConstrainedBox+IntrinsicHeight+Expanded السابقة - تلك كانت تقيس كل
-    // طفل بمعزل عن توزيع Flex الفعلي (قياس جوهري/Intrinsic) فتتعارض حقيقةً
-    // مع أي محتوى داخلي معقّد (LayoutBuilder متجاوب، Wrap متداخل...)، فتظهر
-    // فجوة القياس كتراكب فعلي بين الفوتر والمحتوى - تكرّر هذا حتى بالصفحة
-    // الرئيسية نفسها (سليمان 2026-08-21). SliverFillRemaining تستخدم تخطيط
-    // Box عاديًا (لا قياسًا جوهريًا إطلاقًا) فتتفادى هذه الفئة من الأعطال
-    // كليًا - نفس الحل لكل صفحات الموقع العام بلا استثناء لأي صفحة.
-    return CustomScrollView(
-      slivers: [
-        SliverToBoxAdapter(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: header),
-        ),
-        SliverFillRemaining(
-          hasScrollBody: false,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [content, footer],
+    return LayoutBuilder(
+      builder: (context, viewport) {
+        return SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: viewport.maxHeight),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [...header, content]),
+                footer,
+              ],
+            ),
           ),
-        ),
-      ],
+        );
+      },
     );
   }
 }
@@ -230,8 +240,8 @@ class InfoPageScaffold extends StatelessWidget {
       backgroundColor: const Color(0xFFF5F7F6),
       body: _PublicPageShell(
         header: [
-          _TopUtilityBar(onLogin: () => _pushLogin(context)),
-          _NavBar(current: current),
+          const _TopUtilityBar(),
+          _NavBar(current: current, onLogin: () => _pushLogin(context)),
         ],
         content: child,
         footer: const _Footer(),
@@ -1302,9 +1312,7 @@ class _TextCard extends StatelessWidget {
 /// العلوية الشائعة في المواقع الحكومية الرسمية (رابط دخول أعلى الصفحة، منفصل
 /// عن شريط التنقّل الرئيسي الأبيض).
 class _TopUtilityBar extends StatefulWidget {
-  final VoidCallback onLogin;
-
-  const _TopUtilityBar({required this.onLogin});
+  const _TopUtilityBar();
 
   @override
   State<_TopUtilityBar> createState() => _TopUtilityBarState();
@@ -1408,50 +1416,6 @@ class _TopUtilityBarState extends State<_TopUtilityBar> {
               ),
             ),
           ),
-        // شريط "تسجيل الدخول" البارز - بأسلوب موقع سدايا: شريط أخضر كامل
-        // العرض مستقل، بدل زر صغير ضمن شريط أدوات عام - يقود لدخول المنسّقين
-        // وإدارة الوحدة والسكرتارية (الدخول السري للإدارة العليا يبقى مخفيًا
-        // كما هو، بلا أي رابط ظاهر له).
-        // top:kIsWeb: على الويب لا يوجد notch فلا ضرر من تفعيلها، وعلى
-        // الأندرويد شريط التحديث (أعلاه) يحمي الشِّق العلوي بالفعل فتُعطَّل
-        // هنا لتفادي حشوة مضاعفة.
-        Container(
-          width: double.infinity,
-          color: AppColors.greenDark,
-          constraints: const BoxConstraints(minHeight: 38, maxHeight: 42),
-          // بلا SafeArea إطلاقًا على الويب (لا يوجد notch أصلًا هناك) - كان
-          // `top: kIsWeb` قد يحجز مساحة علوية غير صفرية في بعض متصفحات
-          // الجوال (شريط العنوان) فيُصفِّر مساحة الزر داخل شريط بارتفاع
-          // 38-42px محدود - هذا هو السبب الأرجح لاختفاء الزر الذي لاحظه
-          // سليمان مرارًا (2026-08-20). SafeArea يبقى لازمًا فقط لتطبيق
-          // الأندرويد الأصلي (!kIsWeb) حيث notch حقيقي محتمل.
-          child: SafeArea(
-            bottom: false,
-            top: !kIsWeb,
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Padding(
-                padding: const EdgeInsets.only(left: 32),
-                child: TextButton.icon(
-                  onPressed: widget.onLogin,
-                  style: TextButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    minimumSize: Size.zero,
-                    splashFactory: NoSplash.splashFactory,
-                  ).copyWith(
-                    overlayColor: WidgetStateProperty.all(AppColors.gold.withValues(alpha: 0.12)),
-                  ),
-                  icon: const Icon(Icons.login, size: 15),
-                  label: const Text(
-                    'تسجيل الدخول',
-                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
       ],
     );
   }
@@ -1635,10 +1599,55 @@ class _NavItemButton extends StatelessWidget {
   }
 }
 
+/// زر تسجيل الدخول - CTA مؤسسي مدمج بصف الهيدر نفسه (بدل الشريط الأخضر
+/// المستقل السابق الذي كان يستهلك مساحة رأسية إضافية أعلى الصفحة، بطلب
+/// سليمان الصريح 2026-08-22).
+class _LoginButton extends StatelessWidget {
+  final VoidCallback onPressed;
+  // نسخة مضغوطة (أيقونة بلا نص) للشريط الضيق (جوال) - النسخة الكاملة كانت
+  // تُسبّب RenderFlex overflow بـ4.5px عند 390px (شعار + زر نصّي + قائمة
+  // الهامبرغر بلا انكماش)؛ تأكَّد حيًّا عبر اختبار متصفح فعلي (سليمان
+  // 2026-08-22).
+  final bool compact;
+  const _LoginButton({required this.onPressed, this.compact = false});
+
+  @override
+  Widget build(BuildContext context) {
+    if (compact) {
+      return IconButton(
+        onPressed: onPressed,
+        tooltip: 'تسجيل الدخول',
+        style: IconButton.styleFrom(
+          backgroundColor: AppColors.greenDark,
+          foregroundColor: Colors.white,
+          minimumSize: const Size(42, 42),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+        icon: const Icon(Icons.login, size: 19),
+      );
+    }
+    return ElevatedButton.icon(
+      onPressed: onPressed,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: AppColors.greenDark,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        minimumSize: const Size(0, 42),
+        padding: const EdgeInsets.symmetric(horizontal: 18),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
+      ),
+      icon: const Icon(Icons.login, size: 17),
+      label: const Text('تسجيل الدخول'),
+    );
+  }
+}
+
 class _NavBar extends StatelessWidget {
   final String? current;
+  final VoidCallback onLogin;
 
-  const _NavBar({this.current});
+  const _NavBar({this.current, required this.onLogin});
 
   @override
   Widget build(BuildContext context) {
@@ -1733,6 +1742,7 @@ class _NavBar extends StatelessWidget {
                   child: Row(mainAxisSize: MainAxisSize.min, children: navItems),
                 ),
                 const Spacer(),
+                _LoginButton(onPressed: onLogin),
               ],
             );
           }
@@ -1741,9 +1751,14 @@ class _NavBar extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const _BrandLogo(),
-              PopupMenuButton<int>(
-                icon: const Icon(Icons.menu),
-                onSelected: (i) {
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _LoginButton(onPressed: onLogin, compact: true),
+                  const SizedBox(width: 8),
+                  PopupMenuButton<int>(
+                    icon: const Icon(Icons.menu),
+                    onSelected: (i) {
                   switch (i) {
                     case 0:
                       _goHome(context);
@@ -1788,6 +1803,8 @@ class _NavBar extends StatelessWidget {
                   PopupMenuItem(value: 7, child: Text('التقويم الجامعي')),
                   PopupMenuItem(value: 8, child: Text('روابط مهمة')),
                   PopupMenuItem(value: 9, child: Text('تواصل معنا')),
+                ],
+                  ),
                 ],
               ),
             ],
@@ -2534,9 +2551,9 @@ class _MetricsSection extends StatelessWidget {
                 icon: Icons.bar_chart_rounded,
               ),
               const SizedBox(height: 6),
-              Text(
+              const Text(
                 'نظرة عامة على نطاق خدمات الإرشاد الأكاديمي والخريجين، ويجري استكمال ربط مصادر البيانات لعرض المؤشرات المحدَّثة تلقائيًا.',
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 12.5, height: 1.5),
+                style: TextStyle(color: Color(0xFF666B68), fontSize: 12.5, height: 1.5),
               ),
               const SizedBox(height: 12),
               // Row/Wrap بدل GridView عمدًا - GridView (حتى shrinkWrap) يستخدم
@@ -2689,7 +2706,7 @@ class _TrackCard extends StatelessWidget {
                           description,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w400, color: Color(0xFF666D6A), height: 1.6),
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w400, color: Color(0xFF666B68), height: 1.6),
                         ),
                       ],
                     ),

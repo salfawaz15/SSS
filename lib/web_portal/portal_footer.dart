@@ -13,10 +13,10 @@ class PortalFooterBar extends StatelessWidget implements PreferredSizeWidget {
       width: double.infinity,
       color: const Color(0xFF0E1F17),
       padding: const EdgeInsets.symmetric(vertical: 10),
-      child: const Text(
+      child: Text(
         'جميع الحقوق محفوظة لـ سليمان الفواز © 2026',
         textAlign: TextAlign.center,
-        style: TextStyle(color: Colors.white54, fontSize: 11.5),
+        style: TextStyle(color: Colors.white.withValues(alpha: 0.62), fontSize: 13),
       ),
     );
   }
