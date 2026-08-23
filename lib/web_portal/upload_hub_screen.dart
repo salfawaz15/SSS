@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -20,6 +21,7 @@ import '../services/course_schedule_diff_service.dart';
 import '../services/course_schedule_repository.dart';
 import '../services/docx_schedule_parser_service.dart';
 import '../services/escalation_file_service.dart';
+import '../services/excel_export_service.dart';
 import '../services/excel_parser_service.dart';
 import '../services/firestore_ticket_service.dart';
 import '../services/outside_course_repository.dart';
@@ -84,6 +86,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   bool _uploadingHealth = false;
   bool _uploadingSchedule = false;
   bool _uploadingFormsFile = false;
+  bool _downloadingFormsFile = false;
 
   // ==================== رفع/تنزيل ملفات مراحل الحذف والإضافة ====================
   // (بطلب سليمان صراحةً 2026-08-20: توحيد كل رفع/تنزيل ملفات دورة الحذف
@@ -293,6 +296,44 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   /// الداخلية - لذا بطاقة مستقلة مميَّزة بصريًا بدل الشبكة 2×2 العلوية).
   /// نُقل هنا حرفيًا من admin_workspace_screen.dart بلا أي تغيير بالمنطق -
   /// سليمان صراحةً 2026-08-19.
+  /// تنزيل ملف مضغوط بداخله ملف Excel خام منفصل لكل قسم/شطر (10 ملفات: 5
+  /// أقسام × شطرين) من "الملف الأساسي" الحالي كما هو - بلا أي فرز حسب مرشد
+  /// (خلافًا لـ[AdvisorZipService]) - ليتمكّن سليمان من إرساله يدويًا (بريد/
+  /// واتساب) لأي منسّق قسم يتعذّر عليه الدخول للموقع نفسه، بطلبه صراحةً
+  /// 2026-08-23.
+  Future<void> _downloadFormsFileZip() async {
+    setState(() => _downloadingFormsFile = true);
+    try {
+      final tickets = await FirestoreTicketService.watchAllTickets().first;
+      if (tickets.isEmpty) {
+        throw Exception('لا توجد بيانات "الملف الأساسي" مرفوعة بعد لتنزيلها.');
+      }
+
+      final groups = ExcelParserService.groupByShatrAndDepartment(tickets);
+      final archive = Archive();
+      for (final entry in groups.entries) {
+        final parts = entry.key.split('|');
+        final shatr = parts[0];
+        final department = parts.length > 1 ? parts[1] : 'قسم';
+        final shatrLabel = shatr == ExcelParserService.shatrMale ? 'شطر_الطلاب' : 'شطر_الطالبات';
+        final bytes = ExcelExportService.buildDepartmentWorkbook(entry.value);
+        final safeName = '${department.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')}_$shatrLabel';
+        archive.addFile(ArchiveFile('$safeName.xlsx', bytes.length, bytes));
+      }
+
+      final zipBytes = Uint8List.fromList(ZipEncoder().encode(archive) ?? <int>[]);
+      downloadBytes(zipBytes, 'الملف_الأساسي_طلبات_الحذف_والإضافة.zip');
+
+      if (!mounted) return;
+      _showSuccessSnackBar('تم تنزيل ${groups.length} ملفًا (قسم/شطر) بنجاح');
+    } catch (e) {
+      if (!mounted) return;
+      showUploadErrorDialog(context, 'تعذّر تنزيل الملف', '$e');
+    } finally {
+      if (mounted) setState(() => _downloadingFormsFile = false);
+    }
+  }
+
   Future<void> _pickAndUploadFormsFile() async {
     final isNewCycle = await _confirmFormsUploadMode();
     if (isNewCycle == null) return;
@@ -1179,10 +1220,27 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
       title: 'الملف الأساسي - طلبات الحذف والإضافة',
       subtitleIcon: Icons.description_outlined,
       subtitle: 'المصدر: نموذج Microsoft Forms',
-      button: _bannerButton(
-        uploading: _uploadingFormsFile,
-        label: 'رفع الملف',
-        onPressed: _pickAndUploadFormsFile,
+      button: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Expanded(
+            child: _bannerButton(
+              uploading: _downloadingFormsFile,
+              label: 'تنزيل الملف',
+              icon: Icons.download_outlined,
+              loadingLabel: 'جارٍ التنزيل...',
+              onPressed: _downloadFormsFileZip,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: _bannerButton(
+              uploading: _uploadingFormsFile,
+              label: 'رفع الملف',
+              onPressed: _pickAndUploadFormsFile,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1248,13 +1306,19 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   }
 
   /// زر ذهبي موحَّد لكل أشرطة `_greenBanner`.
-  Widget _bannerButton({required bool uploading, required String label, required VoidCallback? onPressed}) {
+  Widget _bannerButton({
+    required bool uploading,
+    required String label,
+    required VoidCallback? onPressed,
+    IconData icon = Icons.upload_file,
+    String loadingLabel = 'جارٍ الرفع...',
+  }) {
     return ElevatedButton.icon(
       onPressed: uploading ? null : onPressed,
       icon: uploading
           ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.greenDark))
-          : const Icon(Icons.upload_file, size: 16),
-      label: Text(uploading ? 'جارٍ الرفع...' : label, style: const TextStyle(fontSize: 12.5)),
+          : Icon(icon, size: 16),
+      label: Text(uploading ? loadingLabel : label, style: const TextStyle(fontSize: 12.5)),
       style: ElevatedButton.styleFrom(
         backgroundColor: AppColors.gold,
         foregroundColor: AppColors.greenDark,
