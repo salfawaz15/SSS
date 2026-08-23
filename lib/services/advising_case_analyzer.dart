@@ -800,8 +800,17 @@ class AdvisingCaseAnalyzer {
         // التوزيع معًا** (نفس شرط isOver يغذّي قائمة overloaded أدناه التي
         // تُبنى منها اقتراحات النقل) - فارق طالب واحد لا يُذكر بإعادة التوزيع
         // إطلاقًا كما طلب صراحةً في نفس الملاحظة.
-        final isOver = over > 1;
-        final isUnder = (fairShare - actual) > 1;
+        //
+        // خلل حقيقي أُصلح (2026-08-23، رصده سليمان حيًّا: "72 مقابل 71 يجب أن
+        // تكون متوازن"): التصنيف كان يقارن actual بـ fairShare **الخام**
+        // (مثال: 72.08) بينما الجدول يعرض fairShare **مقرَّبة** (72) - فارق
+        // ظاهر للمستخدم = 1 (متوازن حسب القاعدة)، لكن الفارق الخام الفعلي
+        // = 1.08 (>1 فتجاوز حد "دون النصاب" رغم أن ما يراه المستخدم يوحي
+        // بالعكس). الحل: التصنيف يقارن الآن بالقيمة **المقرَّبة** نفسها
+        // المعروضة بالجدول، لا الخام - يطابق دائمًا ما يراه المستخدم فعليًا.
+        final fairShareRounded = fairShare.round();
+        final isOver = (actual - fairShareRounded) > 1;
+        final isUnder = (fairShareRounded - actual) > 1;
         if (isOver) {
           overloaded.add(OverloadedAdvisorCase(
             advisor: m,
