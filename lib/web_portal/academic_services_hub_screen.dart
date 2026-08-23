@@ -5,6 +5,7 @@ import '../models/college_roster_member.dart';
 import '../models/course_section_record.dart';
 import '../services/college_roster_repository.dart';
 import '../services/course_schedule_repository.dart' show CourseScheduleRepository, Shatr;
+import '../theme/dashboard_table.dart';
 import '../theme/dashboard_tokens.dart';
 import '../theme/filter_pills.dart';
 import '../utils/name_display.dart';
@@ -368,33 +369,30 @@ class _AcademicServicesHubScreenState extends State<AcademicServicesHubScreen> {
         child: const Text('لا توجد بيانات مطابقة لهذا الفلتر', style: TextStyle(fontSize: 13, color: DashTokens.textSecondary)),
       );
     }
-    return Container(
-      decoration: BoxDecoration(color: DashTokens.cardBg, border: Border.all(color: DashTokens.border), borderRadius: BorderRadius.circular(DashTokens.radiusLg)),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: Column(
-        children: [
-          for (var i = 0; i < topLoad.length; i++) ...[
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('${topLoad[i].count} شعبة', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: DashTokens.gold600)),
-                  Expanded(
-                    child: Text(
-                      topLoad[i].name,
-                      textAlign: TextAlign.right,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: DashTokens.textPrimary),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (i != topLoad.length - 1) Container(height: 1, color: DashTokens.border, margin: const EdgeInsets.symmetric(vertical: 2)),
-          ],
+    return DashTableCard(
+      table: DashTable(
+        columns: const [
+          DashTableColumn(key: 'name', label: 'الاسم', flex: 22),
+          DashTableColumn(key: 'count', label: 'عدد الشعب', flex: 10),
         ],
+        rowCount: topLoad.length,
+        cellBuilder: (context, i, key) {
+          final entry = topLoad[i];
+          switch (key) {
+            case 'name':
+              return Text(
+                entry.name,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: DashTokens.textPrimary),
+              );
+            case 'count':
+              return Text('${entry.count}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: DashTokens.gold600));
+            default:
+              return const SizedBox.shrink();
+          }
+        },
       ),
     );
   }

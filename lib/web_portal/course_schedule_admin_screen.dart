@@ -598,16 +598,16 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
   }) {
     final showShatr = shatrAt != null;
     final columns = <DashTableColumn>[
-      const DashTableColumn(key: 'courseName', label: 'اسم المقرر', flex: 22),
+      const DashTableColumn(key: 'courseName', label: 'اسم المقرر', flex: 20),
       const DashTableColumn(key: 'section', label: 'الشعبة', flex: 8),
-      const DashTableColumn(key: 'code', label: 'المقرر', flex: 10),
+      const DashTableColumn(key: 'code', label: 'المقرر', flex: 9),
       const DashTableColumn(key: 'hours', label: 'عدد الساعات', flex: 8),
       const DashTableColumn(key: 'activity', label: 'النشاط', flex: 10),
-      const DashTableColumn(key: 'maxCapacity', label: 'اعلى حد', flex: 15),
+      const DashTableColumn(key: 'maxCapacity', label: 'اعلى حد', flex: 13),
       const DashTableColumn(key: 'registered', label: 'المسجلين', flex: 8),
-      const DashTableColumn(key: 'day', label: 'اليوم', flex: 10),
-      const DashTableColumn(key: 'time', label: 'الوقت', flex: 12),
-      const DashTableColumn(key: 'instructor', label: 'المحاضر', flex: 16),
+      const DashTableColumn(key: 'day', label: 'اليوم', flex: 9),
+      const DashTableColumn(key: 'time', label: 'الوقت', flex: 20),
+      const DashTableColumn(key: 'instructor', label: 'المحاضر', flex: 33),
       if (showShatr) const DashTableColumn(key: 'shatr', label: 'الشطر', flex: 8),
     ];
 
@@ -958,14 +958,28 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
     return _splitCell(Text('${r.theoryRegistered}'), Text('${r.practicalRegistered ?? 0}'));
   }
 
+  /// يحذف الاسم قبل الأخير (اسم الجد عادةً) من أسماء 4 كلمات فأكثر - يبقي
+  /// الاسم مقروءًا لأصحابه بلا أي التباس (الاسم الأول + الأب + العائلة كافٍ
+  /// للتمييز)، ويحل مشكلة التفاف الأسماء الطويلة جدًا لسطرين رغم توسيع
+  /// العمود (سليمان 2026-08-23: "احذف الاسم قبل الأخير لو كان الاسم طويل").
+  String _shortenLongName(String name) {
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.length < 4) return name;
+    parts.removeAt(parts.length - 2);
+    return parts.join(' ');
+  }
+
   Widget _instructorCell(CourseSectionRecord r) {
     const unassigned = 'لم تُسكَّن بعد';
     if (r.practicalSection == null || r.practicalInstructorName == null || r.practicalInstructorName == r.instructorName) {
-      return _singleCenteredCell(Text(r.instructorName ?? unassigned, textAlign: TextAlign.center), _singleValueCellMinHeight(r));
+      return _singleCenteredCell(
+        Text(r.instructorName == null ? unassigned : _shortenLongName(r.instructorName!), textAlign: TextAlign.center),
+        _singleValueCellMinHeight(r),
+      );
     }
     return _splitCell(
-      Text(r.instructorName ?? unassigned, textAlign: TextAlign.center),
-      Text(r.practicalInstructorName!, textAlign: TextAlign.center),
+      Text(r.instructorName == null ? unassigned : _shortenLongName(r.instructorName!), textAlign: TextAlign.center),
+      Text(_shortenLongName(r.practicalInstructorName!), textAlign: TextAlign.center),
     );
   }
 

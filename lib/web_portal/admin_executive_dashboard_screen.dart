@@ -703,7 +703,7 @@ class _FilterableDashboardContentState extends State<_FilterableDashboardContent
                 Center(child: toggle),
                 const SizedBox(height: 14),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(14)),
                   child: filters,
                 ),
@@ -711,7 +711,7 @@ class _FilterableDashboardContentState extends State<_FilterableDashboardContent
             );
           }
           return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(14)),
             child: Row(
               children: [
@@ -724,7 +724,7 @@ class _FilterableDashboardContentState extends State<_FilterableDashboardContent
             ),
           );
         }),
-        const SizedBox(height: 14),
+        const SizedBox(height: 8),
         if (_domain == _Domain.deleteAdd) ..._buildDeleteAddContent(scopeLabel) else ..._buildAdvisingContent(scopeLabel),
       ],
     );
@@ -740,9 +740,9 @@ class _FilterableDashboardContentState extends State<_FilterableDashboardContent
 
     return [
       _KpiRow(kpi: kpi, scopeLabel: scopeLabel),
-      const SizedBox(height: 14),
+      const SizedBox(height: 8),
       _ActionTypeSection(stats: actionTypeStats),
-      const SizedBox(height: 14),
+      const SizedBox(height: 8),
       // "متابعة سير العمل" و"حالات تجاوزت مستوى المعالجة دون إجراء" جنبًا
       // إلى جنب على الشاشات الواسعة بدل تكديسهما رأسيًا - بطلب سليمان
       // صراحةً (2026-08-23، بمخطط توضيحي): "كل المحتويات بصفحة واحدة بلا
@@ -753,13 +753,13 @@ class _FilterableDashboardContentState extends State<_FilterableDashboardContent
         final workflow = _WorkflowSection(roleProgress: roleProgress);
         final accountability = _MainGrid(advisorList: advisorAccountability, coordinatorList: coordinatorAccountability);
         if (constraints.maxWidth < 1000) {
-          return Column(children: [workflow, const SizedBox(height: 14), accountability]);
+          return Column(children: [workflow, const SizedBox(height: 8), accountability]);
         }
         return Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(flex: 3, child: workflow),
-            const SizedBox(width: 14),
+            const SizedBox(width: 10),
             Expanded(flex: 2, child: accountability),
           ],
         );
@@ -1122,20 +1122,20 @@ class _WorkflowSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(14)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const _SectionTitle(title: 'متابعة سير العمل', icon: Icons.timeline_outlined),
-          const SizedBox(height: 4),
+          const SizedBox(height: 3),
           Text('حالة الطلبات فعليًا عند كل مستوى - كل رقم من واقع ما أُدخِل بالملفات', style: TextStyle(fontSize: 12, color: const Color(0xFF747A76))),
-          const SizedBox(height: 14),
+          const SizedBox(height: 8),
           LayoutBuilder(builder: (context, constraints) {
             final narrow = constraints.maxWidth < 900;
             final cards = roleProgress.map((r) => _RoleProgressCard(progress: r)).toList();
             if (narrow) {
-              return Column(children: [for (var i = 0; i < cards.length; i++) ...[if (i > 0) const SizedBox(height: 10), cards[i]]]);
+              return Column(children: [for (var i = 0; i < cards.length; i++) ...[if (i > 0) const SizedBox(height: 8), cards[i]]]);
             }
             return Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1168,13 +1168,13 @@ class _ActionTypeSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(14)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _SectionTitle(title: title, icon: Icons.pie_chart_outline_rounded),
-          const SizedBox(height: 10),
+          const SizedBox(height: 6),
           _ActionTypeStatsRow(stats: stats, unitLabel: unitLabel),
         ],
       ),
@@ -1397,7 +1397,7 @@ class _RoleProgressCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: const Color(0xFFF7F9F8),
         borderRadius: BorderRadius.circular(12),
@@ -1414,7 +1414,7 @@ class _RoleProgressCard extends StatelessWidget {
               Text('${progress.total}', style: TextStyle(fontSize: 13, color: const Color(0xFF747A76))),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 6),
           // ثلاث حالات فقط بعد إلغاء "تنفيذ جزئي" (سليمان 2026-08-22) - شبكة
           // صفّين (2+1) بدل عمود رأسي 3 صفوف، لتبقى البطاقة بنفس ارتفاع
           // الصفّين المعتمَد أصلًا بدل أن تطول رغم قلة الحالات (سليمان
@@ -1428,7 +1428,7 @@ class _RoleProgressCard extends StatelessWidget {
               Expanded(child: _outcomeRow('لم يُعمَل عليه بعد', progress.notStarted, progress.total, _notStartedColor)),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 6),
           _outcomeRow('تعذّر التنفيذ / تم التصعيد', progress.escalated, progress.total, _escalatedColor),
         ],
       ),
@@ -1604,7 +1604,7 @@ class _AccountabilitySection extends StatelessWidget {
   Widget build(BuildContext context) {
     final totalSkipped = advisorList.fold<int>(0, (s, a) => s + a.skippedCount) + coordinatorList.fold<int>(0, (s, c) => s + c.skippedCount);
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(14)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1615,7 +1615,7 @@ class _AccountabilitySection extends StatelessWidget {
               const SizedBox(width: 10),
               const Icon(Icons.person_off_outlined, size: 19, color: AppColors.greenDark),
               const SizedBox(width: 7),
-              const Text('حالات تجاوزت مستوى المعالجة دون إجراء', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 19, color: AppColors.greenDark)),
+              const Expanded(child: Text('حالات تجاوزت مستوى المعالجة دون إجراء', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 19, color: AppColors.greenDark))),
               const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
@@ -1624,13 +1624,13 @@ class _AccountabilitySection extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 3),
           Text(
             'حالات انتقلت إلى المستوى التالي دون استكمال الإجراء في المستوى السابق. '
             'منسّق الكلية غير مُتابَع هنا (جهة تنفيذية بلا مهلة زمنية).',
             style: TextStyle(fontSize: 11.5, color: const Color(0xFF747A76)),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 8),
           if (totalSkipped == 0)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 20),
