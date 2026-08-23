@@ -607,7 +607,7 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
       const DashTableColumn(key: 'registered', label: 'المسجلين', flex: 8),
       const DashTableColumn(key: 'day', label: 'اليوم', flex: 9),
       const DashTableColumn(key: 'time', label: 'الوقت', flex: 20),
-      const DashTableColumn(key: 'instructor', label: 'المحاضر', flex: 33),
+      const DashTableColumn(key: 'instructor', label: 'المحاضر', flex: 40),
       if (showShatr) const DashTableColumn(key: 'shatr', label: 'الشطر', flex: 8),
     ];
 
@@ -641,7 +641,7 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
       }
     }
 
-    final minWidth = 1050.0 + (showShatr ? 90.0 : 0.0);
+    final minWidth = 1150.0 + (showShatr ? 90.0 : 0.0);
     return DashTableCard(
       minWidth: minWidth,
       table: DashTable(
@@ -958,28 +958,24 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
     return _splitCell(Text('${r.theoryRegistered}'), Text('${r.practicalRegistered ?? 0}'));
   }
 
-  /// يحذف الاسم قبل الأخير (اسم الجد عادةً) من أسماء 4 كلمات فأكثر - يبقي
-  /// الاسم مقروءًا لأصحابه بلا أي التباس (الاسم الأول + الأب + العائلة كافٍ
-  /// للتمييز)، ويحل مشكلة التفاف الأسماء الطويلة جدًا لسطرين رغم توسيع
-  /// العمود (سليمان 2026-08-23: "احذف الاسم قبل الأخير لو كان الاسم طويل").
-  String _shortenLongName(String name) {
-    final parts = name.trim().split(RegExp(r'\s+'));
-    if (parts.length < 4) return name;
-    parts.removeAt(parts.length - 2);
-    return parts.join(' ');
-  }
-
+  // محاولة سابقة (2026-08-23) حذفت "الاسم قبل الأخير" آليًا من الأسماء
+  // الطويلة لتفادي الالتفاف لسطرين - سليمان تراجع عنها صراحةً: كشف حالات
+  // حقيقية حيث "آل" جزء لا يتجزأ من اسم رباعي (مثال: "... آل عصيدان
+  // الزهراني")، فحذف الكلمة قبل الأخيرة يقطع الاسم بمكان خاطئ ويُنتج نصًا
+  // مبتورًا لا معنى له. الأسماء تُعرض كاملة كما هي دائمًا - الحل بدلًا من
+  // ذلك: عمود أوسع + خط أصغر لهذه الخلية تحديدًا (بلا مساس ببقية الجدول).
   Widget _instructorCell(CourseSectionRecord r) {
     const unassigned = 'لم تُسكَّن بعد';
+    const style = TextStyle(fontSize: 11.5);
     if (r.practicalSection == null || r.practicalInstructorName == null || r.practicalInstructorName == r.instructorName) {
       return _singleCenteredCell(
-        Text(r.instructorName == null ? unassigned : _shortenLongName(r.instructorName!), textAlign: TextAlign.center),
+        Text(r.instructorName ?? unassigned, textAlign: TextAlign.center, style: style),
         _singleValueCellMinHeight(r),
       );
     }
     return _splitCell(
-      Text(r.instructorName == null ? unassigned : _shortenLongName(r.instructorName!), textAlign: TextAlign.center),
-      Text(_shortenLongName(r.practicalInstructorName!), textAlign: TextAlign.center),
+      Text(r.instructorName ?? unassigned, textAlign: TextAlign.center, style: style),
+      Text(r.practicalInstructorName!, textAlign: TextAlign.center, style: style),
     );
   }
 

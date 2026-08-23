@@ -323,15 +323,10 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                const AdvisingPageHeader(
-                                  breadcrumbTrail: 'متابعة حالات الإرشاد',
-                                  title: 'متابعة حالات الإرشاد',
-                                  description: 'كشف بيانات الطلبة، النصاب، إعادة التوزيع، والتقارير التفصيلية.',
-                                  icon: Icons.fact_check_outlined,
-                                ),
-                                const SizedBox(height: 16),
+                                _buildCompactHeader(),
+                                const SizedBox(height: 10),
                                 _buildStatsGrid(tabs),
-                                const SizedBox(height: 16),
+                                const SizedBox(height: 10),
                                 _buildFilterBar(),
                               ],
                             ),
@@ -385,6 +380,41 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       if (!mounted) return;
       showUploadErrorDialog(context, 'تعذّر التفريغ', '$e');
     }
+  }
+
+  /// رأس مخصَّص لهذه الصفحة فقط (لا يمسّ [AdvisingPageHeader] المشترك مع
+  /// بقية صفحات الإرشاد) - العنوان والوصف بجانب بعضهما بـ`Wrap` بدل تكديسهما
+  /// رأسيًا، فيظهران بسطر واحد على Desktop وينزل الوصف تلقائيًا لسطر ثانٍ
+  /// عند ضيق الشاشة (سليمان 2026-08-23: "اعتماد نهائي" - رفع المؤشرات
+  /// والجدول للأعلى بتقليل الارتفاع الرأسي لرأس الصفحة فقط).
+  Widget _buildCompactHeader() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const AdvisingBreadcrumb(trail: 'متابعة حالات الإرشاد'),
+        const SizedBox(height: 6),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            const Icon(Icons.fact_check_outlined, size: 20, color: DashTokens.green900),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Wrap(
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  const Text('متابعة حالات الإرشاد', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: DashTokens.textPrimary)),
+                  const SizedBox(width: 10),
+                  Text(
+                    'كشف بيانات الطلبة، النصاب، إعادة التوزيع، والتقارير التفصيلية.',
+                    style: TextStyle(fontSize: 11.5, color: DashTokens.textSecondary.withValues(alpha: 0.9)),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
   }
 
   /// شبكة إحصائيات (10 بطاقات: 5 أعلى + 5 أسفل) بنفس تصميم [PortalStatCard]
@@ -456,10 +486,17 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
     // سليمان نفسه - الأهم تشغيليًا: الكل/تابعين لمرشد/ذوي إعاقة/بلا مرشد/على
     // غير مرشدهم) بوزن أقوى، والباقي مؤشرات تشغيلية ثانوية بحجم أصغر - بدل
     // حائط 14 بطاقة متساوية الوزن.
-    Widget tile(int i, {required bool compact}) => _CompactStatTile(
+    // بطاقة "طلبة على غير مرشدهم – ذوي الإعاقة" (index 5) لم تعد بطاقة
+    // مستقلة (سليمان 2026-08-23: "فئة فرعية من طلبة على غير مرشدهم، لا تحتاج
+    // بطاقة مستقلة") - رقمها يظهر كملاحظة ديناميكية داخل بطاقة "طلبة على غير
+    // مرشدهم" (index 4) بدلًا من ذلك. التبويب نفسه (`_tabHealthMismatch`)
+    // ومعادلة عدّه (`counts[5]`) بقيا كما هما بلا أي حذف من الكود أو الحسابات
+    // - فقط استُبعِد من شبكة البطاقات.
+    Widget tile(int i, {required bool compact, String? note}) => _CompactStatTile(
           icon: icons[i],
           value: '${counts[i]}',
           label: tabs[i].$1,
+          note: note,
           color: colors[i],
           selected: _sectionIndex == i,
           compact: compact,
@@ -469,29 +506,27 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
           }),
         );
 
-    const primaryCount = 5;
-    final secondaryCount = tabs.length - primaryCount;
+    const primaryIndices = [0, 1, 2, 3, 4];
+    const secondaryIndices = [6, 7, 8, 9, 10, 11, 12, 13];
 
-    // شبكة ثابتة الأعمدة (بدل `Wrap` بعرض بطاقة ثابت) - `Wrap` كان يترك
-    // أحيانًا بطاقة واحدة معزولة بسطر ثالث حسب عرض الحاوية الدقيق (لاحظه
-    // سليمان 2026-08-21: "بطاقة واحدة معزولة بسطر ثالث"). عدد أعمدة المؤشرات
-    // الثانوية يبقى دومًا قاسمًا لعددها (9 = 3×3 أو 1×9) فلا تنتج بطاقة يتيمة
-    // مهما كان عرض الشاشة.
-    Widget grid({required int start, required int count, required bool compact, required int Function(double width) columnsFor}) {
+    Widget grid({required List<int> indices, required bool compact, required int Function(double width) columnsFor}) {
       return LayoutBuilder(
         builder: (context, constraints) {
-          final cols = columnsFor(constraints.maxWidth).clamp(1, count);
+          final cols = columnsFor(constraints.maxWidth).clamp(1, indices.length);
           return GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            itemCount: count,
+            itemCount: indices.length,
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: cols,
-              mainAxisExtent: compact ? 64 : 66,
+              mainAxisExtent: compact ? 56 : 72,
               crossAxisSpacing: 8,
               mainAxisSpacing: 8,
             ),
-            itemBuilder: (context, i) => tile(start + i, compact: compact),
+            itemBuilder: (context, i) {
+              final idx = indices[i];
+              return tile(idx, compact: compact, note: idx == 4 ? 'منهم ${counts[5]} من ذوي الإعاقة' : null);
+            },
           );
         },
       );
@@ -503,19 +538,17 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
         Text('مؤشرات أساسية', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Colors.grey.shade600)),
         const SizedBox(height: 6),
         grid(
-          start: 0,
-          count: primaryCount,
+          indices: primaryIndices,
           compact: false,
           columnsFor: (w) => w >= 1150 ? 5 : (w >= 700 ? 3 : (w >= 460 ? 2 : 1)),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         Text('مؤشرات تشغيلية', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Colors.grey.shade600)),
         const SizedBox(height: 6),
         grid(
-          start: primaryCount,
-          count: secondaryCount,
+          indices: secondaryIndices,
           compact: true,
-          columnsFor: (w) => w >= 520 ? 3 : 1,
+          columnsFor: (w) => w >= 900 ? 4 : (w >= 520 ? 2 : 1),
         ),
       ],
     );
@@ -1374,6 +1407,10 @@ class _CompactStatTile extends StatelessWidget {
   final VoidCallback onTap;
   final bool selected;
   final bool compact;
+  // ملاحظة اختيارية صغيرة أسفل التسمية (مثال: "منهم 47 من ذوي الإعاقة") -
+  // تُستخدَم لإظهار رقم فئة فرعية بلا حاجة لبطاقة مستقلة بشبكة المؤشرات
+  // (سليمان 2026-08-23).
+  final String? note;
 
   const _CompactStatTile({
     required this.icon,
@@ -1383,6 +1420,7 @@ class _CompactStatTile extends StatelessWidget {
     required this.onTap,
     this.selected = false,
     this.compact = false,
+    this.note,
   });
 
   @override
@@ -1425,6 +1463,15 @@ class _CompactStatTile extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(fontSize: compact ? 10.5 : 9.5, fontWeight: FontWeight.w600, color: Colors.grey.shade700),
                     ),
+                    if (note != null) ...[
+                      const SizedBox(height: 1),
+                      Text(
+                        note!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 8.5, color: Colors.grey.shade500),
+                      ),
+                    ],
                   ],
                 ),
               ),

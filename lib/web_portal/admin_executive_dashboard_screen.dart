@@ -1131,22 +1131,13 @@ class _WorkflowSection extends StatelessWidget {
           const SizedBox(height: 3),
           Text('حالة الطلبات فعليًا عند كل مستوى - كل رقم من واقع ما أُدخِل بالملفات', style: TextStyle(fontSize: 12, color: const Color(0xFF747A76))),
           const SizedBox(height: 8),
-          LayoutBuilder(builder: (context, constraints) {
-            final narrow = constraints.maxWidth < 900;
-            final cards = roleProgress.map((r) => _RoleProgressCard(progress: r)).toList();
-            if (narrow) {
-              return Column(children: [for (var i = 0; i < cards.length; i++) ...[if (i > 0) const SizedBox(height: 8), cards[i]]]);
-            }
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (var i = 0; i < cards.length; i++) ...[
-                  Expanded(child: cards[i]),
-                  if (i != cards.length - 1) const SizedBox(width: 12),
-                ],
-              ],
-            );
-          }),
+          // البطاقات الثلاث مكدَّسة رأسيًا بعرض كامل دائمًا (لا جنبًا إلى جنب)
+          // - كل بطاقة سطر أفقي واحد مضغوط، بمرجع صورة سليمان الصريح
+          // (2026-08-23: "اعتماد نهائي... لا اجتهاد إضافي").
+          for (var i = 0; i < roleProgress.length; i++) ...[
+            if (i > 0) const SizedBox(height: 8),
+            _RoleProgressCard(progress: roleProgress[i]),
+          ],
         ],
       ),
     );
@@ -1394,67 +1385,80 @@ class _RoleProgressCard extends StatelessWidget {
   static const _escalatedColor = AppColors.gold;
   static const _notStartedColor = Color(0xFF9AA5B1);
 
+  // سطر أفقي واحد لكل بطاقة (سليمان 2026-08-23: "اعتماد نهائي" بمرجع صورة
+  // صريح) بدل الشبكة الرأسية السابقة - عنوان المستوى + الإجمالي يمينًا، ثم
+  // الحالات الثلاث جنبًا إلى جنب يفصل بينها خط رأسي رفيع، كل حالة برقم/نقطة
+  // ملوَّنة/تسمية أعلى شريط تقدّم مختصر. يقلّص ارتفاع البطاقة والقسم كاملاً
+  // بشكل واضح - هذا هو التصميم المعتمَد النهائي، لا اجتهاد إضافي عليه.
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: const Color(0xFFF7F9F8),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.grey.shade200),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(progress.role, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.greenDark)),
-              ),
-              Text('${progress.total}', style: TextStyle(fontSize: 13, color: const Color(0xFF747A76))),
-            ],
-          ),
-          const SizedBox(height: 6),
-          // ثلاث حالات فقط بعد إلغاء "تنفيذ جزئي" (سليمان 2026-08-22) - شبكة
-          // صفّين (2+1) بدل عمود رأسي 3 صفوف، لتبقى البطاقة بنفس ارتفاع
-          // الصفّين المعتمَد أصلًا بدل أن تطول رغم قلة الحالات (سليمان
-          // 2026-08-23: لاحظ أن حذف "جزئي" مع عمود رأسي دفع الأقسام التالية
-          // خارج الشاشة بلا تمرير).
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: _outcomeRow('تم التنفيذ', progress.complete, progress.total, _completeColor)),
-              const SizedBox(width: 14),
-              Expanded(child: _outcomeRow('لم يُعمَل عليه بعد', progress.notStarted, progress.total, _notStartedColor)),
-            ],
-          ),
-          const SizedBox(height: 6),
-          _outcomeRow('تعذّر التنفيذ / تم التصعيد', progress.escalated, progress.total, _escalatedColor),
-        ],
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(progress.role, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.greenDark)),
+                const SizedBox(height: 3),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('${progress.total}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.greenDark)),
+                    const SizedBox(width: 4),
+                    Text('الإجمالي', style: TextStyle(fontSize: 11, color: const Color(0xFF747A76))),
+                  ],
+                ),
+              ],
+            ),
+            _divider(),
+            Expanded(child: _outcomeCell('تم التنفيذ', progress.complete, progress.total, _completeColor)),
+            _divider(),
+            Expanded(child: _outcomeCell('تعذّر التنفيذ / تم التصعيد', progress.escalated, progress.total, _escalatedColor)),
+            _divider(),
+            Expanded(child: _outcomeCell('لم يُعمَل عليه بعد', progress.notStarted, progress.total, _notStartedColor)),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _outcomeRow(String label, int value, int total, Color color) {
+  Widget _divider() => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Container(width: 1, color: Colors.grey.shade300),
+      );
+
+  Widget _outcomeCell(String label, int value, int total, Color color) {
     final rate = total == 0 ? 0.0 : value / total;
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Container(width: 9, height: 9, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-            const SizedBox(width: 6),
-            Expanded(child: Text(label, style: const TextStyle(fontSize: 14))),
-            Text('$value', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color)),
+            Text('$value', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: color)),
+            const SizedBox(width: 5),
+            Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+            const SizedBox(width: 5),
+            Expanded(child: Text(label, style: const TextStyle(fontSize: 12.5), overflow: TextOverflow.ellipsis, maxLines: 1)),
           ],
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 5),
         ClipRRect(
           borderRadius: BorderRadius.circular(4),
           child: Stack(
             children: [
-              Container(height: 6, color: Colors.grey.shade200),
-              FractionallySizedBox(widthFactor: rate.clamp(0.0, 1.0), child: Container(height: 6, color: color)),
+              Container(height: 5, color: Colors.grey.shade200),
+              FractionallySizedBox(widthFactor: rate.clamp(0.0, 1.0), child: Container(height: 5, color: color)),
             ],
           ),
         ),
