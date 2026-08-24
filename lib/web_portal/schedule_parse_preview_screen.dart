@@ -11,8 +11,9 @@ import '../services/pdf_schedule_parser_service.dart';
 import '../theme/app_theme.dart';
 import 'portal_header.dart';
 
-List<ParsedCourseSectionWithShatr> _parsePdfInIsolate(Uint8List bytes) =>
-    PdfScheduleParserService.parseSectionsWithShatr(bytes);
+List<ParsedCourseSectionWithShatr> _parsePdfFilesInIsolate(List<Uint8List> filesBytes) => [
+      for (final bytes in filesBytes) ...PdfScheduleParserService.parseSectionsWithShatr(bytes),
+    ];
 
 /// صفحة اختبار (preview) مفرَّغة بالكامل - بلا أي حفظ Firestore - لمقارنة
 /// دقة قراءة جدول "الحويّة" من PDF مباشرة (تجريبي) مقابل القراءة الحالية
@@ -34,20 +35,41 @@ class _ScheduleParsePreviewScreenState extends State<ScheduleParsePreviewScreen>
   String? _docxError;
   String? _pdfError;
 
+  void _clearDocx() {
+    setState(() {
+      _docxResult = null;
+      _docxError = null;
+    });
+  }
+
+  void _clearPdf() {
+    setState(() {
+      _pdfResult = null;
+      _pdfError = null;
+    });
+  }
+
+  // يسمح باختيار ملفين معًا (شطر الطلاب + شطر الطالبات) دفعة واحدة بدل رفع كل
+  // شطر بمحاولة منفصلة - سليمان صراحةً (2026-08-24).
   Future<void> _pickDocx() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: const ['docx'],
       withData: true,
+      allowMultiple: true,
     );
-    if (result == null || result.files.single.bytes == null) return;
+    if (result == null || result.files.isEmpty) return;
     setState(() {
       _docxBusy = true;
       _docxError = null;
       _docxResult = null;
     });
     try {
-      final parsed = DocxScheduleParserService.parseSectionsWithShatr(result.files.single.bytes!);
+      final parsed = <ParsedCourseSectionWithShatr>[];
+      for (final file in result.files) {
+        if (file.bytes == null) continue;
+        parsed.addAll(DocxScheduleParserService.parseSectionsWithShatr(file.bytes!));
+      }
       setState(() => _docxResult = parsed);
     } catch (e) {
       setState(() => _docxError = 'تعذّرت قراءة الملف: $e');
@@ -61,15 +83,17 @@ class _ScheduleParsePreviewScreenState extends State<ScheduleParsePreviewScreen>
       type: FileType.custom,
       allowedExtensions: const ['pdf'],
       withData: true,
+      allowMultiple: true,
     );
-    if (result == null || result.files.single.bytes == null) return;
+    if (result == null || result.files.isEmpty) return;
     setState(() {
       _pdfBusy = true;
       _pdfError = null;
       _pdfResult = null;
     });
     try {
-      final parsed = await compute(_parsePdfInIsolate, result.files.single.bytes!);
+      final filesBytes = [for (final f in result.files) if (f.bytes != null) f.bytes!];
+      final parsed = await compute(_parsePdfFilesInIsolate, filesBytes);
       setState(() => _pdfResult = parsed);
     } catch (e) {
       setState(() => _pdfError = 'تعذّرت قراءة الملف: $e');
@@ -108,6 +132,7 @@ class _ScheduleParsePreviewScreenState extends State<ScheduleParsePreviewScreen>
                       error: _docxError,
                       result: _docxResult,
                       onPick: _pickDocx,
+                      onClear: _clearDocx,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -118,6 +143,7 @@ class _ScheduleParsePreviewScreenState extends State<ScheduleParsePreviewScreen>
                       error: _pdfError,
                       result: _pdfResult,
                       onPick: _pickPdf,
+                      onClear: _clearPdf,
                     ),
                   ),
                 ],
@@ -215,6 +241,7 @@ class _Panel extends StatelessWidget {
   final String? error;
   final List<ParsedCourseSectionWithShatr>? result;
   final VoidCallback onPick;
+  final VoidCallback onClear;
 
   const _Panel({
     required this.title,
@@ -222,6 +249,7 @@ class _Panel extends StatelessWidget {
     required this.error,
     required this.result,
     required this.onPick,
+    required this.onClear,
   });
 
   @override
@@ -238,10 +266,21 @@ class _Panel extends StatelessWidget {
           Row(
             children: [
               Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15))),
+              // زر التفريغ دائمًا يسار مستطيل زر الاختيار (قاعدة ثابتة بكل
+              // الموقع) - يظهر فقط بعد وجود نتيجة أو خطأ ليُمسحا قبل رفعة
+              // جديدة، لا قبل أول رفعة حين لا شيء لتفريغه أصلًا.
+              if (result != null || error != null) ...[
+                OutlinedButton.icon(
+                  onPressed: busy ? null : onClear,
+                  icon: const Icon(Icons.refresh, size: 18),
+                  label: const Text('تفريغ'),
+                ),
+                const SizedBox(width: 8),
+              ],
               ElevatedButton.icon(
                 onPressed: busy ? null : onPick,
                 icon: const Icon(Icons.upload_file, size: 18),
-                label: const Text('اختيار ملف'),
+                label: const Text('اختيار ملف/ملفين'),
               ),
             ],
           ),
