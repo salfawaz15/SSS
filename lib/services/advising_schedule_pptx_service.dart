@@ -543,7 +543,9 @@ class AdvisingSchedulePptxService {
         '<p:spPr><a:xfrm><a:off x="0" y="$headerH"/><a:ext cx="$_slideW" cy="30000"/></a:xfrm>'
         '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="$_gold"/></a:solidFill></p:spPr>'
         '<p:txBody><a:bodyPr/><a:lstStyle/><a:p/></p:txBody></p:sp>');
-    shapes.write(_pictureLogo(x: _marginX, y: 90000, cx: 570000, cy: 570000));
+    // مساحة أوسع حول الشعار (لا ملاصقًا لحافة الشريط) - سليمان صراحةً
+    // (2026-08-25): "الشعار قريب جدًا، يكون أفضل بمساحة أكبر حوله".
+    shapes.write(_pictureLogo(x: _marginX + 160000, y: 115000, cx: 520000, cy: 520000));
     shapes.write(_textBox(
       x: _marginX + 700000,
       y: 90000,
