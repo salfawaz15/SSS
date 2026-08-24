@@ -22,6 +22,49 @@ class PdfScheduleParserService {
   static final RegExp _dayPattern = RegExp(r'^[1-7]$');
   static final RegExp _timePattern = RegExp(r'^\d{1,2}:\d{2}\s*[صم]$');
 
+  // القاعة بمستخرِج PDF تخرج مثل "حضوري)(5101" - كلمة "حضوري" وقوساها الملحقان
+  // يُستخرَجون كوحدة نصية واحدة معكوسة الترتيب (خلل اتجاه RTL بالاستخراج، لا
+  // علاقة له بموضع العمود) - يُزالان بلا اشتراط ترتيب الأقواس تحديدًا، خلافًا
+  // لنظيره بقارئ docx الذي يحذف السلسلة الحرفية "(حضوري)" فقط - دليل فعلي من
+  // سليمان (2026-08-24): 620 من 710 شعبة أظهرت "حضوري)(" ضمن القاعة رغم صحة
+  // رقمها، بعد مقارنة برمجية بملف Word المرجعي.
+  static String _normalizeRoom(String raw) {
+    var s = raw.trim();
+    if (s.isEmpty) return s;
+    if (s.contains('أونلاين') || s.contains('اونلاين') || s.contains('أون لاي')) return 'أونلاين';
+    s = s.replaceAll(RegExp(r'[()]*حضوري[()]*'), '').trim();
+    s = s.replaceAll(RegExp(r'^[()]+|[()]+$'), '').trim();
+    return s;
+  }
+
+  // القوسان "(" و")" يخرجان معكوسَي الترتيب من مستخرِج PDF (خلل اتجاه نص عند
+  // استخراج نص RTL، لا علاقة له بمحتوى الحقل) - يظهر بحقلَي "اسم المقرر"
+  // و"المستفيد" تحديدًا (الوحيدان اللذان يحويان أقواسًا بالملف الأصلي) -
+  // دليل فعلي من سليمان (2026-08-24): 47+710 اختلاف حقل بمقارنة برمجية، كلها
+  // معكوسة القوس فقط بلا فرق حقيقي بالمحتوى.
+  static String _swapParens(String s) {
+    final buffer = StringBuffer();
+    for (final ch in s.runes) {
+      if (ch == 0x28) {
+        buffer.writeCharCode(0x29);
+      } else if (ch == 0x29) {
+        buffer.writeCharCode(0x28);
+      } else {
+        buffer.writeCharCode(ch);
+      }
+    }
+    return buffer.toString();
+  }
+
+  // لقب "د." أو "د/" قبل اسم المحاضر - غير مُزال بقارئ PDF خلافًا لقارئ docx
+  // (استخدَم نفس النمط هناك) - دليل فعلي من سليمان (2026-08-24): 50 من 710
+  // شعبة أظهرت اللقب ضمن الاسم بلوحة PDF فقط بعد مقارنة برمجية.
+  static final RegExp _titlePrefixPattern = RegExp(r'^\s*[دأا][\.\/]\s*');
+  static String? _stripTitlePrefix(String? name) {
+    if (name == null) return null;
+    return name.replaceFirst(_titlePrefixPattern, '').trim();
+  }
+
   static ({bool isMarker, Shatr? shatr}) _shatrFromText(String text) {
     if (!_mmaqarPattern.hasMatch(text)) return (isMarker: false, shatr: null);
     const branchKeywords = ['الخرمة', 'تربة', 'رنية'];
@@ -49,7 +92,7 @@ class PdfScheduleParserService {
       // فهرسة من نهاية الصف - انظر توثيق الصنف أعلاه لترتيب الأعمدة.
       final section = at(1);
       final courseCodeRaw = at(2);
-      final courseName = at(3);
+      final courseName = _swapParens(at(3));
       final hoursStr = at(4);
       final activity = at(5);
       final sequenceStr = at(6);
@@ -64,7 +107,7 @@ class PdfScheduleParserService {
         final dayStr = at(9);
         final from = at(10);
         final to = at(11);
-        final room = at(12);
+        final room = _normalizeRoom(at(12));
 
         String beneficiary = '';
         String? instructor;
@@ -78,11 +121,11 @@ class PdfScheduleParserService {
         final searchLimit = n - 12;
         for (var i = 0; i < searchLimit; i++) {
           if (cells[i].contains('كلية')) {
-            beneficiary = cells[i];
+            beneficiary = _swapParens(cells[i]);
             if (i + 1 < searchLimit) {
               final next = cells[i + 1].trim();
               if (next.isNotEmpty && next != 'نعم' && next != 'لا' && !next.contains('كلية')) {
-                instructor = next;
+                instructor = _stripTitlePrefix(next);
               }
             }
             break;
@@ -140,7 +183,7 @@ class PdfScheduleParserService {
           var room = '';
           for (var i = toIdx - 1; i >= 0; i--) {
             if (cells[i].trim().isNotEmpty) {
-              room = cells[i];
+              room = _normalizeRoom(cells[i]);
               break;
             }
           }

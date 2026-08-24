@@ -148,7 +148,7 @@ class _ScheduleParsePreviewScreenState extends State<ScheduleParsePreviewScreen>
             // والملخص لا يزالان يظهران رغم تأكيد الخادم نشر نسخة أحدث - يُرفع
             // هذا الرقم يدويًا بكل نشرة تجريبية لهذه الصفحة تحديدًا).
             const Text(
-              'نسخة الاختبار: 6 (إن كنت ترى رقمًا مختلفًا فالمتصفح يعرض نسخة مخبَّأة)',
+              'نسخة الاختبار: 7 (إن كنت ترى رقمًا مختلفًا فالمتصفح يعرض نسخة مخبَّأة)',
               style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
