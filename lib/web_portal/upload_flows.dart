@@ -28,6 +28,7 @@ import '../services/course_schedule_change_repository.dart';
 import '../services/course_schedule_diff_service.dart';
 import '../services/course_schedule_repository.dart';
 import '../services/docx_schedule_parser_service.dart';
+import '../services/pdf_schedule_parser_service.dart';
 import '../services/excel_export_service.dart';
 import '../services/excel_parser_service.dart';
 import '../services/firestore_ticket_service.dart';
@@ -765,8 +766,10 @@ Future<void> runDownloadFormsZip({
 }
 
 /// رفع المقررات الدراسية (الحويّة) بملف واحد يحوي الشطرين معًا - يحدَّد شطر
-/// كل شعبة تلقائيًا من حقل "المقر". **مُستخرَجة من `upload_hub_screen.dart`
-/// (`_uploadCoursesCombined`) بلا أي تغيير بالمنطق**.
+/// كل شعبة تلقائيًا من حقل "المقر". يقبل Word (.docx) أو PDF مباشرة (سليمان
+/// صراحةً 2026-08-24: اعتماد PDF لأن رافع الملف مستقبلاً قد لا يعرف تحويله
+/// إلى Word) - مع تنبيه تلقائي عند اكتشاف شعب بمواعيد أسبوعية غير معتادة
+/// (مؤشر خلل استدلال محتمل بقارئ PDF تحديدًا).
 Future<void> runUploadCourses({
   required BuildContext context,
   required ValueChanged<bool> setUploading,
@@ -775,29 +778,70 @@ Future<void> runUploadCourses({
 }) async {
   final result = await FilePicker.platform.pickFiles(
     type: FileType.custom,
-    allowedExtensions: ['docx'],
+    allowedExtensions: ['docx', 'pdf'],
     withData: true,
   );
   if (result == null || result.files.single.bytes == null) return;
   final Uint8List bytes = result.files.single.bytes!;
-  // ملف .docx الحقيقي هو أرشيف ZIP يبدأ دائمًا بالتوقيع "PK" - إن لم يكن
-  // كذلك فهو على الأغلب حُفظ فعليًا بصيغة .doc القديمة أو تالف.
-  if (bytes.length < 2 || bytes[0] != 0x50 || bytes[1] != 0x4B) {
+  final fileName = result.files.single.name.toLowerCase();
+  final isPdf = fileName.endsWith('.pdf');
+  // ملف .docx الحقيقي هو أرشيف ZIP يبدأ دائمًا بالتوقيع "PK"، وملف .pdf
+  // الحقيقي يبدأ دائمًا بالتوقيع "%PDF" - إن لم يطابق أيًا منهما فهو على
+  // الأغلب حُفظ بصيغة أخرى (.doc القديمة مثلًا) أو تالف.
+  final looksValid = isPdf
+      ? (bytes.length >= 4 && bytes[0] == 0x25 && bytes[1] == 0x50 && bytes[2] == 0x44 && bytes[3] == 0x46)
+      : (bytes.length >= 2 && bytes[0] == 0x50 && bytes[1] == 0x4B);
+  if (!looksValid) {
     if (!context.mounted) return;
     showUploadErrorDialog(
       context,
-      'الملف ليس Word صالحًا',
-      'الملف المختار لا يبدو ملف Word (.docx) حقيقيًا (قد يكون محفوظًا فعليًا بصيغة .doc القديمة أو تالفًا). '
-          'تأكد عند التحويل من PDF أن تحفظه بصيغة "Word Document (.docx)" وليس "Word 97-2003 (.doc)"، ثم أعد المحاولة.',
+      isPdf ? 'الملف ليس PDF صالحًا' : 'الملف ليس Word صالحًا',
+      isPdf
+          ? 'الملف المختار لا يبدو ملف PDF حقيقيًا أو أنه تالف - أعد المحاولة بملف PDF أصلي.'
+          : 'الملف المختار لا يبدو ملف Word (.docx) حقيقيًا (قد يكون محفوظًا فعليًا بصيغة .doc القديمة أو تالفًا). '
+              'يمكنك أيضًا رفع ملف PDF مباشرة بلا حاجة للتحويل إلى Word.',
     );
     return;
   }
 
   setUploading(true);
   try {
-    final sections = DocxScheduleParserService.parseSectionsWithShatr(bytes);
+    final sections = isPdf
+        ? PdfScheduleParserService.parseSectionsWithShatr(bytes)
+        : DocxScheduleParserService.parseSectionsWithShatr(bytes);
     if (sections.isEmpty) {
-      throw Exception('لم يتم العثور على أي شعبة في الملف - تأكد من أنه ملف المقررات الدراسية الشامل الصحيح بصيغة Word (.docx).');
+      throw Exception('لم يتم العثور على أي شعبة في الملف - تأكد من أنه ملف المقررات الدراسية الشامل الصحيح.');
+    }
+
+    // موعد أسبوعي ثالث أو أكثر لشعبة واحدة (نظري أو عملي) نادر جدًا فعليًا -
+    // مؤشر قوي على خلل استدلال بقارئ PDF (يلتقط أحيانًا موعدًا وهميًا إضافيًا
+    // من صف مجاور) - سليمان صراحةً (2026-08-24): بدل مطاردة هذا الخلل البنيوي
+    // بالكود (~1% من الشعب، غير مضمون الحل الكامل مستقبلاً)، يُنبَّه الرافع
+    // تلقائيًا لمراجعة الشعب المشبوهة يدويًا قبل الاعتماد النهائي.
+    final suspiciousSections = sections
+        .where((s) => s.record.meetings.length >= 3 || s.record.practicalMeetings.length >= 3)
+        .toList();
+    if (suspiciousSections.isNotEmpty) {
+      if (!context.mounted) return;
+      final proceedDespiteWarning = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('تنبيه: شعب بمواعيد غير معتادة'),
+          content: SingleChildScrollView(
+            child: Text(
+              'وُجدت ${suspiciousSections.length} شعبة بـ3 مواعيد أسبوعية أو أكثر (نادر فعليًا، قد يكون خللًا '
+              'باستخراج الملف):\n\n'
+              '${suspiciousSections.map((s) => '• ${s.record.courseCode} - ${s.record.courseName} (تسلسل ${s.record.sequence})').join('\n')}\n\n'
+              'يُنصَح بمراجعة هذه الشعب بالملف الأصلي قبل المتابعة. هل تريد المتابعة رغم ذلك؟',
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('متابعة رغم ذلك')),
+          ],
+        ),
+      );
+      if (proceedDespiteWarning != true) return;
     }
 
     final ourSections = sections.where((s) => s.beneficiary.contains('كلية إدارة الأعمال')).toList();
