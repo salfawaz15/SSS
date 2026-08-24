@@ -28,12 +28,23 @@ class PdfScheduleParserService {
   // لنظيره بقارئ docx الذي يحذف السلسلة الحرفية "(حضوري)" فقط - دليل فعلي من
   // سليمان (2026-08-24): 620 من 710 شعبة أظهرت "حضوري)(" ضمن القاعة رغم صحة
   // رقمها، بعد مقارنة برمجية بملف Word المرجعي.
+  // قاعات "شبكة" الملتصقة برقم (بلا مسافة بينهما بالمصدر الأصلي، مثل
+  // "10232شبكة تلفزيونية") تخرج أحيانًا من مستخرِج PDF بترتيب معكوس بين
+  // "شبكة" والرقم تحديدًا ("شبكة10232 تلفزيونية") - خلل مستقل عن خلل انعكاس
+  // Word (لا علاقة له بمعالجة bidi، بل بترتيب "كلمات" PDF المُستخرَجة) - دليل
+  // فعلي من سليمان (2026-08-24) بعد مقارنة برمجية بقارئ Word المُصلَح.
+  static final RegExp _reversedGluedNetworkRoom = RegExp(r'^شبكة(\d+)\s+(.*)$');
+
   static String _normalizeRoom(String raw) {
     var s = raw.trim();
     if (s.isEmpty) return s;
     if (s.contains('أونلاين') || s.contains('اونلاين') || s.contains('أون لاي')) return 'أونلاين';
     s = s.replaceAll(RegExp(r'[()]*حضوري[()]*'), '').trim();
     s = s.replaceAll(RegExp(r'^[()]+|[()]+$'), '').trim();
+    final reversedMatch = _reversedGluedNetworkRoom.firstMatch(s);
+    if (reversedMatch != null) {
+      s = '${reversedMatch.group(1)}شبكة ${reversedMatch.group(2)}';
+    }
     return s;
   }
 
@@ -44,6 +55,22 @@ class PdfScheduleParserService {
   static String? _stripTitlePrefix(String? name) {
     if (name == null) return null;
     return name.replaceFirst(_titlePrefixPattern, '').trim();
+  }
+
+  // نص القاعة الحقيقي دومًا رقم و/أو كلمة من مفردات القاعات (شبكة/أونلاين/عن
+  // بعد/حضوري) - لا يتجاوز 3 كلمات أبدًا. إن كانت الخلية المُلتقَطة بصف
+  // المتابعة (انظر التعليق بالحلقة الرئيسية) اسم محاضر مندمج خطأً بنفس الصف
+  // (4+ كلمات عربية صرفة بلا رقم)، تُرفَض هنا بدل قبولها كقاعة خاطئة - دليل
+  // فعلي من سليمان (2026-08-24): شعبة 602429/6604422 أظهرتا اسم محاضر كامل
+  // بحقل القاعة بعد مقارنة برمجية بـWord.
+  static bool _looksLikeRoom(String s) {
+    if (s.isEmpty) return true;
+    if (RegExp(r'\d').hasMatch(s)) return true;
+    if (s.contains('شبكة') || s.contains('أونلاين') || s.contains('اونلاين') ||
+        s.contains('عن بعد') || s.contains('حضوري')) {
+      return true;
+    }
+    return s.split(RegExp(r'\s+')).length <= 1;
   }
 
   static ({bool isMarker, Shatr? shatr}) _shatrFromText(String text) {
@@ -102,9 +129,22 @@ class PdfScheduleParserService {
         final searchLimit = n - 12;
         for (var i = 0; i < searchLimit; i++) {
           if (cells[i].contains('كلية')) {
-            beneficiary = cells[i];
-            if (i + 1 < searchLimit) {
-              final next = cells[i + 1].trim();
+            // "المستفيد" قد يشمل أكثر من كلية، فتُقسَّم أحيانًا على أكثر من
+            // خلية متتالية بمستخرِج PDF (كل خلية تحوي "كلية" مستقلة) - تُدمَج
+            // كل الخلايا المتتالية التي تحوي "كلية" بدل الاكتفاء بأولها فقط،
+            // وإلا اقتُطعت الكليات اللاحقة بصمت - دليل فعلي من سليمان
+            // (2026-08-24) بعد مقارنة برمجية بقارئ Word: "(كلية إدارة الأعمال
+            // - ( (كلية" ظهرت مقطوعة بدل "(كلية إدارة الأعمال - ) (كلية
+            // العلوم - )" الكاملة.
+            var j = i;
+            final parts = <String>[];
+            while (j < searchLimit && cells[j].contains('كلية')) {
+              parts.add(cells[j]);
+              j++;
+            }
+            beneficiary = parts.join(' ');
+            if (j < searchLimit) {
+              final next = cells[j].trim();
               if (next.isNotEmpty && next != 'نعم' && next != 'لا' && !next.contains('كلية')) {
                 instructor = _stripTitlePrefix(next);
               }
@@ -162,13 +202,15 @@ class PdfScheduleParserService {
             }
           }
           var room = '';
+          var roomValid = true;
           for (var i = toIdx - 1; i >= 0; i--) {
             if (cells[i].trim().isNotEmpty) {
-              room = _normalizeRoom(cells[i]);
+              roomValid = _looksLikeRoom(cells[i].trim());
+              room = roomValid ? _normalizeRoom(cells[i]) : '';
               break;
             }
           }
-          if (day != null) {
+          if (day != null && roomValid) {
             lastRow.meetings.add(CourseMeeting(day: day, from: from, to: to, room: room));
           }
         }
