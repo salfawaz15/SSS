@@ -29,6 +29,9 @@ const String _kAllDepartments = 'كل الأقسام';
 const String _kAllShatr = 'كل الشطرين';
 const String _kUnscheduledOption = 'الشعب غير المسكَّنة';
 const String _kAllSectionsOption = 'الكل';
+const String _kAllPlacement = 'الكل';
+const String _kPlacedOption = 'المسكَّنة';
+const String _kUnplacedOption = 'غير المسكَّنة';
 const String _kAllDeptsFacultyOption = 'جميع الشعب لجميع الأقسام';
 const String _kQuotaReportOption = 'تقرير النصاب التدريسي';
 const String _kQuotaAll = 'الكل';
@@ -151,6 +154,7 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
 
   String _shatrFilter = _kAllShatr;
   String _deptFilter = _kAllDepartments;
+  String _placementFilter = _kAllPlacement;
   final _searchCtrl = TextEditingController();
   bool _showOutsideCourses = false;
 
@@ -282,6 +286,14 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
       } else {
         // في وضع "كل الأقسام": نعرض المقرر المشترك مرة واحدة فقط تحت قسمه المالك.
         // (يحدث ذلك تلقائيًا لأن department هو دائمًا القسم المالك من الفهرس)
+      }
+      if (_placementFilter != _kAllPlacement) {
+        // "مسكَّنة" = عُيِّن محاضر لشعبتها النظرية فعليًا (نفس معيار
+        // "الشعب غير المسكَّنة" المستخدَم أصلاً بتبويب عضو هيئة التدريس) -
+        // بطلب سليمان صراحةً 2026-08-24 لتبويب "دليل المقررات" أيضًا.
+        final isPlaced = (row.record.instructorName ?? '').trim().isNotEmpty;
+        if (_placementFilter == _kPlacedOption && !isPlaced) return false;
+        if (_placementFilter == _kUnplacedOption && isPlaced) return false;
       }
       if (search.isNotEmpty) {
         final hay = '${row.record.courseCode} ${row.record.courseName}';
@@ -432,10 +444,11 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               FilterResetChip(
-                active: _shatrFilter == _kAllShatr && _deptFilter == _kAllDepartments,
+                active: _shatrFilter == _kAllShatr && _deptFilter == _kAllDepartments && _placementFilter == _kAllPlacement,
                 onTap: () => setState(() {
                   _shatrFilter = _kAllShatr;
                   _deptFilter = _kAllDepartments;
+                  _placementFilter = _kAllPlacement;
                 }),
               ),
               FilterPillDropdown<String>(
@@ -451,6 +464,13 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
                 items: CourseCatalog.departments,
                 itemLabel: (v) => v,
                 onChanged: (v) => setState(() => _deptFilter = v ?? _kAllDepartments),
+              ),
+              FilterPillDropdown<String>(
+                label: 'التسكين',
+                value: _placementFilter == _kAllPlacement ? null : _placementFilter,
+                items: const [_kPlacedOption, _kUnplacedOption],
+                itemLabel: (v) => v,
+                onChanged: (v) => setState(() => _placementFilter = v ?? _kAllPlacement),
               ),
               SizedBox(
                 width: 220,
@@ -607,6 +627,7 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
       const DashTableColumn(key: 'registered', label: 'المسجلين', flex: 8),
       const DashTableColumn(key: 'day', label: 'اليوم', flex: 9),
       const DashTableColumn(key: 'time', label: 'الوقت', flex: 20),
+      const DashTableColumn(key: 'room', label: 'القاعة', flex: 12),
       const DashTableColumn(key: 'instructor', label: 'المحاضر', flex: 40),
       if (showShatr) const DashTableColumn(key: 'shatr', label: 'الشطر', flex: 8),
     ];
@@ -632,6 +653,8 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
           return _dayCell(r);
         case 'time':
           return _timeCell(r);
+        case 'room':
+          return _roomCell(r);
         case 'instructor':
           return _instructorCell(r);
         case 'shatr':
@@ -906,6 +929,26 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
   Widget _timeCell(CourseSectionRecord r) {
     if (r.practicalSection == null) return Center(child: _timesListText(r.meetings));
     return _splitCell(_timesListText(r.meetings), _timesListText(r.practicalMeetings));
+  }
+
+  /// عمود "القاعة" - سليمان صراحةً (2026-08-24) بعد تصحيح فهرس العمود
+  /// بـ`DocxScheduleParserService` (كان يُظَنّ "رقم المحاضر" غير مستخدَم).
+  /// قد تختلف القاعة بين مواعيد الأسبوع لنفس الشعبة، فتُعرَض قاعة كل موعد
+  /// بسطر مقابل يومه بنفس ترتيب `_daysListText`/`_timesListText`.
+  Widget _roomsListText(List<CourseMeeting> meetings) {
+    if (meetings.isEmpty) return const Center(child: Text(InstructorScheduleTable.noTimePlaceholder));
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
+      children: meetings
+          .map((m) => Text(m.room.isEmpty ? '-' : m.room, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12)))
+          .toList(),
+    );
+  }
+
+  Widget _roomCell(CourseSectionRecord r) {
+    if (r.practicalSection == null) return Center(child: _roomsListText(r.meetings));
+    return _splitCell(_roomsListText(r.meetings), _roomsListText(r.practicalMeetings));
   }
 
   Widget _hoursCell(CourseSectionRecord r) {
@@ -1540,11 +1583,13 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
                 DataColumn(label: Text('الساعات')),
                 DataColumn(label: Text('اليوم')),
                 DataColumn(label: Text('الوقت')),
+                DataColumn(label: Text('القاعة')),
               ],
               rows: tableRows.isEmpty
                   ? [
                       const DataRow(cells: [
                         DataCell(Text('لا توجد مقررات مسكَّنة لهذا العضو')),
+                        DataCell(Text('')),
                         DataCell(Text('')),
                         DataCell(Text('')),
                         DataCell(Text('')),
@@ -1575,6 +1620,9 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
                             DataCell(!tableRows[i].hasPractical
                                 ? Text(tableRows[i].theoryTimeRange)
                                 : _splitCell(Text(tableRows[i].theoryTimeRange), Text(tableRows[i].practicalTimeRange!))),
+                            DataCell(!tableRows[i].hasPractical
+                                ? Text(tableRows[i].theoryRoomRange)
+                                : _splitCell(Text(tableRows[i].theoryRoomRange), Text(tableRows[i].practicalRoomRange!))),
                           ],
                         ),
                     ],
