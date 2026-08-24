@@ -60,13 +60,18 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: advising-portal-preview
-          path: build/app/outputs/flutter-apk/app-advisingPortal-release.apk
+          # Gradle يكتب اسم الملف بحروف صغيرة لاسم الـflavor مهما كانت حالة
+          # أحرفه بأمر البناء (advisingPortal → advisingportal) - المسار هنا
+          # كان يطابق حالة الأحرف الحرفية للـflavor فيفشل بصمت (ENOENT) على
+          # ubuntu-latest الحسّاس لحالة الأحرف، مع نجاح البناء نفسه دومًا -
+          # اكتُشف 2026-08-25 بعد سلسلة كاملة من عمليات تشغيل فاشلة.
+          path: build/app/outputs/flutter-apk/app-advisingportal-release.apk
           retention-days: 30
 
       - name: Distribute APK via Firebase App Distribution
         run: |
           npx firebase-tools appdistribution:distribute \
-            build/app/outputs/flutter-apk/app-advisingPortal-release.apk \
+            build/app/outputs/flutter-apk/app-advisingportal-release.apk \
             --app 1:843787630334:android:b13a15e0e42a7b19ea97af \
             --release-notes "معاينة تلقائية من فرع ${{ github.ref_name }} - $(git log -1 --pretty=%s)" \
             --testers "salfawaz50@gmail.com" \
