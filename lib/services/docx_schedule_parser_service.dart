@@ -44,19 +44,49 @@ class DocxScheduleParserService {
     return '$fixed ${match.group(3)}';
   }
 
+  // قاعات "شبكة" (تلفزيونية/رقمية) بالمصدر الأصلي بصيغتين مختلفتين فعليًا:
+  // "١١١٠٩ شبكة ٣٠" (برقم ومسافة قبل "شبكة") أو "١٠١٢٣شبكة تلفزيونية" (برقم
+  // ملتصق بلا مسافة) - تحقَّقتُ من نص PDF الأصلي مباشرة لكلا النمطين. تحويل
+  // Word يعكس ترتيب الأرقام/الأحرف اللاتينية **فقط عند وجود مسافة** بين الرقم
+  // و"شبكة" بالمصدر (مثال فعلي: "٩٠١١١ شبكة٣٠" الناتج بدل "١١١٠٩ شبكة ٣٠"
+  // الصحيح) - أما الحالة الملتصقة بلا مسافة فتبقى سليمة تمامًا بلا انعكاس،
+  // فلا تُمَس إطلاقًا (تمييز ضروري - تطبيق الانعكاس عليها كان سيُفسدها من
+  // جديد) - دليل فعلي من سليمان (2026-08-24) بعد مقارنة برمجية بقارئ PDF
+  // تجريبي كشفت الخلل هنا تحديدًا.
+  static final RegExp _networkRoomLettersPrefix = RegExp(r'^([A-Za-z]+)شبكة\s+(\d+)\s*$');
+  static final RegExp _networkRoomDigitsPrefix = RegExp(r'^(\d+)\s+شبكة(\s*)(.*)$');
+
+  static String _fixNetworkRoomReversal(String raw) {
+    final letterMatch = _networkRoomLettersPrefix.firstMatch(raw);
+    if (letterMatch != null) {
+      final reversedLetters = letterMatch.group(1)!.split('').reversed.join();
+      return '${letterMatch.group(2)} شبكة $reversedLetters';
+    }
+    final digitMatch = _networkRoomDigitsPrefix.firstMatch(raw);
+    if (digitMatch != null) {
+      final reversedDigits = digitMatch.group(1)!.split('').reversed.join();
+      final suffix = digitMatch.group(3)!.trim();
+      return suffix.isEmpty ? '$reversedDigits شبكة' : '$reversedDigits شبكة $suffix';
+    }
+    return raw;
+  }
+
   /// يُطبِّع نص "القاعة" الخام - سليمان صراحةً (2026-08-24):
   /// 1) "أون لاي٥٠(حضوري)" (نص مشوَّه ناتج عن تحويل PDF لكلمة "أونلاين")
   ///    يعني فعليًا حضورًا عن بُعد أونلاين - يُعرَض "أونلاين" بدل النص المشوَّه.
   /// 2) رقم قاعة حقيقي مثل "٥١٠١(حضوري)" - كلمة "(حضوري)" زائدة عن الحاجة
   ///    طالما يوجد رقم قاعة فعلي (بديهي)، فتُحذَف ويبقى الرقم فقط.
   /// 3) "عن بعد" تبقى كما هي (لا رقم قاعة، ولا صلة بـ"أونلاين" المشوَّهة).
+  /// 4) قاعات "شبكة" - انظر توثيق [_fixNetworkRoomReversal] أعلاه.
   static String _normalizeRoom(String raw) {
     final trimmed = raw.trim();
     if (trimmed.isEmpty) return trimmed;
     if (trimmed.contains('أون لاي') || trimmed.contains('اونلاين') || trimmed.contains('أونلاين')) {
       return 'أونلاين';
     }
-    return trimmed.replaceAll('(حضوري)', '').trim();
+    final withoutPresence = trimmed.replaceAll('(حضوري)', '').trim();
+    if (withoutPresence.contains('شبكة')) return _fixNetworkRoomReversal(withoutPresence);
+    return withoutPresence;
   }
 
   static String _cellText(XmlElement tc) {
