@@ -355,8 +355,12 @@ class _AdvisingScheduleAdminScreenState extends State<AdvisingScheduleAdminScree
         final zipBytes = await AdvisingScheduleSignageImageService.buildZip(byDeptShatr: all);
         await downloadBytes(zipBytes, 'شاشات_العرض_$fileTag.zip');
       }),
+      // يجلب بيانات طازجة دومًا (لا يعتمد على `_filteredData` المخزَّنة) - قد
+      // تكون هذه فارغة/قديمة إن ضُغط الزر فور تبديل الفلتر قبل اكتمال
+      // التحميل - دليل فعلي من سليمان (2026-08-25): ملف ZIP خرج فارغًا رغم
+      // وجود بيانات فعلية كاملة بكل الأقسام.
       onPptxZip: () => _runPdfAction(() async {
-        final all = _isFiltered ? _filteredData : await _loadFilteredData();
+        final all = await _loadFilteredData();
         final zipBytes = await AdvisingSchedulePptxService.buildZip(byDeptShatr: all);
         await downloadBytes(zipBytes, 'عروض_فترات_الإرشاد_الأكاديمي.zip');
       }),

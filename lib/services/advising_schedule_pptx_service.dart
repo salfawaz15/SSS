@@ -146,6 +146,14 @@ class AdvisingSchedulePptxService {
       }
     }
 
+    // ملف ZIP فارغ بصمت (بلا أي عرض) يعني أن النطاق المُختار حاليًا (قسم/شطر
+    // معيّن، أو حتى "الكل") لا يملك بيانات فترات إرشاد مرفوعة أصلاً - يُبلَّغ
+    // المستخدم صراحةً بدل تنزيل ملف مربك بلا محتوى - دليل فعلي من سليمان
+    // (2026-08-25): WinRAR أظهر "No files to extract" بلا أي تفسير.
+    if (outer.files.isEmpty) {
+      throw Exception('لا توجد بيانات فترات إرشاد مرفوعة للنطاق الحالي (تحقّق من اختيار "الكل" بالفلتر، أو ارفع ملف فترات الإرشاد أولاً).');
+    }
+
     final zipBytes = ZipEncoder().encode(outer) ?? <int>[];
     return Uint8List.fromList(zipBytes);
   }
