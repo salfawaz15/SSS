@@ -10,6 +10,7 @@ import '../models/college_roster_member.dart';
 import '../services/advising_schedule_excel_service.dart';
 import '../services/advising_schedule_pdf_service.dart';
 import '../services/advising_schedule_repository.dart';
+import '../services/advising_schedule_pptx_service.dart';
 import '../services/advising_schedule_signage_image_service.dart';
 import '../services/college_roster_repository.dart';
 import '../services/excel_parser_service.dart';
@@ -354,6 +355,11 @@ class _AdvisingScheduleAdminScreenState extends State<AdvisingScheduleAdminScree
         final zipBytes = await AdvisingScheduleSignageImageService.buildZip(byDeptShatr: all);
         await downloadBytes(zipBytes, 'شاشات_العرض_$fileTag.zip');
       }),
+      onPptxZip: () => _runPdfAction(() async {
+        final all = _isFiltered ? _filteredData : await _loadFilteredData();
+        final zipBytes = await AdvisingSchedulePptxService.buildZip(byDeptShatr: all);
+        await downloadBytes(zipBytes, 'عروض_فترات_الإرشاد_الأكاديمي.zip');
+      }),
     );
 
     return Container(
@@ -596,6 +602,7 @@ class _ReportCard extends StatelessWidget {
   final VoidCallback onOfficialPrint;
   final VoidCallback onSignageView;
   final VoidCallback onSignageImagesZip;
+  final VoidCallback onPptxZip;
 
   const _ReportCard({
     required this.title,
@@ -604,6 +611,7 @@ class _ReportCard extends StatelessWidget {
     required this.onOfficialPrint,
     required this.onSignageView,
     required this.onSignageImagesZip,
+    required this.onPptxZip,
   });
 
   @override
@@ -634,6 +642,8 @@ class _ReportCard extends StatelessWidget {
               _iconAction(enabled ? onSignageView : null, Icons.tv_outlined, 'عرض PDF - شاشات العرض', AppColors.gold),
               _iconAction(
                   enabled ? onSignageImagesZip : null, Icons.image_outlined, 'تنزيل صور الشرائح (ZIP)', AppColors.gold),
+              _iconAction(enabled ? onPptxZip : null, Icons.slideshow_outlined, 'تنزيل عروض فترات الإرشاد (PowerPoint)',
+                  AppColors.gold),
             ],
           ),
         ),
