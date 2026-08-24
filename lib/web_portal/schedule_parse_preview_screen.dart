@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -8,8 +9,39 @@ import '../models/course_section_record.dart';
 import '../services/course_schedule_repository.dart' show ShatrLabel;
 import '../services/docx_schedule_parser_service.dart';
 import '../services/pdf_schedule_parser_service.dart';
+import '../services/web_download.dart';
 import '../theme/app_theme.dart';
 import 'portal_header.dart';
+
+// CSV نصّي بسيط (فاصلة، بلا اقتباس تعقيدًا - النصوص هنا خالية من الفواصل
+// أصلاً) - سليمان صراحةً (2026-08-24): "الأفضل تنزيل الملف لكل رفعة كنسخة
+// CSV وإرسالها لك للمقارنة" بدل قراءة لقطات شاشة يدويًا.
+String _toCsv(List<ParsedCourseSectionWithShatr> sections) {
+  final buffer = StringBuffer('الشطر,رمز المقرر,اسم المقرر,التسلسل,الشعبة النظرية,الشعبة العملية,'
+      'المحاضر,محاضر العملي,المواعيد,قاعات المواعيد,المستفيد\n');
+  for (final s in sections) {
+    final r = s.record;
+    final meetings = r.meetings.map((m) => '${m.dayName} ${m.from}-${m.to}').join(' | ');
+    final rooms = r.meetings.map((m) => m.room).join(' | ');
+    buffer.writeln([
+      s.shatr?.label ?? '',
+      r.courseCode,
+      r.courseName,
+      r.sequence,
+      r.theorySection,
+      r.practicalSection ?? '',
+      r.instructorName ?? '',
+      r.practicalInstructorName ?? '',
+      meetings,
+      rooms,
+      s.beneficiary,
+    ].join(','));
+  }
+  return buffer.toString();
+}
+
+Future<void> _downloadCsv(List<ParsedCourseSectionWithShatr> sections, String filename) =>
+    downloadBytes(utf8.encode('﻿${_toCsv(sections)}'), filename);
 
 List<ParsedCourseSectionWithShatr> _parsePdfFilesInIsolate(List<Uint8List> filesBytes) => [
       for (final bytes in filesBytes) ...PdfScheduleParserService.parseSectionsWithShatr(bytes),
@@ -116,7 +148,7 @@ class _ScheduleParsePreviewScreenState extends State<ScheduleParsePreviewScreen>
             // والملخص لا يزالان يظهران رغم تأكيد الخادم نشر نسخة أحدث - يُرفع
             // هذا الرقم يدويًا بكل نشرة تجريبية لهذه الصفحة تحديدًا).
             const Text(
-              'نسخة الاختبار: 5 (إن كنت ترى رقمًا مختلفًا فالمتصفح يعرض نسخة مخبَّأة)',
+              'نسخة الاختبار: 6 (إن كنت ترى رقمًا مختلفًا فالمتصفح يعرض نسخة مخبَّأة)',
               style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
@@ -142,6 +174,7 @@ class _ScheduleParsePreviewScreenState extends State<ScheduleParsePreviewScreen>
                       result: _docxResult,
                       onPick: _pickDocx,
                       onClear: _clearDocx,
+                      onDownload: () => _downloadCsv(_docxResult!, 'نتيجة_قراءة_Word.csv'),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -153,6 +186,7 @@ class _ScheduleParsePreviewScreenState extends State<ScheduleParsePreviewScreen>
                       result: _pdfResult,
                       onPick: _pickPdf,
                       onClear: _clearPdf,
+                      onDownload: () => _downloadCsv(_pdfResult!, 'نتيجة_قراءة_PDF.csv'),
                     ),
                   ),
                 ],
@@ -254,6 +288,7 @@ class _Panel extends StatelessWidget {
   final List<ParsedCourseSectionWithShatr>? result;
   final VoidCallback onPick;
   final VoidCallback onClear;
+  final VoidCallback onDownload;
 
   const _Panel({
     required this.title,
@@ -262,6 +297,7 @@ class _Panel extends StatelessWidget {
     required this.result,
     required this.onPick,
     required this.onClear,
+    required this.onDownload,
   });
 
   @override
@@ -281,6 +317,14 @@ class _Panel extends StatelessWidget {
               // زر التفريغ دائمًا يسار مستطيل زر الاختيار (قاعدة ثابتة بكل
               // الموقع) - يظهر فقط بعد وجود نتيجة أو خطأ ليُمسحا قبل رفعة
               // جديدة، لا قبل أول رفعة حين لا شيء لتفريغه أصلًا.
+              if (result != null) ...[
+                OutlinedButton.icon(
+                  onPressed: onDownload,
+                  icon: const Icon(Icons.download, size: 18),
+                  label: const Text('تنزيل CSV'),
+                ),
+                const SizedBox(width: 8),
+              ],
               if (result != null || error != null) ...[
                 OutlinedButton.icon(
                   onPressed: busy ? null : onClear,
