@@ -44,6 +44,21 @@ class DocxScheduleParserService {
     return '$fixed ${match.group(3)}';
   }
 
+  /// يُطبِّع نص "القاعة" الخام - سليمان صراحةً (2026-08-24):
+  /// 1) "أون لاي٥٠(حضوري)" (نص مشوَّه ناتج عن تحويل PDF لكلمة "أونلاين")
+  ///    يعني فعليًا حضورًا عن بُعد أونلاين - يُعرَض "أونلاين" بدل النص المشوَّه.
+  /// 2) رقم قاعة حقيقي مثل "٥١٠١(حضوري)" - كلمة "(حضوري)" زائدة عن الحاجة
+  ///    طالما يوجد رقم قاعة فعلي (بديهي)، فتُحذَف ويبقى الرقم فقط.
+  /// 3) "عن بعد" تبقى كما هي (لا رقم قاعة، ولا صلة بـ"أونلاين" المشوَّهة).
+  static String _normalizeRoom(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return trimmed;
+    if (trimmed.contains('أون لاي') || trimmed.contains('اونلاين') || trimmed.contains('أونلاين')) {
+      return 'أونلاين';
+    }
+    return trimmed.replaceAll('(حضوري)', '').trim();
+  }
+
   static String _cellText(XmlElement tc) {
     final buffer = StringBuffer();
     for (final t in tc.findAllElements('t', namespace: _wNs)) {
@@ -108,13 +123,16 @@ class DocxScheduleParserService {
     }
 
     // ترتيب الأعمدة الثابت في جدول Word الناتج عن تحويل PDF (تحقّقنا منه
-    // يدويًا): فترة الاختبار، جاهزة، المستفيد، المحاضر، رقم المحاضر، إلى،
-    // من، الأيام، المسجلين، اعلى حد، التسلسل، النشاط، س، اسم المقرر، المقرر، الشعبة.
+    // يدويًا مباشرة من الملف الحقيقي 2026-08-24): فترة الاختبار، جاهزة،
+    // المستفيد، المحاضر، القاعة، إلى، من، الأيام، المسجلين، اعلى حد،
+    // التسلسل، النشاط، س، اسم المقرر، المقرر، الشعبة. عمود "القاعة" (index
+    // 4) كان يُظَنّ سابقًا "رقم المحاضر" غير مستخدَم - تصحيح حقيقي.
     const colTo = 5, colFrom = 6, colDay = 7, colRegistered = 8, colMaxCapacity = 9;
     const colSequence = 10, colActivity = 11;
     const colHours = 12, colCourseName = 13, colCourseCode = 14, colSection = 15;
     const colInstructor = 3;
     const colBeneficiary = 2;
+    const colRoom = 4;
 
     final activityRows = <_RawActivityRow>[];
     _RawActivityRow? lastRow;
@@ -123,6 +141,7 @@ class DocxScheduleParserService {
       if (cells.length < 16) continue;
       final activity = cells[colActivity];
       final isMain = activity == 'نظري' || activity == 'عملي';
+      final room = _normalizeRoom(cells[colRoom]);
 
       if (isMain && cells[colCourseCode].contains('-') && cells[colSection].isNotEmpty) {
         final courseCode = cells[colCourseCode].split('-').first;
@@ -136,7 +155,7 @@ class DocxScheduleParserService {
         final from = cells[colFrom];
         final to = cells[colTo];
         if (day != null && _dayPattern.hasMatch('$day') && from.isNotEmpty && to.isNotEmpty) {
-          meetings.add(CourseMeeting(day: day, from: _fixTimeValue(from), to: _fixTimeValue(to)));
+          meetings.add(CourseMeeting(day: day, from: _fixTimeValue(from), to: _fixTimeValue(to), room: room));
         }
         var instructorName = cells[colInstructor].isEmpty ? null : cells[colInstructor];
         instructorName = _stripTitlePrefix(instructorName);
@@ -162,7 +181,7 @@ class DocxScheduleParserService {
         final from = cells[colFrom];
         final to = cells[colTo];
         if (day != null && _dayPattern.hasMatch('$day') && from.isNotEmpty && to.isNotEmpty) {
-          lastRow.meetings.add(CourseMeeting(day: day, from: _fixTimeValue(from), to: _fixTimeValue(to)));
+          lastRow.meetings.add(CourseMeeting(day: day, from: _fixTimeValue(from), to: _fixTimeValue(to), room: room));
         }
       }
     }
@@ -327,6 +346,7 @@ class DocxScheduleParserService {
     const colHours = 12, colCourseName = 13, colCourseCode = 14, colSection = 15;
     const colInstructor = 3;
     const colBeneficiary = 2;
+    const colRoom = 4;
 
     final activityRows = <_RawActivityRow>[];
     _RawActivityRow? lastRow;
@@ -337,6 +357,7 @@ class DocxScheduleParserService {
       if (cells.length < 16) continue;
       final activity = cells[colActivity];
       final isMain = activity == 'نظري' || activity == 'عملي';
+      final room = _normalizeRoom(cells[colRoom]);
 
       if (isMain && cells[colCourseCode].contains('-') && cells[colSection].isNotEmpty) {
         final courseCode = cells[colCourseCode].split('-').first;
@@ -350,7 +371,7 @@ class DocxScheduleParserService {
         final from = cells[colFrom];
         final to = cells[colTo];
         if (day != null && _dayPattern.hasMatch('$day') && from.isNotEmpty && to.isNotEmpty) {
-          meetings.add(CourseMeeting(day: day, from: _fixTimeValue(from), to: _fixTimeValue(to)));
+          meetings.add(CourseMeeting(day: day, from: _fixTimeValue(from), to: _fixTimeValue(to), room: room));
         }
         var instructorName = cells[colInstructor].isEmpty ? null : cells[colInstructor];
         instructorName = _stripTitlePrefix(instructorName);
@@ -376,7 +397,7 @@ class DocxScheduleParserService {
         final from = cells[colFrom];
         final to = cells[colTo];
         if (day != null && _dayPattern.hasMatch('$day') && from.isNotEmpty && to.isNotEmpty) {
-          lastRow.meetings.add(CourseMeeting(day: day, from: _fixTimeValue(from), to: _fixTimeValue(to)));
+          lastRow.meetings.add(CourseMeeting(day: day, from: _fixTimeValue(from), to: _fixTimeValue(to), room: room));
         }
       }
     }

@@ -43,6 +43,10 @@ android {
             dimension = "app"
             applicationId = "com.taif.cba.advising"
         }
+        create("advisingPortal") {
+            dimension = "app"
+            applicationId = "com.taif.cba.advisingportal"
+        }
     }
 
     buildTypes {

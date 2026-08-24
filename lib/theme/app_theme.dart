@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show SystemUiOverlayStyle;
 import 'package:google_fonts/google_fonts.dart';
 
 /// ألوان الهوية البصرية لوحدة الإرشاد الأكاديمي والخريجين - جامعة الطائف
@@ -155,6 +156,11 @@ class AppTheme {
           fontWeight: FontWeight.w600,
           color: Colors.white,
         ),
+        // أيقونات شريط حالة الجهاز (الساعة/الشبكة/البطارية) فاتحة (بيضاء)
+        // صراحةً بدل الاعتماد على تخمين Flutter التلقائي لسطوع الخلفية - كانت
+        // تظهر داكنة على نفس لون الخلفية الداكنة (AppColors.green) فتختفي
+        // عمليًا على تطبيق "بوابة الإرشاد" الجوّالة (سليمان 2026-08-23).
+        systemOverlayStyle: SystemUiOverlayStyle.light,
       ),
       cardTheme: CardThemeData(
         elevation: 1.5,

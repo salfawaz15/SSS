@@ -76,4 +76,16 @@ class DefaultFirebaseOptions {
     projectId: 'sss-advising-tu',
     storageBucket: 'sss-advising-tu.firebasestorage.app',
   );
+
+  /// خيارات Firebase لتطبيق "بوابة الإرشاد" الجديد (com.taif.cba.advisingportal)
+  /// - نفس مشروع Firebase تمامًا، بمعرّف تطبيق مختلف فقط. سُجِّل فعليًا بـ
+  /// Firebase Console (سليمان 2026-08-23) وأُضيف إدخاله إلى
+  /// `android/app/google-services.json` بجانب الإدخالين الآخرين.
+  static const FirebaseOptions advisingPortal = FirebaseOptions(
+    apiKey: 'AIzaSyC2e4SyjH7LG3ywv46gWHISMntS3n75QPo',
+    appId: '1:843787630334:android:b13a15e0e42a7b19ea97af',
+    messagingSenderId: '843787630334',
+    projectId: 'sss-advising-tu',
+    storageBucket: 'sss-advising-tu.firebasestorage.app',
+  );
 }

@@ -4,8 +4,13 @@ class CourseMeeting {
   final int day; // 1=الأحد .. 5=الخميس
   final String from;
   final String to;
+  // القاعة (عن بعد/رقم قاعة حضوري) - عمود موجود بملف الحويّة يُقرَأ الآن
+  // (كان يُظَنّ سابقًا "رقم المحاضر" غير مستخدَم - تصحيح 2026-08-24). قد
+  // تختلف بين مواعيد الأسبوع لنفس الشعبة، فمكانها الطبيعي هنا لا بمستوى
+  // الشعبة كاملة.
+  final String room;
 
-  const CourseMeeting({required this.day, required this.from, required this.to});
+  const CourseMeeting({required this.day, required this.from, required this.to, this.room = ''});
 
   static const List<String> dayNames = [
     '', // لا يوجد يوم رقم 0
@@ -18,12 +23,13 @@ class CourseMeeting {
 
   String get dayName => (day >= 1 && day <= 5) ? dayNames[day] : 'يوم غير معروف ($day)';
 
-  Map<String, dynamic> toJson() => {'day': day, 'from': from, 'to': to};
+  Map<String, dynamic> toJson() => {'day': day, 'from': from, 'to': to, 'room': room};
 
   factory CourseMeeting.fromJson(Map<String, dynamic> json) => CourseMeeting(
         day: json['day'] as int,
         from: json['from'] as String? ?? '',
         to: json['to'] as String? ?? '',
+        room: json['room'] as String? ?? '',
       );
 }
 
