@@ -136,16 +136,42 @@ class _ComparisonSummary extends StatelessWidget {
 
   const _ComparisonSummary({required this.docx, required this.pdf});
 
-  String _key(ParsedCourseSectionWithShatr s) =>
-      '${s.record.courseCode}|${s.record.sequence}|${s.shatr}|${s.beneficiary}';
+  // رمز المقرر + التسلسل فقط - هوية الشعبة الحقيقية داخل ملف واحد. استُبعد
+  // "المستفيد" من مفتاح المطابقة (خلافًا لمفتاح الدمج الداخلي بالمحلِّلَين)
+  // لأن نصه قد يمتد لسطرين بالملف الأصلي (أكثر من كلية مستفيدة)، ومستخرِج PDF
+  // يقرأ كل سطر كصف مستقل بموضع مختلف فينتج نصًا مختلفًا شكليًا عن نص Word
+  // المدمَج رغم كونهما نفس الشعبة فعليًا - سليمان صراحةً (2026-08-24) بعد أول
+  // اختبار حي أظهر 0 تطابق رغم تساوي العددين تمامًا (412=412).
+  String _key(ParsedCourseSectionWithShatr s) => '${s.record.courseCode}|${s.record.sequence}';
 
   @override
   Widget build(BuildContext context) {
-    final docxKeys = docx.map(_key).toSet();
-    final pdfKeys = pdf.map(_key).toSet();
-    final onlyInDocx = docxKeys.difference(pdfKeys);
-    final onlyInPdf = pdfKeys.difference(docxKeys);
-    final matched = docxKeys.intersection(pdfKeys);
+    final docxByKey = {for (final s in docx) _key(s): s};
+    final pdfByKey = {for (final s in pdf) _key(s): s};
+    final onlyInDocx = docxByKey.keys.toSet().difference(pdfByKey.keys.toSet());
+    final onlyInPdf = pdfByKey.keys.toSet().difference(docxByKey.keys.toSet());
+    final commonKeys = docxByKey.keys.toSet().intersection(pdfByKey.keys.toSet());
+
+    var identicalCount = 0;
+    final fieldDiffs = <String>[];
+    for (final key in commonKeys) {
+      final d = docxByKey[key]!.record;
+      final p = pdfByKey[key]!.record;
+      final sameInstructor = (d.instructorName ?? '') == (p.instructorName ?? '');
+      final sameRoom = d.meetings.isNotEmpty &&
+          p.meetings.isNotEmpty &&
+          d.meetings.first.room == p.meetings.first.room;
+      final sameTime = d.meetings.isNotEmpty &&
+          p.meetings.isNotEmpty &&
+          d.meetings.first.from == p.meetings.first.from &&
+          d.meetings.first.to == p.meetings.first.to;
+      final sameMeetingsCount = d.meetings.length == p.meetings.length;
+      if (sameInstructor && sameRoom && sameTime && sameMeetingsCount) {
+        identicalCount++;
+      } else if (fieldDiffs.length < 15) {
+        fieldDiffs.add(key);
+      }
+    }
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -154,15 +180,29 @@ class _ComparisonSummary extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: AppColors.green.withValues(alpha: 0.4)),
       ),
-      child: Wrap(
-        spacing: 24,
-        runSpacing: 8,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('عدد شعب Word: ${docx.length}', style: const TextStyle(fontWeight: FontWeight.bold)),
-          Text('عدد شعب PDF: ${pdf.length}', style: const TextStyle(fontWeight: FontWeight.bold)),
-          Text('متطابقة: ${matched.length}', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
-          Text('موجودة بـWord فقط: ${onlyInDocx.length}', style: const TextStyle(color: Colors.red)),
-          Text('موجودة بـPDF فقط: ${onlyInPdf.length}', style: const TextStyle(color: Colors.orange)),
+          Wrap(
+            spacing: 24,
+            runSpacing: 8,
+            children: [
+              Text('عدد شعب Word: ${docx.length}', style: const TextStyle(fontWeight: FontWeight.bold)),
+              Text('عدد شعب PDF: ${pdf.length}', style: const TextStyle(fontWeight: FontWeight.bold)),
+              Text('نفس رمز المقرر+التسلسل: ${commonKeys.length}', style: const TextStyle(fontWeight: FontWeight.bold)),
+              Text('متطابقة تمامًا (محاضر/وقت/قاعة): $identicalCount',
+                  style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+              Text('نفس الشعبة لكن باختلاف تفاصيل: ${commonKeys.length - identicalCount}',
+                  style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+              Text('موجودة بـWord فقط: ${onlyInDocx.length}', style: const TextStyle(color: Colors.red)),
+              Text('موجودة بـPDF فقط: ${onlyInPdf.length}', style: const TextStyle(color: Colors.red)),
+            ],
+          ),
+          if (fieldDiffs.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text('أمثلة شعب باختلاف تفاصيل: ${fieldDiffs.join('، ')}',
+                style: const TextStyle(fontSize: 12, color: Colors.black54)),
+          ],
         ],
       ),
     );
