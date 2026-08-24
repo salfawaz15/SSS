@@ -111,6 +111,15 @@ class _ScheduleParsePreviewScreenState extends State<ScheduleParsePreviewScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // علامة نسخة صريحة - للتحقق أن المتصفح يعرض فعلاً آخر نشر لا نسخة
+            // مخبَّأة (سليمان صراحةً 2026-08-24: نفس الخلل القديم بالمحاضر
+            // والملخص لا يزالان يظهران رغم تأكيد الخادم نشر نسخة أحدث - يُرفع
+            // هذا الرقم يدويًا بكل نشرة تجريبية لهذه الصفحة تحديدًا).
+            const Text(
+              'نسخة الاختبار: 4 (إن كنت ترى رقمًا مختلفًا فالمتصفح يعرض نسخة مخبَّأة)',
+              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
             const Text(
               'أداة اختبار فقط - لا تحفظ أي بيانات. ارفع نفس ملف الجدول الدراسي '
               'بصيغتيه (docx و pdf) وقارن عدد الشعب والتفاصيل بين النتيجتين.',
