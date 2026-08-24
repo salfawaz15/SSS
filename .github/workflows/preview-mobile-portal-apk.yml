@@ -1,0 +1,75 @@
+name: Build & Distribute Preview APK (بوابة الإرشاد)
+
+# يبني تطبيق "بوابة الإرشاد" الجوّالي الجديد (main_advising_portal.dart،
+# flavor advisingPortal) من فروع preview/** فقط - لا يمسّ فرع main ولا الموقع
+# الرسمي الفعلي إطلاقًا (منفصل تمامًا عن deploy.yml الذي يبني تطبيق "CBA
+# Advising" القديم وينشر الموقع الرسمي). يوزَّع عبر Firebase App Distribution
+# على سليمان فقط للتجربة - بطلبه صراحةً 2026-08-24.
+on:
+  push:
+    branches:
+      - "preview/**"
+
+jobs:
+  build-and-distribute:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: master
+
+      - name: Write secrets.dart
+        env:
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
+          RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
+        run: |
+          mkdir -p lib/config
+          KEY=$(printf '%s' "$SENDGRID_API_KEY" | tr -d '\r\n')
+          SENDER=$(printf '%s' "$SENDER_EMAIL" | tr -d '\r\n')
+          RECIPIENT=$(printf '%s' "$RECIPIENT_EMAIL" | tr -d '\r\n')
+          cat > lib/config/secrets.dart <<DARTEOF
+          class Secrets {
+            static const String sendGridApiKey = "$KEY";
+            static const String senderEmail = "$SENDER";
+            static const String recipientEmail = "$RECIPIENT";
+          }
+          DARTEOF
+
+      - name: Generate version files from pubspec.yaml
+        run: |
+          FULL_VERSION=$(grep -m1 '^version:' pubspec.yaml | sed 's/version:[[:space:]]*//')
+          VERSION_NAME=${FULL_VERSION%+*}
+          BUILD_NUMBER=${FULL_VERSION#*+}
+          cat > lib/app_version.dart <<DARTEOF
+          const int kAppBuildNumber = $BUILD_NUMBER;
+          const String kAppVersionName = '$VERSION_NAME';
+          DARTEOF
+          cat > web/version.json <<JSONEOF
+          {"build": $BUILD_NUMBER, "version": "$VERSION_NAME"}
+          JSONEOF
+
+      - run: flutter pub get
+
+      - name: Build APK (advisingPortal flavor)
+        run: flutter build apk --release --flavor advisingPortal -t lib/main_advising_portal.dart
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: advising-portal-preview
+          path: build/app/outputs/flutter-apk/app-advisingPortal-release.apk
+          retention-days: 30
+
+      - name: Distribute APK via Firebase App Distribution
+        run: |
+          npx firebase-tools appdistribution:distribute \
+            build/app/outputs/flutter-apk/app-advisingPortal-release.apk \
+            --app 1:843787630334:android:b13a15e0e42a7b19ea97af \
+            --release-notes "معاينة تلقائية من فرع ${{ github.ref_name }} - $(git log -1 --pretty=%s)" \
+            --testers "salfawaz50@gmail.com" \
+            --token "$FIREBASE_TOKEN"
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
