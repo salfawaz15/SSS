@@ -125,13 +125,12 @@ class _CoursesTabState extends State<_CoursesTab> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  Expanded(child: _ShatrFilterBar(value: _shatr, onChanged: (v) => setState(() => _shatr = v))),
-                  const SizedBox(width: 8),
-                  Expanded(child: _PlacementFilterBar(value: _placement, onChanged: (v) => setState(() => _placement = v))),
-                ],
-              ),
+              // صفّان منفصلان لا جنبًا إلى جنب - نصف العرض لكل منهما كان
+              // يقصّ نص الشرائح فيصير غير مقروء على شاشة جوال ضيقة (سليمان
+              // 2026-08-24: "أصبح لا يقرأ" بعد وضعهما بصف واحد).
+              _ShatrFilterBar(value: _shatr, onChanged: (v) => setState(() => _shatr = v)),
+              const SizedBox(height: 6),
+              _PlacementFilterBar(value: _placement, onChanged: (v) => setState(() => _placement = v)),
               const SizedBox(height: 6),
               _DepartmentDropdown(value: _department, onChanged: (v) => setState(() => _department = v)),
             ],
