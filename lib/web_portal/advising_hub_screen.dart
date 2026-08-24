@@ -42,6 +42,17 @@ class _AdvisingHubScreenState extends State<AdvisingHubScreen> {
   int _withoutAdvisorCount = 0;
   int _totalAdvisors = 0;
 
+  // نفس الأرقام أعلاه مفصَّلة حسب الشطر - لعرض تفصيل صغير تحت كل رقم كبير
+  // (بطلب سليمان صراحةً 2026-08-24)، بلا أي تغيير بالمصدر أو حساب الإجمالي.
+  int _totalActiveMale = 0;
+  int _totalActiveFemale = 0;
+  int _correctMale = 0;
+  int _correctFemale = 0;
+  int _needsCorrectionMale = 0;
+  int _needsCorrectionFemale = 0;
+  int _advisorsMale = 0;
+  int _advisorsFemale = 0;
+
   int _disabilityCorrect = 0;
   int _disabilityWrong = 0;
 
@@ -92,6 +103,15 @@ class _AdvisingHubScreenState extends State<AdvisingHubScreen> {
         _wrongDeptCount = analyses.fold(0, (s, a) => s + a.studentsWithWrongDeptAdvisor.length);
         _withoutAdvisorCount = analyses.fold(0, (s, a) => s + a.studentsWithoutAdvisor.length);
         _totalAdvisors = analyses.fold(0, (s, a) => s + a.quotaReport.length);
+
+        _totalActiveMale = maleAnalysis.studentsCorrectlyAssigned.length + maleAnalysis.studentsWithWrongDeptAdvisor.length + maleAnalysis.studentsWithoutAdvisor.length;
+        _totalActiveFemale = femaleAnalysis.studentsCorrectlyAssigned.length + femaleAnalysis.studentsWithWrongDeptAdvisor.length + femaleAnalysis.studentsWithoutAdvisor.length;
+        _correctMale = maleAnalysis.studentsCorrectlyAssigned.length;
+        _correctFemale = femaleAnalysis.studentsCorrectlyAssigned.length;
+        _needsCorrectionMale = maleAnalysis.studentsWithWrongDeptAdvisor.length + maleAnalysis.studentsWithoutAdvisor.length;
+        _needsCorrectionFemale = femaleAnalysis.studentsWithWrongDeptAdvisor.length + femaleAnalysis.studentsWithoutAdvisor.length;
+        _advisorsMale = maleAnalysis.quotaReport.length;
+        _advisorsFemale = femaleAnalysis.quotaReport.length;
 
         _disabilityCorrect = analyses.fold(0, (s, a) => s + a.studentsCorrectlyAssigned.where((r) => r.hasHealthCondition).length);
         _disabilityWrong = analyses.fold(
@@ -182,11 +202,20 @@ class _AdvisingHubScreenState extends State<AdvisingHubScreen> {
     // مضلِّل. floor يضمن ألا تظهر 100% إلا عند الاكتمال الحقيقي التام.
     final coveragePct = _totalActiveStudents == 0 ? 100 : ((_correctlyAssigned / _totalActiveStudents) * 100).floor();
     final needsCorrection = _wrongDeptCount + _withoutAdvisorCount;
+    final needsCorrectionMale = _needsCorrectionMale;
+    final needsCorrectionFemale = _needsCorrectionFemale;
+    final coveragePctMale = _totalActiveMale == 0 ? 100 : ((_correctMale / _totalActiveMale) * 100).floor();
+    final coveragePctFemale = _totalActiveFemale == 0 ? 100 : ((_correctFemale / _totalActiveFemale) * 100).floor();
+
+    // تفصيل صغير (طلاب - طالبات) تحت كل رقم كبير بالشبكة - بطلب سليمان
+    // صراحةً 2026-08-24، يُطبَّق على كل البطاقات لا "إجمالي الطلبة" فقط.
+    String breakdownOf(int male, int female) => '$male طلاب - $female طالبات';
 
     final tiles = [
       (
         label: 'إجمالي الطلبة',
         value: _loadingStats ? '...' : '$_totalActiveStudents',
+        breakdown: _loadingStats ? null : breakdownOf(_totalActiveMale, _totalActiveFemale),
         note: 'الطلبة النشطون فقط (بلا مفصولين)',
         icon: Icons.groups_outlined,
         color: DashTokens.green900,
@@ -194,6 +223,7 @@ class _AdvisingHubScreenState extends State<AdvisingHubScreen> {
       (
         label: 'لديهم مرشد صحيح',
         value: _loadingStats ? '...' : '$_correctlyAssigned',
+        breakdown: _loadingStats ? null : breakdownOf(_correctMale, _correctFemale),
         note: 'من نفس تخصصهم العلمي',
         icon: Icons.verified_outlined,
         color: DashTokens.success,
@@ -201,6 +231,7 @@ class _AdvisingHubScreenState extends State<AdvisingHubScreen> {
       (
         label: 'تحتاج تصحيح إسناد',
         value: _loadingStats ? '...' : '$needsCorrection',
+        breakdown: _loadingStats ? null : breakdownOf(needsCorrectionMale, needsCorrectionFemale),
         note: 'على غير مرشدهم / بلا مرشد',
         icon: Icons.error_outline,
         color: (_loadingStats || needsCorrection == 0) ? DashTokens.success : DashTokens.danger,
@@ -208,6 +239,7 @@ class _AdvisingHubScreenState extends State<AdvisingHubScreen> {
       (
         label: 'إجمالي المرشدين',
         value: _loadingStats ? '...' : '$_totalAdvisors',
+        breakdown: _loadingStats ? null : breakdownOf(_advisorsMale, _advisorsFemale),
         note: 'مرشدًا أكاديميًا فعّالًا',
         icon: Icons.school_outlined,
         color: DashTokens.gold600,
@@ -215,6 +247,7 @@ class _AdvisingHubScreenState extends State<AdvisingHubScreen> {
       (
         label: 'نسبة التغطية الإرشادية',
         value: _loadingStats ? '...' : '$coveragePct%',
+        breakdown: _loadingStats ? null : 'طلاب $coveragePctMale% - طالبات $coveragePctFemale%',
         note: '$_correctlyAssigned من أصل $_totalActiveStudents',
         icon: Icons.donut_large_outlined,
         color: (_loadingStats || coveragePct >= 100) ? DashTokens.success : DashTokens.gold600,
@@ -234,13 +267,15 @@ class _AdvisingHubScreenState extends State<AdvisingHubScreen> {
             // 119 لا 115 - كانت البطاقات تُظهر "BOTTOM OVERFLOWED BY 1.00
             // PIXELS" فعليًا (تأكَّد حيًّا) لأن ارتفاع الخلية كان أضيق بكسل
             // واحد من محتوى AdvisingMetricCard الفعلي (سليمان 2026-08-22).
-            mainAxisExtent: 119,
+            // 136 بعد إضافة سطر التفصيل (طلاب/طالبات) تحت الرقم الكبير -
+            // نفس فارق الـ17 بكسل المضاف لـ`minHeight` بالبطاقة نفسها.
+            mainAxisExtent: 136,
             crossAxisSpacing: 14,
             mainAxisSpacing: 14,
           ),
           itemBuilder: (context, i) {
             final t = tiles[i];
-            return AdvisingMetricCard(label: t.label, value: t.value, note: t.note, icon: t.icon, accent: t.color);
+            return AdvisingMetricCard(label: t.label, value: t.value, breakdown: t.breakdown, note: t.note, icon: t.icon, accent: t.color);
           },
         );
       },

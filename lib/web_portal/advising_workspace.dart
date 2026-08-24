@@ -295,6 +295,10 @@ class AdvisingMetricCard extends StatelessWidget {
   final String note;
   final IconData icon;
   final Color accent;
+  // تفصيل صغير تحت الرقم الكبير مباشرة (مثال: "4390 طلاب - 4324 طالبات") -
+  // اختياري، يظهر فقط إن مُرِّر - بطلب سليمان صراحةً 2026-08-24، يُطبَّق على
+  // كل بطاقات هذه الشبكة.
+  final String? breakdown;
 
   const AdvisingMetricCard({
     super.key,
@@ -303,12 +307,13 @@ class AdvisingMetricCard extends StatelessWidget {
     required this.note,
     required this.icon,
     required this.accent,
+    this.breakdown,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      constraints: const BoxConstraints(minHeight: 115),
+      constraints: BoxConstraints(minHeight: breakdown != null ? 132 : 115),
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
       decoration: BoxDecoration(
         color: DashTokens.cardBg,
@@ -335,6 +340,10 @@ class AdvisingMetricCard extends StatelessWidget {
             ],
           ),
           Text(value, style: TextStyle(fontSize: 32, fontWeight: FontWeight.w700, height: 1, color: DashTokens.textPrimary)),
+          if (breakdown != null) ...[
+            const SizedBox(height: 2),
+            Text(breakdown!, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: DashTokens.textSecondary), maxLines: 1, overflow: TextOverflow.ellipsis),
+          ],
           Text(note, style: const TextStyle(fontSize: 11, color: DashTokens.textMuted), maxLines: 1, overflow: TextOverflow.ellipsis),
         ],
       ),
