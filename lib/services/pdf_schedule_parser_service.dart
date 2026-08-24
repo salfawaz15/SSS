@@ -70,13 +70,20 @@ class PdfScheduleParserService {
         String? instructor;
         // البحث عن خلية "المستفيد" (تحوي "كلية" دومًا) بالجزء الأمامي من
         // الصف المتبقي بعد الأعمدة المرساة من النهاية (section..room).
+        // ترتيب docx الفعلي: ...المستفيد(index2)، المحاضر(index3)، القاعة
+        // (index4)... - أي "المحاضر" يأتي **بعد** "المستفيد" مباشرة بالمصفوفة
+        // (خطأ سابق هنا كان يقرأ الخلية التي *قبل* المستفيد خطأً - سليمان
+        // صراحةً 2026-08-24 بعد دليل فعلي: شعبة 989 أظهرت محاضرًا فارغًا
+        // بلوحة PDF رغم وجوده صراحةً بلوحة Word المقابلة).
         final searchLimit = n - 12;
         for (var i = 0; i < searchLimit; i++) {
           if (cells[i].contains('كلية')) {
             beneficiary = cells[i];
-            if (i - 1 >= 0) {
-              final prev = cells[i - 1].trim();
-              if (prev.isNotEmpty && prev != 'نعم' && prev != 'لا') instructor = prev;
+            if (i + 1 < searchLimit) {
+              final next = cells[i + 1].trim();
+              if (next.isNotEmpty && next != 'نعم' && next != 'لا' && !next.contains('كلية')) {
+                instructor = next;
+              }
             }
             break;
           }
