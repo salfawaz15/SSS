@@ -8,6 +8,7 @@ import 'admin_workspace_screen.dart';
 import 'college_coordinator_workspace_screen.dart';
 import 'coordinator_workspace_screen.dart';
 import 'portal_header.dart';
+import 'schedule_parse_preview_screen.dart';
 import 'track_coordinator_workspace_screen.dart';
 import 'unit_coordinator_workspace_screen.dart';
 import 'viewer_reports_screen.dart';
@@ -88,6 +89,10 @@ class TestSwitcherScreen extends StatelessWidget {
               _TestTile(label: 'لوحة الإدارة الرئيسية', onTap: () => _open(context, const AdminExecutiveDashboardScreen())),
               _TestTile(label: 'عرض فقط (أمين/سكرتير)', onTap: () => _open(context, const ViewerReportsScreen())),
               _TestTile(label: 'منسّق الوحدة للشؤون الإدارية', onTap: () => _open(context, const UnitCoordinatorWorkspaceScreen())),
+              _TestTile(
+                label: 'تجربة: مقارنة قراءة جدول المقررات (PDF مقابل Word)',
+                onTap: () => _open(context, const ScheduleParsePreviewScreen()),
+              ),
             ],
           ),
           _Section(
