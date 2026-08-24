@@ -139,14 +139,23 @@ class PdfScheduleParserService {
             // فعلي من سليمان (2026-08-24) بعد مقارنة برمجية بقارئ Word:
             // "(كلية إدارة الأعمال - ( (كلية" ظهرت مقطوعة بدل "(كلية إدارة
             // الأعمال - ) (كلية العلوم - )" الكاملة حتى بعد إصلاح أول.
+            // بعض حالات الكلية الثانية تنقسم على 3 خلايا وسطها خلية "جسر" بلا
+            // أي علامة (مثل "العلوم" وحدها بين "(كلية" و"- )") - يُستشرَف
+            // أماميًا (خليتان) لوجود علامة لاحقة قبل قبول خلية بلا علامة، بدل
+            // التوقف عندها فورًا - دليل فعلي من سليمان (2026-08-24) بعد
+            // مقارنة برمجية ثالثة: 14 من 710 شعبة بقيت مقطوعة رغم الإصلاح
+            // السابق لأن خلية الجسر هذه أوقفت الدمج قبل أوانه.
+            bool hasMarker(String c) => c.contains('كلية') || c.contains('(') || c.contains(')') || c.contains('-');
             var j = i;
             final parts = <String>[];
-            while (j < searchLimit &&
-                (cells[j].contains('كلية') ||
-                    cells[j].contains('(') ||
-                    cells[j].contains(')') ||
-                    cells[j].contains('-'))) {
-              parts.add(cells[j]);
+            while (j < searchLimit) {
+              final cell = cells[j];
+              if (!hasMarker(cell)) {
+                final futureMarker = (j + 1 < searchLimit && hasMarker(cells[j + 1])) ||
+                    (j + 2 < searchLimit && hasMarker(cells[j + 2]));
+                if (!futureMarker) break;
+              }
+              parts.add(cell);
               j++;
             }
             beneficiary = parts.join(' ');
