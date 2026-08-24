@@ -445,6 +445,16 @@ class AdvisingSchedulePptxService {
         '</p:pic>';
   }
 
+  // حدود أفقية رفيعة فاتحة بين الصفوف فقط (لا حدود رأسية) - نفس أسلوب جداول
+  // PDF/Word بالمشروع - بدل الشبكة السوداء الغليظة الافتراضية بـPowerPoint
+  // (نمط الجدول المدمَج `{5940675A-...}` "بلا نمط/بلا شبكة" بـ[_columnTable]
+  // يُسكِت النمط الافتراضي، وهذه الحدود الصريحة هنا تحل محله) - دليل فعلي من
+  // سليمان (2026-08-25): "الحدود الموضوعة غريبة كأنه تصميم شخص مبتدئ".
+  static const String _cellBorders = '<a:lnL><a:noFill/></a:lnL>'
+      '<a:lnR><a:noFill/></a:lnR>'
+      '<a:lnT><a:noFill/></a:lnT>'
+      '<a:lnB w="9525"><a:solidFill><a:srgbClr val="E3E0D6"/></a:solidFill></a:lnB>';
+
   static String _cellXml(String text, {bool bold = false, int sz = 1200, String color = _textDark, String? fillHex}) {
     final fill = fillHex == null ? '<a:noFill/>' : '<a:solidFill><a:srgbClr val="$fillHex"/></a:solidFill>';
     return '<a:tc>'
@@ -455,7 +465,7 @@ class AdvisingSchedulePptxService {
         '<a:t>${_esc(text)}</a:t>'
         '</a:r></a:p>'
         '</a:txBody>'
-        '<a:tcPr anchor="ctr">$fill</a:tcPr>'
+        '<a:tcPr anchor="ctr">$_cellBorders$fill</a:tcPr>'
         '</a:tc>';
   }
 
@@ -494,7 +504,10 @@ class AdvisingSchedulePptxService {
         '<p:nvGraphicFramePr><p:cNvPr id="$id" name="جدول $id"/><p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr>'
         '<p:xfrm><a:off x="$x" y="$y"/><a:ext cx="$cx" cy="$totalH"/></p:xfrm>'
         '<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table">'
-        '<a:tbl><a:tblPr firstRow="1" bandRow="1"/>'
+        // نمط الجدول المدمَج "بلا نمط، بلا شبكة" - يُسكِت الشبكة السوداء
+        // الافتراضية بـPowerPoint فتتحكم حدود كل خلية الصريحة ([_cellXml])
+        // وحدها بالمظهر النهائي.
+        '<a:tbl><a:tblPr firstRow="1" bandRow="1"><a:tableStyleId>{5940675A-B579-460E-94D1-54222C63F5DA}</a:tableStyleId></a:tblPr>'
         '<a:tblGrid><a:gridCol w="$officeW"/><a:gridCol w="$nameW"/></a:tblGrid>'
         '$headerRow$dataRows'
         '</a:tbl>'
@@ -516,8 +529,20 @@ class AdvisingSchedulePptxService {
   }) {
     final shapes = StringBuffer();
 
-    // شريط علوي أخضر غامق: الشعار + العنوان + الفصل الدراسي.
+    // شريط علوي أخضر غامق: الخلفية أولاً ثم الشعار والنصوص فوقها - كل شكل
+    // لاحق يُرسَم فوق السابق بصيغة PowerPoint، فرسم الخلفية أخيرًا (كما كان)
+    // كان يُخفي الشعار والعنوان كليًا خلفها بلا أي أثر ظاهر - دليل فعلي من
+    // سليمان (2026-08-25): الشريط العلوي ظهر أخضر فارغًا تمامًا بلا شعار ولا
+    // نص. شريط ذهبي رفيع أسفل الترويسة يفصلها عن بقية الشريحة (هوية بصرية).
     const headerH = 750000;
+    shapes.write('<p:sp><p:nvSpPr><p:cNvPr id="${_nextId()}" name="خلفية الترويسة"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>'
+        '<p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="$_slideW" cy="$headerH"/></a:xfrm>'
+        '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="$_greenDark"/></a:solidFill></p:spPr>'
+        '<p:txBody><a:bodyPr/><a:lstStyle/><a:p/></p:txBody></p:sp>');
+    shapes.write('<p:sp><p:nvSpPr><p:cNvPr id="${_nextId()}" name="فاصل ذهبي"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>'
+        '<p:spPr><a:xfrm><a:off x="0" y="$headerH"/><a:ext cx="$_slideW" cy="30000"/></a:xfrm>'
+        '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="$_gold"/></a:solidFill></p:spPr>'
+        '<p:txBody><a:bodyPr/><a:lstStyle/><a:p/></p:txBody></p:sp>');
     shapes.write(_pictureLogo(x: _marginX, y: 90000, cx: 570000, cy: 570000));
     shapes.write(_textBox(
       x: _marginX + 700000,
@@ -528,7 +553,6 @@ class AdvisingSchedulePptxService {
       sz: 2200,
       bold: true,
       color: _white,
-      fillHex: _greenDark,
       align: 'r',
     ));
     shapes.write(_textBox(
@@ -538,15 +562,9 @@ class AdvisingSchedulePptxService {
       cy: 260000,
       text: term,
       sz: 1400,
-      color: _white,
-      fillHex: _greenDark,
+      color: _gold,
       align: 'r',
     ));
-    // خلفية موحَّدة للشريط العلوي كاملاً (خلف الشعار والنصوص).
-    shapes.write('<p:sp><p:nvSpPr><p:cNvPr id="${_nextId()}" name="خلفية الترويسة"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>'
-        '<p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="$_slideW" cy="$headerH"/></a:xfrm>'
-        '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="$_greenDark"/></a:solidFill></p:spPr>'
-        '<p:txBody><a:bodyPr/><a:lstStyle/><a:p/></p:txBody></p:sp>');
 
     // شريط معلومات (اليوم | الفترة والوقت | الشطر) - خلفية فاتحة، نص أخضر بارز.
     const infoY = headerH + 40000;
