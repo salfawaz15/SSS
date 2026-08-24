@@ -81,6 +81,10 @@ class _CourseSchedulesScreenState extends State<CourseSchedulesScreen> {
 
 enum _ShatrFilter { all, male, female }
 
+/// فلتر "التسكين" (هل عُيِّن محاضر للشعبة النظرية أم لا) - بطلب سليمان
+/// صراحةً (2026-08-24)، بجانب فلتر الشطر مباشرة بتبويب "المقررات الدراسية".
+enum _PlacementFilter { all, placed, unplaced }
+
 /// تبويب "المقررات الدراسية" - فلتر شطر + قسم أعلى الصفحة، بطاقة لكل شعبة.
 class _CoursesTab extends StatefulWidget {
   final List<CourseSectionRecord> male;
@@ -93,9 +97,14 @@ class _CoursesTab extends StatefulWidget {
 
 class _CoursesTabState extends State<_CoursesTab> {
   _ShatrFilter _shatr = _ShatrFilter.all;
+  _PlacementFilter _placement = _PlacementFilter.all;
   String _department = 'الكل';
 
   String? _departmentOf(CourseSectionRecord r) => CourseCatalog.lookup(r.courseCode)?.department;
+
+  // "مسكَّنة" = عُيِّن محاضر لشعبتها النظرية فعليًا - هي ما يُسجَّله الطالب
+  // ويحدِّد هل المقرر جاهز للتدريس أم لا (بلا اعتبار للعملي وحده).
+  bool _isPlaced(CourseSectionRecord r) => (r.instructorName ?? '').trim().isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -103,8 +112,10 @@ class _CoursesTabState extends State<_CoursesTab> {
       if (_shatr != _ShatrFilter.female) for (final r in widget.male) (r, 'شطر الطلاب'),
       if (_shatr != _ShatrFilter.male) for (final r in widget.female) (r, 'شطر الطالبات'),
     ].where((entry) {
-      if (_department == 'الكل') return true;
-      return _departmentOf(entry.$1) == _department;
+      if (_department != 'الكل' && _departmentOf(entry.$1) != _department) return false;
+      if (_placement == _PlacementFilter.placed && !_isPlaced(entry.$1)) return false;
+      if (_placement == _PlacementFilter.unplaced && _isPlaced(entry.$1)) return false;
+      return true;
     }).toList();
 
     return Column(
@@ -114,7 +125,13 @@ class _CoursesTabState extends State<_CoursesTab> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _ShatrFilterBar(value: _shatr, onChanged: (v) => setState(() => _shatr = v)),
+              Row(
+                children: [
+                  Expanded(child: _ShatrFilterBar(value: _shatr, onChanged: (v) => setState(() => _shatr = v))),
+                  const SizedBox(width: 8),
+                  Expanded(child: _PlacementFilterBar(value: _placement, onChanged: (v) => setState(() => _placement = v))),
+                ],
+              ),
               const SizedBox(height: 6),
               _DepartmentDropdown(value: _department, onChanged: (v) => setState(() => _department = v)),
             ],
@@ -450,6 +467,33 @@ class _ShatrFilterBar extends StatelessWidget {
           ButtonSegment(value: _ShatrFilter.all, label: Text('الكل')),
           ButtonSegment(value: _ShatrFilter.male, label: Text('طلاب')),
           ButtonSegment(value: _ShatrFilter.female, label: Text('طالبات')),
+        ],
+        selected: {value},
+        onSelectionChanged: (s) => onChanged(s.first),
+      ),
+    );
+  }
+}
+
+class _PlacementFilterBar extends StatelessWidget {
+  final _PlacementFilter value;
+  final ValueChanged<_PlacementFilter> onChanged;
+  const _PlacementFilterBar({required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 34,
+      child: SegmentedButton<_PlacementFilter>(
+        style: SegmentedButton.styleFrom(
+          visualDensity: VisualDensity.compact,
+          textStyle: AppTextStyles.caption().copyWith(fontWeight: FontWeight.w600),
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+        ),
+        segments: const [
+          ButtonSegment(value: _PlacementFilter.all, label: Text('الكل')),
+          ButtonSegment(value: _PlacementFilter.placed, label: Text('مسكَّنة')),
+          ButtonSegment(value: _PlacementFilter.unplaced, label: Text('غير مسكَّنة')),
         ],
         selected: {value},
         onSelectionChanged: (s) => onChanged(s.first),
