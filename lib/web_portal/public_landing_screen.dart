@@ -2415,7 +2415,7 @@ class _MetricCard extends StatelessWidget {
   final _MetricTone tone;
   final int? value;
 
-  const _MetricCard({this.icon, this.iconBuilder, required this.label, required this.tone, this.value});
+  const _MetricCard({this.icon, this.iconBuilder, required this.label, required this.tone}) : value = null;
 
   @override
   Widget build(BuildContext context) {
@@ -2727,7 +2727,7 @@ class _TrackCard extends StatelessWidget {
 /// مصدر بيانات بعد، فالقائمة فارغة افتراضيًا - جاهز للربط لاحقًا بلا إعادة
 /// تصميم.
 class _LatestUpdatesSection extends StatelessWidget {
-  const _LatestUpdatesSection({this.updates = const []});
+  const _LatestUpdatesSection() : updates = const [];
 
   final List<String> updates;
 

@@ -131,9 +131,16 @@ class _AcademicServicesHubScreenState extends State<AcademicServicesHubScreen> {
     };
     final counts = <String, int>{};
     for (final r in records) {
-      for (final name in [r.instructorName, r.practicalInstructorName]) {
-        final n = (name ?? '').trim();
-        if (n.isEmpty) continue;
+      // النظري والعملي لنفس الشعبة يُحتسَبان كشعبة واحدة لا شعبتين، حتى لو
+      // كان نفس المحاضر يُدرّس الجزأين معًا - سليمان صراحةً (2026-08-24):
+      // "يحسب الشعبة النظرية والعملية كشعبتين منفصلة" كان خللًا حقيقيًا.
+      // نبني مجموعة أسماء فريدة لهذه الشعبة (قد يكون نظري/عملي بنفس الاسم
+      // فتُدمَج تلقائيًا، أو باسمين مختلفين فيُحسَب لكل منهما شعبة واحدة).
+      final namesInThisSection = <String>{
+        if ((r.instructorName ?? '').trim().isNotEmpty) r.instructorName!.trim(),
+        if ((r.practicalInstructorName ?? '').trim().isNotEmpty) r.practicalInstructorName!.trim(),
+      };
+      for (final n in namesInThisSection) {
         if (_deptFilter != null && _departmentFor(n) != _deptFilter) continue;
         counts[n] = (counts[n] ?? 0) + 1;
       }
