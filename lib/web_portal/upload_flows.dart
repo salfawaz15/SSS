@@ -1,27 +1,39 @@
 import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../data/advising_load_rules.dart';
+import '../data/course_catalog.dart';
 import '../data/faculty_sort_order.dart';
 import '../data/teaching_load_regulation.dart';
 import '../models/advising_case_record.dart';
 import '../models/advising_schedule.dart';
 import '../models/college_roster_member.dart';
+import '../models/course_section_record.dart';
 import '../services/advising_case_analyzer.dart';
 import '../services/advising_report_parser_service.dart';
 import '../services/advising_report_pdf_parser_service.dart';
 import '../services/advising_report_repository.dart';
 import '../services/advising_schedule_excel_service.dart';
 import '../services/advising_schedule_repository.dart';
+import '../services/advisor_correction_service.dart';
 import '../services/advisor_movement_repository.dart';
 import '../services/advisor_name_matching.dart';
 import '../services/college_roster_parser_service.dart';
 import '../services/college_roster_repository.dart';
-import '../services/course_schedule_repository.dart' show Shatr, ShatrLabel;
+import '../services/course_schedule_change_repository.dart';
+import '../services/course_schedule_diff_service.dart';
+import '../services/course_schedule_repository.dart';
+import '../services/docx_schedule_parser_service.dart';
+import '../services/excel_export_service.dart';
+import '../services/excel_parser_service.dart';
+import '../services/firestore_ticket_service.dart';
+import '../services/outside_course_repository.dart';
 import '../services/unit_committee_repository.dart';
+import '../services/web_download.dart';
 import '../services/xlsx_metadata_service.dart';
 import 'upload_dialogs.dart';
 
@@ -598,6 +610,269 @@ Future<void> runUploadCollegeRoster({
     }
 
     onSuccess();
+  } catch (e) {
+    if (!context.mounted) return;
+    showUploadErrorDialog(context, 'تعذّر قراءة الملف', '$e');
+  } finally {
+    setUploading(false);
+  }
+}
+
+/// يسأل الأدمن أولًا: هل هذا أول رفع في دورة حذف وإضافة جديدة (يمسح كل
+/// شيء - بداية نظيفة)، أم رفعة يوم تالٍ من نفس الدورة (الاثنين/الثلاثاء -
+/// تصدير Microsoft Forms تراكمي، فيُضاف الجديد فقط بلا مسح أي شيء حتى لا
+/// يُفقَد عمل المرشدين/المنسّقين على حالات الأيام السابقة).
+Future<bool?> _confirmFormsUploadMode(BuildContext context) {
+  return showDialog<bool>(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => AlertDialog(
+      title: const Text('اختر نوع الرفع'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('إلغاء'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('رفعة يوم تالٍ (إضافة فقط)'),
+        ),
+        ElevatedButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade700),
+          child: const Text('رفع جديد (بداية دورة - يمسح القديم)'),
+        ),
+      ],
+    ),
+  );
+}
+
+/// رفع ملف طلبات الحذف/الإضافة (مصدره Microsoft Forms) - **مُستخرَجة من
+/// `upload_hub_screen.dart` (`_pickAndUploadFormsFile`/`_confirmFormsUploadMode`)
+/// بلا أي تغيير بالمنطق** لتُستدعى أيضًا من تطبيق "بوابة الإرشاد" الجوّالة
+/// (سليمان 2026-08-23) - نفس مصدر واحد للمنطق كبقية دوال هذا الملف.
+/// [onMessage] يعرض رسالة النجاح النهائية بأسلوب كل واجهة الخاص بها (شريط
+/// إشعار أخضر بالموقع، قد يختلف شكله بالجوال).
+Future<void> runUploadForms({
+  required BuildContext context,
+  required ValueChanged<bool> setUploading,
+  required VoidCallback onSuccess,
+  required ValueChanged<String> onMessage,
+}) async {
+  final isNewCycle = await _confirmFormsUploadMode(context);
+  if (isNewCycle == null) return;
+
+  setUploading(true);
+
+  final result = await FilePicker.platform.pickFiles(
+    type: FileType.custom,
+    allowedExtensions: ['xlsx'],
+    withData: true,
+  );
+
+  if (result == null || result.files.single.bytes == null) {
+    setUploading(false);
+    return;
+  }
+
+  try {
+    final Uint8List bytes = result.files.single.bytes!;
+    final rawTickets = ExcelParserService.parseTickets(bytes);
+
+    final advisingRecords = [
+      ...await AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.allColleges),
+      ...await AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.allColleges),
+    ];
+    final tickets = AdvisorCorrectionService.applyAdvisorCorrection(rawTickets, advisingRecords);
+
+    String message;
+    if (isNewCycle) {
+      final skippedNoId = await FirestoreTicketService.replaceAllTickets(tickets);
+      final savedCount = tickets.length - skippedNoId;
+      message = 'تم رفع $savedCount حالة بنجاح (دورة جديدة)';
+      if (skippedNoId > 0) {
+        message += ' - تنبيه: تم تجاهل $skippedNoId حالة بلا رقم جامعي صالح '
+            '(غالبًا بريد الطالب لم يُسجَّل بحساب جامعي حقيقي عند تعبئة النموذج).';
+      }
+    } else {
+      var skippedNoId = 0;
+      final addedCount = await FirestoreTicketService.addNewTickets(
+        tickets,
+        onSkippedNoId: (n) => skippedNoId = n,
+      );
+      message = 'تمت إضافة $addedCount حالة جديدة (من أصل ${tickets.length} في الملف - '
+          'الباقي موجود مسبقًا وتم تجاهله حفاظًا على عمل المرشدين/المنسّقين)';
+      if (skippedNoId > 0) {
+        message += ' - تنبيه: تم تجاهل $skippedNoId حالة بلا رقم جامعي صالح '
+            '(غالبًا بريد الطالب لم يُسجَّل بحساب جامعي حقيقي عند تعبئة النموذج).';
+      }
+    }
+
+    setUploading(false);
+    onSuccess();
+    if (!context.mounted) return;
+    onMessage(message);
+  } catch (e) {
+    setUploading(false);
+    if (!context.mounted) return;
+    showUploadErrorDialog(context, 'تعذّر رفع ملف الفورم', '$e');
+  }
+}
+
+/// تنزيل ملف مضغوط بداخله ملف Excel خام منفصل لكل قسم/شطر (10 ملفات: 5
+/// أقسام × شطرين) من "الملف الأساسي" الحالي كما هو - بلا أي فرز حسب مرشد -
+/// ليتمكّن سليمان من إرساله يدويًا (بريد/واتساب) لأي منسّق قسم يتعذّر عليه
+/// الدخول للموقع نفسه. **مُستخرَجة من `upload_hub_screen.dart`
+/// (`_downloadFormsFileZip`) بلا أي تغيير بالمنطق** - `downloadBytes` (من
+/// `web_download.dart`) يعمل تلقائيًا بشكل صحيح على كل من الويب (تنزيل
+/// متصفح) والجوال (حفظ بمجلد مؤقت ثم فتح/مشاركة عبر `OpenFilex`) بلا أي
+/// كود إضافي خاص بالجوال.
+Future<void> runDownloadFormsZip({
+  required BuildContext context,
+  required ValueChanged<bool> setDownloading,
+  required ValueChanged<String> onMessage,
+}) async {
+  setDownloading(true);
+  try {
+    final tickets = await FirestoreTicketService.watchAllTickets().first;
+    if (tickets.isEmpty) {
+      throw Exception('لا توجد بيانات "الملف الأساسي" مرفوعة بعد لتنزيلها.');
+    }
+
+    final groups = ExcelParserService.groupByShatrAndDepartment(tickets);
+    final archive = Archive();
+    for (final entry in groups.entries) {
+      final parts = entry.key.split('|');
+      final shatr = parts[0];
+      final department = parts.length > 1 ? parts[1] : 'قسم';
+      final shatrLabel = shatr == ExcelParserService.shatrMale ? 'شطر_الطلاب' : 'شطر_الطالبات';
+      final bytes = ExcelExportService.buildDepartmentWorkbook(entry.value);
+      final safeName = '${department.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')}_$shatrLabel';
+      archive.addFile(ArchiveFile('$safeName.xlsx', bytes.length, bytes));
+    }
+
+    final zipBytes = Uint8List.fromList(ZipEncoder().encode(archive) ?? <int>[]);
+    await downloadBytes(zipBytes, 'الملف_الأساسي_طلبات_الحذف_والإضافة.zip');
+
+    if (!context.mounted) return;
+    onMessage('تم تنزيل ${groups.length} ملفًا (قسم/شطر) بنجاح');
+  } catch (e) {
+    if (!context.mounted) return;
+    showUploadErrorDialog(context, 'تعذّر تنزيل الملف', '$e');
+  } finally {
+    setDownloading(false);
+  }
+}
+
+/// رفع المقررات الدراسية (الحويّة) بملف واحد يحوي الشطرين معًا - يحدَّد شطر
+/// كل شعبة تلقائيًا من حقل "المقر". **مُستخرَجة من `upload_hub_screen.dart`
+/// (`_uploadCoursesCombined`) بلا أي تغيير بالمنطق**.
+Future<void> runUploadCourses({
+  required BuildContext context,
+  required ValueChanged<bool> setUploading,
+  required VoidCallback onSuccess,
+  required ValueChanged<String> onMessage,
+}) async {
+  final result = await FilePicker.platform.pickFiles(
+    type: FileType.custom,
+    allowedExtensions: ['docx'],
+    withData: true,
+  );
+  if (result == null || result.files.single.bytes == null) return;
+  final Uint8List bytes = result.files.single.bytes!;
+  // ملف .docx الحقيقي هو أرشيف ZIP يبدأ دائمًا بالتوقيع "PK" - إن لم يكن
+  // كذلك فهو على الأغلب حُفظ فعليًا بصيغة .doc القديمة أو تالف.
+  if (bytes.length < 2 || bytes[0] != 0x50 || bytes[1] != 0x4B) {
+    if (!context.mounted) return;
+    showUploadErrorDialog(
+      context,
+      'الملف ليس Word صالحًا',
+      'الملف المختار لا يبدو ملف Word (.docx) حقيقيًا (قد يكون محفوظًا فعليًا بصيغة .doc القديمة أو تالفًا). '
+          'تأكد عند التحويل من PDF أن تحفظه بصيغة "Word Document (.docx)" وليس "Word 97-2003 (.doc)"، ثم أعد المحاولة.',
+    );
+    return;
+  }
+
+  setUploading(true);
+  try {
+    final sections = DocxScheduleParserService.parseSectionsWithShatr(bytes);
+    if (sections.isEmpty) {
+      throw Exception('لم يتم العثور على أي شعبة في الملف - تأكد من أنه ملف المقررات الدراسية الشامل الصحيح بصيغة Word (.docx).');
+    }
+
+    final ourSections = sections.where((s) => s.beneficiary.contains('كلية إدارة الأعمال')).toList();
+    final outsideCodes = CourseCatalog.outsideCollegeCourses.map(CourseCatalog.outsideCourseCode).toSet();
+
+    ({
+      List<CourseSectionRecord> ownRecords,
+      List<String> outsideOptions,
+      List<CourseSectionRecord> outsideRecords,
+    }) buildForShatr(Shatr shatr) {
+      final shatrSections = ourSections.where((s) => s.shatr == shatr).toList();
+      final ownRecords =
+          shatrSections.where((s) => !outsideCodes.contains(s.record.courseCode)).map((s) => s.record).toList();
+      final outsideSections = shatrSections.where((s) => outsideCodes.contains(s.record.courseCode)).toList();
+      final offeredOutsideCodes = outsideSections.map((s) => s.record.courseCode).toSet();
+      final outsideOptions = CourseCatalog.filterOutsideCoursesByOfferedCodes(offeredOutsideCodes);
+      final outsideRecords = outsideSections.map((s) => s.record).toList()
+        ..sort((a, b) {
+          final c = a.courseCode.compareTo(b.courseCode);
+          return c != 0 ? c : a.sequence.compareTo(b.sequence);
+        });
+      return (ownRecords: ownRecords, outsideOptions: outsideOptions, outsideRecords: outsideRecords);
+    }
+
+    final male = buildForShatr(Shatr.male);
+    final female = buildForShatr(Shatr.female);
+
+    if (male.ownRecords.isEmpty && female.ownRecords.isEmpty) {
+      throw Exception(
+        'لم يُعثر على أي شعبة "المستفيد" منها كلية إدارة الأعمال ضمن ${sections.length} سطر بالملف. '
+        'تأكد أن الملف يحوي عمود "المستفيد" فعليًا وأن نص الكلية مطابق.',
+      );
+    }
+
+    final previousMale = await CourseScheduleRepository.loadSchedule(Shatr.male);
+    final previousFemale = await CourseScheduleRepository.loadSchedule(Shatr.female);
+    final changesMale = CourseScheduleDiffService.diff(
+      shatrLabel: Shatr.male.label,
+      previous: previousMale,
+      current: male.ownRecords,
+    );
+    final changesFemale = CourseScheduleDiffService.diff(
+      shatrLabel: Shatr.female.label,
+      previous: previousFemale,
+      current: female.ownRecords,
+    );
+
+    if (!context.mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('تأكيد الاعتماد'),
+        content: Text(
+          'من إجمالي ${sections.length} سطر بالملف:\n\n'
+          '• ${male.ownRecords.length} شعبة لشطر الطلاب (${male.outsideOptions.length} مادة خارج الكلية).\n'
+          '• ${female.ownRecords.length} شعبة لشطر الطالبات (${female.outsideOptions.length} مادة خارج الكلية).\n'
+          'سيستبدل هذا آخر نسخة معتمدة للشطرين بالكامل. هل تريد الاعتماد؟',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('اعتماد')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    await CourseScheduleRepository.saveSchedule(Shatr.male, male.ownRecords);
+    await CourseScheduleRepository.saveSchedule(Shatr.female, female.ownRecords);
+    await OutsideCourseRepository.save(Shatr.male, male.outsideOptions, male.outsideRecords);
+    await OutsideCourseRepository.save(Shatr.female, female.outsideOptions, female.outsideRecords);
+    if (previousMale.isNotEmpty) await CourseScheduleChangeRepository.appendChanges(changesMale);
+    if (previousFemale.isNotEmpty) await CourseScheduleChangeRepository.appendChanges(changesFemale);
+    onSuccess();
+    if (!context.mounted) return;
+    onMessage('تم رفع الملف بنجاح');
   } catch (e) {
     if (!context.mounted) return;
     showUploadErrorDialog(context, 'تعذّر قراءة الملف', '$e');

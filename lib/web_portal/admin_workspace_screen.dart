@@ -498,7 +498,27 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
       body: StreamBuilder<List<Map<String, dynamic>>>(
         stream: FirestoreTicketService.watchAllTickets(),
         builder: (context, snapshot) {
+          // بلا هذا التمييز كانت الصفحة تظهر بيضاء تمامًا بلا أي رسالة سواء
+          // أثناء التحميل الأول، عند خطأ فعلي بالتدفّق (صلاحيات مثلاً)، أو
+          // ببساطة لعدم وجود أي حالات مرفوعة بعد - لا فرق بينها للمستخدم
+          // (سليمان 2026-08-24: رفع تجريبي أدى لصفحة بيضاء بلا أي توضيح).
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text('تعذّر تحميل البيانات: ${snapshot.error}', style: const TextStyle(color: Colors.red)),
+              ),
+            );
+          }
           final tickets = snapshot.data ?? [];
+          if (tickets.isEmpty) {
+            return Center(
+              child: Text('لا توجد أي حالات مرفوعة بعد', style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
+            );
+          }
 
           return ListView(
             padding: const EdgeInsets.all(16),

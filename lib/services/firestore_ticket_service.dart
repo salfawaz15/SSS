@@ -24,18 +24,28 @@ class FirestoreTicketService {
 
   /// يستبدل كل التذاكر الحالية بدفعة جديدة (أول رفع في دورة حذف وإضافة جديدة
   /// - بداية نظيفة) - للإدارة فقط.
-  static Future<void> replaceAllTickets(
+  /// يرجّع عدد الحالات التي جرى تجاهلها فعليًا (رقم جامعي فارغ - غالبًا بريد
+  /// "anonymous" لأن الطالب عبّأ النموذج بلا تسجيل دخول جامعي) - كانت تُحذَف
+  /// بصمت تام سابقًا فيظهر شريط "تم الرفع بنجاح" رغم عدم كتابة أي شيء فعليًا
+  /// بقاعدة البيانات (سليمان رصد حيًّا 2026-08-24: رفع تجريبي بحالة واحدة
+  /// بلا رقم جامعي صالح أدّى لتبويب "الحذف والإضافة" فارغ تمامًا بلا أي خطأ).
+  static Future<int> replaceAllTickets(
     List<Map<String, dynamic>> tickets,
   ) async {
     await clearAll();
 
     final batch = FirebaseFirestore.instance.batch();
+    var skipped = 0;
     for (final t in tickets) {
       final id = (t['university_id'] ?? '').toString();
-      if (id.isEmpty) continue;
+      if (id.isEmpty) {
+        skipped++;
+        continue;
+      }
       batch.set(_col.doc(id), t);
     }
     await batch.commit();
+    return skipped;
   }
 
   /// يضيف فقط التذاكر الجديدة (رفعات اليوم الثاني/الثالث من نفس الدورة) دون
@@ -43,15 +53,21 @@ class FirestoreTicketService {
   /// الأول)، فأي رقم جامعي موجود مسبقًا يُتجاهل تمامًا حفاظًا على أي عمل
   /// أنجزه المرشد/المنسّق عليه، ويُضاف فقط من هو جديد فعليًا. يرجّع عدد
   /// التذاكر الجديدة المُضافة فعليًا (للتنبيه في واجهة الرفع).
+  /// [skippedNoId] عدد الحالات التي لها رقم جامعي فارغ (بريد "anonymous" -
+  /// راجع ملاحظة [replaceAllTickets]) فتُستبعَد قبل حتى مقارنتها بالموجود.
   static Future<int> addNewTickets(
-    List<Map<String, dynamic>> tickets,
-  ) async {
+    List<Map<String, dynamic>> tickets, {
+    void Function(int)? onSkippedNoId,
+  }) async {
     final existingSnap = await _col.get();
     final existingIds = existingSnap.docs.map((d) => d.id).toSet();
 
-    final newTickets = tickets.where((t) {
+    final withValidId = tickets.where((t) => (t['university_id'] ?? '').toString().isNotEmpty).toList();
+    onSkippedNoId?.call(tickets.length - withValidId.length);
+
+    final newTickets = withValidId.where((t) {
       final id = (t['university_id'] ?? '').toString();
-      return id.isNotEmpty && !existingIds.contains(id);
+      return !existingIds.contains(id);
     }).toList();
 
     final batch = FirebaseFirestore.instance.batch();
