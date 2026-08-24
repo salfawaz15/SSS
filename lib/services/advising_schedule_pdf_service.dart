@@ -241,6 +241,74 @@ class AdvisingSchedulePdfService {
     return doc.save();
   }
 
+  /// نسخة "بطاقات" منفصلة لوضع شاشات العرض: كل بطاقة = يوم × قسم × شطر في
+  /// ملف PDF أحادي الصفحة مستقل تمامًا (لا يتقاسم أي انقسام مع بطاقة أخرى)،
+  /// لتحويلها لاحقًا لصور PNG (راجع AdvisingScheduleSignageImageService)
+  /// تُرسَل لسكرتارية الكلية لعرضها كشرائح على شاشات الإسياب - طلب سليمان
+  /// 2026-08-24. تعيد نفس ترتيب البطاقات المستخدَم فعليًا بـ[buildAll]
+  /// (اليوم أولًا حسب [AdvisingScheduleExcelService.dayColumnLabels]، ثم
+  /// الشطر، ثم القسم).
+  static Future<List<({String label, Uint8List pdfBytes})>> buildSignageCards({
+    required Map<(String, String), List<AdvisingScheduleSlot>> byDeptShatr,
+  }) async {
+    final regular = await _regularFont();
+    final bold = await _boldFont();
+    final logo = await _logo();
+    final roster = await CollegeRosterRepository.load();
+
+    final pairs = [
+      for (final s in AdvisingScheduleExcelService.shatrOptions)
+        for (final d in AdvisingScheduleExcelService.departmentOptions) (d, s),
+    ];
+
+    final cards = <({String label, Uint8List pdfBytes})>[];
+
+    for (final day in AdvisingScheduleExcelService.dayColumnLabels) {
+      for (final (department, shatr) in pairs) {
+        final daySlots = (byDeptShatr[(department, shatr)] ?? const [])
+            .where((s) => s.dayLabel == day)
+            .toList()
+          ..sort((a, b) => _periodOrder(a.periodLabel).compareTo(_periodOrder(b.periodLabel)));
+        if (daySlots.isEmpty) continue;
+
+        final coordinatorMatch = CollegeRosterLookupService.coordinatorFor(roster, department, shatr);
+        final coordinatorLabel = coordinatorMatch == null
+            ? null
+            : '${coordinatorMatch.male ? 'منسّق القسم' : 'منسّقة القسم'}: ${coordinatorMatch.name}';
+
+        final doc = pw.Document(theme: pw.ThemeData.withFont(base: regular, bold: bold));
+        doc.addPage(
+          pw.Page(
+            pageFormat: PdfPageFormat.a4.landscape,
+            margin: const pw.EdgeInsets.all(28),
+            textDirection: pw.TextDirection.rtl,
+            build: (context) => pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+              children: [
+                _genericHeader(logo: logo, scale: 1.6),
+                pw.SizedBox(height: 14),
+                pw.Center(
+                  child: pw.Text('يوم $day', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: _green)),
+                ),
+                pw.SizedBox(height: 4),
+                pw.Center(child: pw.Container(height: 2, width: 160, color: _gold)),
+                pw.SizedBox(height: 16),
+                ..._deptShatrWidgets(department, shatr, coordinatorLabel, daySlots, signage: true),
+              ],
+            ),
+          ),
+        );
+
+        cards.add((
+          label: '$day - ${department.replaceFirst(RegExp(r'^قسم\s+'), '')} - $shatr',
+          pdfBytes: await doc.save(),
+        ));
+      }
+    }
+
+    return cards;
+  }
+
   /// عنوان عام لصفحة يوم كامل (بلا قسم/شطر مفرد، لأن الصفحة تجمع عدة أقسام) -
   /// الشعار واسم الوحدة فقط، واسم اليوم كعنوان رئيسي بدل بيانات قسم واحد.
   /// حجم مصغَّر (سليمان 2026-08-13: "صغّر الشعار") - هذا العنوان يتكرر أعلى
@@ -313,8 +381,29 @@ class AdvisingSchedulePdfService {
           ],
         ),
       ),
+      // نفس تحسين "جدولا الفترتين جنبًا إلى جنب" أدناه، مطبَّق أيضًا بوضع
+      // شاشات العرض (لم يكن مطبَّقًا سابقًا) - لكن فقط حين تكون كلتا
+      // الفترتين صغيرتين بما يكفي (بلا حاجة لتقسيم أعمدة داخلي أصلاً)، وإلا
+      // تتراكم الفترتان رأسيًا وكل فترة تُقسَّم أعمدتها الخاصة عند الحاجة
+      // (`_periodTableSignage` أعلاه) بدل عمودين متداخلين مع أعمدة فرعية.
       if (signage)
-        for (final slot in daySlots) ..._periodTableSignage(slot)
+        if (daySlots.length == 2 && daySlots.every((s) => s.entries.length <= _kSignageMaxRowsPerColumn))
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              for (var i = 0; i < daySlots.length; i++) ...[
+                if (i > 0) pw.SizedBox(width: 14),
+                pw.Expanded(
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                    children: _periodTableSignage(daySlots[i]),
+                  ),
+                ),
+              ],
+            ],
+          )
+        else
+          for (final slot in daySlots) ..._periodTableSignage(slot)
       // جدولا الفترتين جنبًا إلى جنب (عمودان) بدل تحت بعض - سليمان
       // 2026-08-13: "قسم الاقتصاد شطر الطالبات أعدادهم كبيرة، يجب أن يستوعب
       // الجميع بصفحة واحدة، شرط يوم واحد فيه جدولان". يقلّل الارتفاع
@@ -331,6 +420,13 @@ class AdvisingSchedulePdfService {
         for (final slot in daySlots) ..._periodTable(slot),
     ];
   }
+
+  /// الحد الأقصى لعدد الصفوف بعمود واحد بوضع شاشات العرض (خط ضخم) قبل تقسيم
+  /// نفس الفترة لعمودين/ثلاثة أعمدة جنبًا إلى جنب بدل ترك `pw.Table` يقسمها
+  /// تلقائيًا بين صفحتين - كان هذا الانقسام التلقائي هو سبب الصفوف اليتيمة
+  /// والصفحات شبه الفارغة التي لاحظها سليمان (2026-08-24) بملف "شاشات_العرض"
+  /// (69 صفحة، جداول قسم تنقسم منتصف القائمة).
+  static const int _kSignageMaxRowsPerColumn = 10;
 
   static pw.Widget _periodTablesSideBySide(List<AdvisingScheduleSlot> slots) {
     return pw.Row(
@@ -537,36 +633,62 @@ class AdvisingSchedulePdfService {
   // فعليًا بمتصفح حقيقي 2026-08-10: الحل السابق بإزالة pw.Container فقط لم
   // يكفِ لأن pw.Column يحمل نفس القيد بالضبط).
   static List<pw.Widget> _periodTableSignage(AdvisingScheduleSlot slot) {
+    final entries = slot.entries;
+    // عدد الأعمدة يُحسب من عدد الصفوف الفعلي (لا يتجاوز 3 أعمدة كي يبقى كل
+    // عمود مقروءًا من مسافة على شاشة الإسياب) - بدل عمود واحد قد يتجاوز
+    // ارتفاعه صفحة واحدة فيقسمه pw.Table تلقائيًا بشكل عشوائي.
+    final columnCount = (entries.length / _kSignageMaxRowsPerColumn).ceil().clamp(1, 3);
+    final perColumn = (entries.length / columnCount).ceil();
+    final columns = <List<AdvisingScheduleEntry>>[
+      for (var i = 0; i < entries.length; i += perColumn)
+        entries.sublist(i, (i + perColumn > entries.length) ? entries.length : i + perColumn),
+    ];
+
     return [
       pw.Container(
         margin: const pw.EdgeInsets.only(top: 8),
         padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         color: _lightGray,
-        child: pw.Text('الفترة: ${slot.periodLabel}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 16, color: _green)),
+        child: pw.Text('الفترة: ${AdvisingScheduleExcelService.periodDisplayLabel(slot.periodLabel)}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 16, color: _green)),
       ),
-      pw.Table(
-        border: pw.TableBorder(horizontalInside: pw.BorderSide(color: PdfColors.grey300)),
-        defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
-        columnWidths: const {0: pw.FlexColumnWidth(1), 1: pw.FlexColumnWidth(3)},
-        children: [
+      if (columns.length <= 1)
+        _signageColumnTable(entries)
+      else
+        pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            for (var i = 0; i < columns.length; i++) ...[
+              if (i > 0) pw.SizedBox(width: 12),
+              pw.Expanded(child: _signageColumnTable(columns[i])),
+            ],
+          ],
+        ),
+    ];
+  }
+
+  static pw.Widget _signageColumnTable(List<AdvisingScheduleEntry> entries) {
+    return pw.Table(
+      border: pw.TableBorder(horizontalInside: pw.BorderSide(color: PdfColors.grey300)),
+      defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
+      columnWidths: const {0: pw.FlexColumnWidth(1), 1: pw.FlexColumnWidth(3)},
+      children: [
+        pw.TableRow(
+          decoration: pw.BoxDecoration(color: _green),
+          children: [
+            _cell('رقم المكتب', bold: true, color: PdfColors.white, fontSize: 15),
+            _cell('اسم المرشد الأكاديمي', bold: true, color: PdfColors.white, fontSize: 15),
+          ],
+        ),
+        for (var i = 0; i < entries.length; i++)
           pw.TableRow(
-            decoration: pw.BoxDecoration(color: _green),
+            decoration: pw.BoxDecoration(color: i.isEven ? PdfColors.white : _lightGray),
             children: [
-              _cell('رقم المكتب', bold: true, color: PdfColors.white, fontSize: 15),
-              _cell('اسم المرشد الأكاديمي', bold: true, color: PdfColors.white, fontSize: 15),
+              _cell(entries[i].office, fontSize: 14),
+              _cell(entries[i].advisorName, fontSize: 14),
             ],
           ),
-          for (var i = 0; i < slot.entries.length; i++)
-            pw.TableRow(
-              decoration: pw.BoxDecoration(color: i.isEven ? PdfColors.white : _lightGray),
-              children: [
-                _cell(slot.entries[i].office, fontSize: 14),
-                _cell(slot.entries[i].advisorName, fontSize: 14),
-              ],
-            ),
-        ],
-      ),
-    ];
+      ],
+    );
   }
 
   /// حشو رأسي مصغَّر (3 بدل 5) بين كل اسم والتالي - سليمان 2026-08-13:
@@ -578,7 +700,7 @@ class AdvisingSchedulePdfService {
         margin: const pw.EdgeInsets.only(top: 4),
         padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         color: _lightGray,
-        child: pw.Text('الفترة: ${slot.periodLabel}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: _green)),
+        child: pw.Text('الفترة: ${AdvisingScheduleExcelService.periodDisplayLabel(slot.periodLabel)}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: _green)),
       ),
       // ترتيب الأعمدة معكوس عمدًا (رقم المكتب أولاً..الاسم أخيرًا) لأن
       // pw.Table يرتّب أعمدته فعليًا من يسار الصفحة لا حسب اتجاه النص.

@@ -10,6 +10,7 @@ import '../models/college_roster_member.dart';
 import '../services/advising_schedule_excel_service.dart';
 import '../services/advising_schedule_pdf_service.dart';
 import '../services/advising_schedule_repository.dart';
+import '../services/advising_schedule_signage_image_service.dart';
 import '../services/college_roster_repository.dart';
 import '../services/excel_parser_service.dart';
 import '../services/web_download.dart';
@@ -348,6 +349,11 @@ class _AdvisingScheduleAdminScreenState extends State<AdvisingScheduleAdminScree
             bytes: await _buildFilteredPdf(signage: true),
             filename: 'شاشات_العرض_توزيع_فترات_الإرشاد_$fileTag.pdf',
           )),
+      onSignageImagesZip: () => _runPdfAction(() async {
+        final all = _isFiltered ? _filteredData : await _loadFilteredData();
+        final zipBytes = await AdvisingScheduleSignageImageService.buildZip(byDeptShatr: all);
+        await downloadBytes(zipBytes, 'شاشات_العرض_$fileTag.zip');
+      }),
     );
 
     return Container(
@@ -417,7 +423,8 @@ class _AdvisingScheduleAdminScreenState extends State<AdvisingScheduleAdminScree
                   Text(day.key, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppColors.green)),
                   const Divider(),
                   for (final slot in day.value) ...[
-                    Text('الفترة: ${slot.periodLabel}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                    Text('الفترة: ${AdvisingScheduleExcelService.periodDisplayLabel(slot.periodLabel)}',
+                        style: const TextStyle(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 4),
                     Wrap(
                       spacing: 8,
@@ -506,7 +513,8 @@ class _AdvisingScheduleAdminScreenState extends State<AdvisingScheduleAdminScree
                     ),
                     const SizedBox(height: 6),
                     for (final slot in section.value) ...[
-                      Text('الفترة: ${slot.periodLabel}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                      Text('الفترة: ${AdvisingScheduleExcelService.periodDisplayLabel(slot.periodLabel)}',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                       const SizedBox(height: 4),
                       Wrap(
                         spacing: 8,
@@ -587,6 +595,7 @@ class _ReportCard extends StatelessWidget {
   final VoidCallback onOfficialView;
   final VoidCallback onOfficialPrint;
   final VoidCallback onSignageView;
+  final VoidCallback onSignageImagesZip;
 
   const _ReportCard({
     required this.title,
@@ -594,6 +603,7 @@ class _ReportCard extends StatelessWidget {
     required this.onOfficialView,
     required this.onOfficialPrint,
     required this.onSignageView,
+    required this.onSignageImagesZip,
   });
 
   @override
@@ -622,6 +632,8 @@ class _ReportCard extends StatelessWidget {
               _iconAction(enabled ? onOfficialPrint : null, Icons.print_outlined, 'طباعة - رسمي', AppColors.green),
               const SizedBox(width: 6),
               _iconAction(enabled ? onSignageView : null, Icons.tv_outlined, 'عرض PDF - شاشات العرض', AppColors.gold),
+              _iconAction(
+                  enabled ? onSignageImagesZip : null, Icons.image_outlined, 'تنزيل صور الشرائح (ZIP)', AppColors.gold),
             ],
           ),
         ),
