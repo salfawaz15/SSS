@@ -29,7 +29,7 @@ import '../services/course_schedule_diff_service.dart';
 import '../services/course_schedule_repository.dart';
 import '../services/docx_schedule_parser_service.dart';
 import '../services/pdf_schedule_parser_service.dart';
-import '../services/excel_export_service.dart';
+import '../services/escalation_file_service.dart';
 import '../services/excel_parser_service.dart';
 import '../services/firestore_ticket_service.dart';
 import '../services/outside_course_repository.dart';
@@ -747,7 +747,10 @@ Future<void> runDownloadFormsZip({
       final shatr = parts[0];
       final department = parts.length > 1 ? parts[1] : 'قسم';
       final shatrLabel = shatr == ExcelParserService.shatrMale ? 'شطر_الطلاب' : 'شطر_الطالبات';
-      final bytes = ExcelExportService.buildDepartmentWorkbook(entry.value);
+      // ملف يُرسَل يدويًا لمنسّق القسم (لا فرز حسب مرشد) - يجب أن يحمل نفس
+      // حماية/قائمة "حالة الإنجاز من قبل منسق القسم" المستخدَمة بمسار
+      // التصعيد الفعلي (EscalationFileService)، لا نسخة خام بلا حماية.
+      final bytes = EscalationFileService.buildStage2File(entry.value);
       final safeName = '${department.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')}_$shatrLabel';
       archive.addFile(ArchiveFile('$safeName.xlsx', bytes.length, bytes));
     }

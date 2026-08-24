@@ -2,6 +2,8 @@ import 'dart:typed_data';
 
 import 'package:excel/excel.dart';
 
+import '../utils/xlsx_sanitizer.dart';
+
 /// يقرأ ملف تصدير Microsoft Forms الحقيقي بالاعتماد على **أسماء الأعمدة**
 /// (صف العناوين) بدل فهرسة ثابتة - لأن Microsoft Forms يُصدّر أعمدة الفروع
 /// الشرطية (مرشد كل قسم، تفاصيل كل إجراء إضافي) فقط عند وجود إجابة واحدة
@@ -93,7 +95,7 @@ class ExcelParserService {
 
   /// يقرأ بايتات ملف xlsx ويرجّع قائمة تذاكر (تذكرة لكل طالب)
   static List<Map<String, dynamic>> parseTickets(Uint8List bytes) {
-    final excel = Excel.decodeBytes(bytes);
+    final excel = Excel.decodeBytes(sanitizeXlsxBytes(bytes));
     final sheet = excel.tables[excel.tables.keys.first]!;
 
     if (sheet.maxRows < 2) return [];
@@ -184,6 +186,19 @@ class ExcelParserService {
             addRangeStart,
             addRangeEnd,
             (h) => h.contains(_normalize('ورقم الشعبة')),
+          );
+    // عمود القائمة المنسدلة الفعلي لاختيار المقررات ("اختر المقرر أو
+    // المقررات المطلوب إضافتها") - مصدر الحقيقة الوحيد لاسم/رمز المقرر لأن
+    // الحقل الحر المجاور (المقرر ورقم الشعبة) غير موثوق لاسم المقرر (طلاب
+    // يكتبون نصًا عشوائيًا أو مثالًا توضيحيًا لم يُستبدَل) - نعتمد عليه فقط
+    // لاستخراج رقم الشعبة عبر مطابقة نصية، لا لاسم المقرر.
+    final addDropdownCols = addGateCol < 0
+        ? const <int>[]
+        : _findColumnsInRange(
+            normalizedHeaders,
+            addRangeStart,
+            addRangeEnd,
+            (h) => h.contains(_normalize('اختر المقرر')),
           );
     final addReasonColInRange = addGateCol < 0
         ? -1
@@ -287,18 +302,49 @@ class ExcelParserService {
       final wantsAdd = addGateCols.any((c) => _isYes(_cellText(row, c)));
       if (wantsAdd) {
         final reason = _cellText(row, addReasonColInRange).trim();
-        for (var i = 0; i < addCourseCols.length && i < _maxAddActions; i++) {
-          final raw = _cellText(row, addCourseCols[i]).trim();
+        final dropdownCourses = <String>[];
+        for (final c in addDropdownCols) {
+          final raw = _cellText(row, c).trim();
           if (raw.isEmpty) continue;
-          final parsed = _parseCourseAndSection(raw);
-          actions.add({
-            'action_type': 'إضافة',
-            'required_section': parsed['section'] ?? '',
-            'current_section': '',
-            'course': _joinCourse(parsed),
-            'reason': reason,
-            'reason_detail': reason,
-          });
+          dropdownCourses.addAll(_splitDropdownCourses(raw));
+        }
+
+        if (dropdownCourses.isNotEmpty) {
+          // مصدر الحقيقة: القائمة المنسدلة لاسم/رمز المقرر - رقم الشعبة
+          // يُستخرَج فقط عند وجود تطابق نصي واثق مع الحقل الحر، وإلا يُترك
+          // فارغًا (بدل تخمين رقم قد يخص مقررًا مختلفًا تمامًا).
+          final freeTexts = <String>[];
+          for (final c in addCourseCols) {
+            final raw = _cellText(row, c).trim();
+            if (raw.isNotEmpty) freeTexts.add(raw);
+          }
+          for (var i = 0; i < dropdownCourses.length && i < _maxAddActions; i++) {
+            final course = dropdownCourses[i];
+            actions.add({
+              'action_type': 'إضافة',
+              'required_section': _matchDropdownSection(course, freeTexts) ?? '',
+              'current_section': '',
+              'course': course,
+              'reason': reason,
+              'reason_detail': reason,
+            });
+          }
+        } else {
+          // توافق رجعي: لا عمود قائمة منسدلة بهذا التصدير (نموذج قديم) -
+          // نعتمد الحقل الحر وحده كما كان سابقًا.
+          for (var i = 0; i < addCourseCols.length && i < _maxAddActions; i++) {
+            final raw = _cellText(row, addCourseCols[i]).trim();
+            if (raw.isEmpty) continue;
+            final parsed = _parseCourseAndSection(raw);
+            actions.add({
+              'action_type': 'إضافة',
+              'required_section': parsed['section'] ?? '',
+              'current_section': '',
+              'course': _joinCourse(parsed),
+              'reason': reason,
+              'reason_detail': reason,
+            });
+          }
         }
       }
 
@@ -364,7 +410,8 @@ class ExcelParserService {
   // نمط "<رمز> - <اسم المقرر> - <رقم الشعبة>" (الحقول الحرة لأقسام الإضافة
   // والحذف) - نلتقط رقم الشعبة كآخر عدد بنهاية النص بعد فاصل شرطة، والباقي
   // نص المقرر (رمز + اسم).
-  static final RegExp _trailingSectionPattern = RegExp(r'^(.*?)[-–—]\s*(\d{2,6})\s*$');
+  static final RegExp _trailingSectionPattern = RegExp(r'^(.*?)[\s\-–—]+(\d{2,6})\s*$');
+  static final RegExp _trailingNumberPattern = RegExp(r'(\d{2,6})\s*$');
   static final RegExp _courseCodeNamePattern = RegExp(r'^(\d+)\s*[-–—]\s*(.+)$');
   static final RegExp _currentSectionKeywordPattern =
       RegExp(r'(?:الحالي(?:ة)?|الشعبةالحالية)\s*[:\-]?\s*(\d{2,6})');
@@ -426,6 +473,83 @@ class ExcelParserService {
       'currentSection': currentMatch?.group(1) ?? '',
       'requestedSection': requestedMatch?.group(1) ?? '',
     };
+  }
+
+  /// يفصّل قيمة القائمة المنسدلة متعدّدة الاختيار (خلية واحدة بصيغة
+  /// "رمز - اسم;رمز - اسم;...") إلى عناصر مستقلة
+  static List<String> _splitDropdownCourses(String raw) {
+    return raw
+        .split(';')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+  }
+
+  /// يحذف "ال" التعريف من بداية كل كلمة على حدة (قبل حذف المسافات بالتطبيع
+  /// العام) حتى لا تختلف المطابقة بين "مناهج البحث" و"مناهج بحث" مثلاً.
+  static String _stripDefiniteArticles(String s) {
+    return s
+        .split(RegExp(r'\s+'))
+        .map((w) => (w.startsWith('ال') && w.length > 2) ? w.substring(2) : w)
+        .join(' ');
+  }
+
+  static String _normalizeForMatch(String s) => _normalize(_stripDefiniteArticles(s));
+
+  /// مسافة Levenshtein - لتحمّل خطأ إملائي بسيط (حرف ناقص/زائد/مبدَّل) عند
+  /// مطابقة اسم المقرر.
+  static int _levenshtein(String a, String b) {
+    if (a == b) return 0;
+    if (a.isEmpty) return b.length;
+    if (b.isEmpty) return a.length;
+    var prev = List<int>.generate(b.length + 1, (j) => j);
+    for (var i = 1; i <= a.length; i++) {
+      final curr = List<int>.filled(b.length + 1, 0);
+      curr[0] = i;
+      for (var j = 1; j <= b.length; j++) {
+        final cost = a[i - 1] == b[j - 1] ? 0 : 1;
+        curr[j] = [curr[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost].reduce((x, y) => x < y ? x : y);
+      }
+      prev = curr;
+    }
+    return prev[b.length];
+  }
+
+  /// يطابق مقررًا من القائمة المنسدلة (مصدر الحقيقة لاسمه) مع أحد الحقول
+  /// الحرة - احتواء نصي متبادل بعد تجريد "ال" التعريف، أو تقارب إملائي بسيط
+  /// (مسافة Levenshtein محدودة) لتحمّل خطأ كتابي - بلا اعتماد على ترتيب
+  /// الحقول. يُرجع رقم الشعبة من الحقل المطابِق فقط، أو null إن لم يوجد
+  /// تطابق ولو تقريبي - نتجنّب تخمين رقم قد يخص مقررًا مختلفًا كليًا كتبه
+  /// الطالب خطأً أو كنص تجريبي/مثال لم يُستبدَل.
+  static String? _matchDropdownSection(String dropdownEntry, List<String> freeTexts) {
+    final dashIdx = dropdownEntry.indexOf('-');
+    final dropdownName =
+        dashIdx >= 0 ? dropdownEntry.substring(dashIdx + 1).trim() : dropdownEntry.trim();
+    final normalizedDropdownName = _normalizeForMatch(dropdownName);
+    if (normalizedDropdownName.isEmpty) return null;
+
+    for (final freeText in freeTexts) {
+      final numberMatch = _trailingNumberPattern.firstMatch(freeText);
+      final number = numberMatch?.group(1);
+      final namePart =
+          number == null ? freeText : freeText.substring(0, freeText.lastIndexOf(number)).trim();
+      final normalizedNamePart = _normalizeForMatch(namePart);
+      if (normalizedNamePart.isEmpty || number == null) continue;
+
+      if (normalizedNamePart.contains(normalizedDropdownName) ||
+          normalizedDropdownName.contains(normalizedNamePart)) {
+        return number;
+      }
+
+      final minLen = normalizedDropdownName.length < normalizedNamePart.length
+          ? normalizedDropdownName.length
+          : normalizedNamePart.length;
+      final tolerance = (minLen * 0.2).ceil().clamp(1, 4);
+      if (_levenshtein(normalizedDropdownName, normalizedNamePart) <= tolerance) {
+        return number;
+      }
+    }
+    return null;
   }
 
   static String _joinCourse(Map<String, String> parsed) {
