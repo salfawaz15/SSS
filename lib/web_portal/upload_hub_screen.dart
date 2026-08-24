@@ -1,27 +1,20 @@
 import 'dart:async';
-import 'dart:typed_data';
 
-import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import '../data/course_catalog.dart';
 import '../models/advisor_roster_entry.dart';
 import '../models/college_roster_member.dart';
 import '../models/course_section_record.dart';
 import '../services/advising_report_repository.dart';
 import '../services/advising_schedule_repository.dart';
-import '../services/advisor_correction_service.dart';
 import '../services/advisor_roster_service.dart';
 import '../services/advisor_zip_service.dart';
 import '../services/college_roster_repository.dart';
-import '../services/course_schedule_change_repository.dart';
-import '../services/course_schedule_diff_service.dart';
 import '../services/course_schedule_repository.dart';
 import '../services/docx_schedule_parser_service.dart';
 import '../services/escalation_file_service.dart';
-import '../services/excel_export_service.dart';
 import '../services/excel_parser_service.dart';
 import '../services/firestore_ticket_service.dart';
 import '../services/outside_course_repository.dart';
@@ -31,6 +24,7 @@ import '../services/web_download.dart';
 import '../theme/app_theme.dart';
 import 'admin_nav.dart';
 import 'portal_header.dart';
+import 'round_icon_button.dart';
 import 'upload_dialogs.dart';
 import 'upload_flows.dart';
 
@@ -87,6 +81,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   bool _uploadingSchedule = false;
   bool _uploadingFormsFile = false;
   bool _downloadingFormsFile = false;
+  bool _clearingFormsFile = false;
 
   // ==================== رفع/تنزيل ملفات مراحل الحذف والإضافة ====================
   // (بطلب سليمان صراحةً 2026-08-20: توحيد كل رفع/تنزيل ملفات دورة الحذف
@@ -149,240 +144,69 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     }
   }
 
-  /// رفع المقررات الدراسية بملف واحد يحوي الشطرين معًا - يحدَّد شطر كل شعبة
-  /// تلقائيًا من حقل "المقر" ([DocxScheduleParserService.parseSectionsWithShatr])
-  /// بدل الاعتماد على ملفين منفصلين مسبقًا، ثم يُحفَظ كل شطر بشكل مستقل تمامًا
-  /// كما كان سابقًا (بلا أي تغيير بمنطق الحفظ/المقارنة نفسه) - سليمان صراحةً
-  /// (2026-08-17) بعد تحقّق فعلي من دقة القراءة (0 فرق عن الرفع المنفصل).
-  Future<void> _uploadCoursesCombined() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['docx'],
-      withData: true,
-    );
-    if (result == null || result.files.single.bytes == null) return;
-    final Uint8List bytes = result.files.single.bytes!;
-    // ملف .docx الحقيقي هو أرشيف ZIP يبدأ دائمًا بالتوقيع "PK" - إن لم يكن
-    // كذلك فهو على الأغلب حُفظ فعليًا بصيغة .doc القديمة أو تالف.
-    if (bytes.length < 2 || bytes[0] != 0x50 || bytes[1] != 0x4B) {
-      if (!mounted) return;
-      showUploadErrorDialog(
-        context,
-        'الملف ليس Word صالحًا',
-        'الملف المختار لا يبدو ملف Word (.docx) حقيقيًا (قد يكون محفوظًا فعليًا بصيغة .doc القديمة أو تالفًا). '
-            'تأكد عند التحويل من PDF أن تحفظه بصيغة "Word Document (.docx)" وليس "Word 97-2003 (.doc)"، ثم أعد المحاولة.',
-      );
-      return;
-    }
-
-    setState(() => _uploadingCourses = true);
-    try {
-      final sections = DocxScheduleParserService.parseSectionsWithShatr(bytes);
-      if (sections.isEmpty) {
-        throw Exception('لم يتم العثور على أي شعبة في الملف - تأكد من أنه ملف المقررات الدراسية الشامل الصحيح بصيغة Word (.docx).');
-      }
-
-      final ourSections = sections.where((s) => s.beneficiary.contains('كلية إدارة الأعمال')).toList();
-      final outsideCodes = CourseCatalog.outsideCollegeCourses.map(CourseCatalog.outsideCourseCode).toSet();
-
-      ({
-        List<CourseSectionRecord> ownRecords,
-        List<String> outsideOptions,
-        List<CourseSectionRecord> outsideRecords,
-      }) buildForShatr(Shatr shatr) {
-        final shatrSections = ourSections.where((s) => s.shatr == shatr).toList();
-        final ownRecords =
-            shatrSections.where((s) => !outsideCodes.contains(s.record.courseCode)).map((s) => s.record).toList();
-        final outsideSections = shatrSections.where((s) => outsideCodes.contains(s.record.courseCode)).toList();
-        final offeredOutsideCodes = outsideSections.map((s) => s.record.courseCode).toSet();
-        final outsideOptions = CourseCatalog.filterOutsideCoursesByOfferedCodes(offeredOutsideCodes);
-        final outsideRecords = outsideSections.map((s) => s.record).toList()
-          ..sort((a, b) {
-            final c = a.courseCode.compareTo(b.courseCode);
-            return c != 0 ? c : a.sequence.compareTo(b.sequence);
-          });
-        return (ownRecords: ownRecords, outsideOptions: outsideOptions, outsideRecords: outsideRecords);
-      }
-
-      final male = buildForShatr(Shatr.male);
-      final female = buildForShatr(Shatr.female);
-
-      if (male.ownRecords.isEmpty && female.ownRecords.isEmpty) {
-        throw Exception(
-          'لم يُعثر على أي شعبة "المستفيد" منها كلية إدارة الأعمال ضمن ${sections.length} سطر بالملف. '
-          'تأكد أن الملف يحوي عمود "المستفيد" فعليًا وأن نص الكلية مطابق.',
-        );
-      }
-
-      final previousMale = await CourseScheduleRepository.loadSchedule(Shatr.male);
-      final previousFemale = await CourseScheduleRepository.loadSchedule(Shatr.female);
-      final changesMale = CourseScheduleDiffService.diff(
-        shatrLabel: Shatr.male.label,
-        previous: previousMale,
-        current: male.ownRecords,
-      );
-      final changesFemale = CourseScheduleDiffService.diff(
-        shatrLabel: Shatr.female.label,
-        previous: previousFemale,
-        current: female.ownRecords,
-      );
-
-      if (!mounted) return;
-      final confirmed = await showDialog<bool>(
+  /// رفع المقررات الدراسية - منطق الاختيار/التحليل/الحفظ مُستخرَج بالكامل
+  /// إلى [runUploadCourses] بـ`upload_flows.dart` (2026-08-23) ليُستدعى أيضًا
+  /// من تطبيق "بوابة الإرشاد" الجوّالة بلا تكرار منطق - بلا أي تغيير بالسلوك
+  /// هنا (نفس الحوارات/الرسائل بالضبط).
+  Future<void> _uploadCoursesCombined() => runUploadCourses(
         context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('تأكيد الاعتماد'),
-          content: Text(
-            'من إجمالي ${sections.length} سطر بالملف:\n\n'
-            '• ${male.ownRecords.length} شعبة لشطر الطلاب (${male.outsideOptions.length} مادة خارج الكلية).\n'
-            '• ${female.ownRecords.length} شعبة لشطر الطالبات (${female.outsideOptions.length} مادة خارج الكلية).\n'
-            'سيستبدل هذا آخر نسخة معتمدة للشطرين بالكامل. هل تريد الاعتماد؟',
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('اعتماد')),
-          ],
-        ),
+        setUploading: (v) => setState(() => _uploadingCourses = v),
+        onSuccess: _loadDates,
+        onMessage: _showSuccessSnackBar,
       );
-      if (confirmed != true) return;
 
-      await CourseScheduleRepository.saveSchedule(Shatr.male, male.ownRecords);
-      await CourseScheduleRepository.saveSchedule(Shatr.female, female.ownRecords);
-      await OutsideCourseRepository.save(Shatr.male, male.outsideOptions, male.outsideRecords);
-      await OutsideCourseRepository.save(Shatr.female, female.outsideOptions, female.outsideRecords);
-      if (previousMale.isNotEmpty) await CourseScheduleChangeRepository.appendChanges(changesMale);
-      if (previousFemale.isNotEmpty) await CourseScheduleChangeRepository.appendChanges(changesFemale);
-      await _loadDates();
-      if (!mounted) return;
-      _showSuccessSnackBar('تم رفع الملف بنجاح');
-    } catch (e) {
-      if (!mounted) return;
-      showUploadErrorDialog(context, 'تعذّر قراءة الملف', '$e');
-    } finally {
-      if (mounted) setState(() => _uploadingCourses = false);
-    }
-  }
+  /// تنزيل ملف طلبات الحذف/الإضافة مضغوطًا (10 ملفات قسم/شطر) - مُستخرَج
+  /// إلى [runDownloadFormsZip] (2026-08-23)، نفس ملاحظة `_uploadCoursesCombined`.
+  Future<void> _downloadFormsFileZip() => runDownloadFormsZip(
+        context: context,
+        setDownloading: (v) => setState(() => _downloadingFormsFile = v),
+        onMessage: _showSuccessSnackBar,
+      );
 
-  /// يسأل الأدمن أولًا: هل هذا أول رفع في دورة حذف وإضافة جديدة (يمسح كل
-  /// شيء - بداية نظيفة)، أم رفعة يوم تالٍ من نفس الدورة (الاثنين/الثلاثاء -
-  /// تصدير Microsoft Forms تراكمي، فيُضاف الجديد فقط بلا مسح أي شيء حتى لا
-  /// يُفقَد عمل المرشدين/المنسّقين على حالات الأيام السابقة).
-  Future<bool?> _confirmFormsUploadMode() {
-    return showDialog<bool>(
+  /// رفع ملف طلبات الحذف/الإضافة (Microsoft Forms) - مُستخرَج إلى
+  /// [runUploadForms] (2026-08-23)، نفس ملاحظة `_uploadCoursesCombined`.
+  Future<void> _pickAndUploadFormsFile() => runUploadForms(
+        context: context,
+        setUploading: (v) => setState(() => _uploadingFormsFile = v),
+        onSuccess: () {},
+        onMessage: _showSuccessSnackBar,
+      );
+
+  /// إفراغ كل بيانات "الملف الأساسي - طلبات الحذف والإضافة" (مسح مجموعة
+  /// `tickets` بالكامل) - إجراء مدمِّر يحذف عمل كل المرشدين/المنسّقين، لذا
+  /// بتأكيد صريح قبل التنفيذ (بطلب سليمان صراحةً 2026-08-24: زر ثالث بجانب
+  /// رفع/تنزيل الملف لتفريغ البيانات دون الحاجة لأداة سطر أوامر منفصلة).
+  Future<void> _confirmAndClearFormsFile() async {
+    final confirmed = await showDialog<bool>(
       context: context,
-      barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: const Text('اختر نوع الرفع'),
+        title: const Text('تأكيد إفراغ البيانات'),
+        content: const Text(
+          'سيُحذَف كل ما هو مرفوع حاليًا لـ"الملف الأساسي - طلبات الحذف والإضافة" (كل الحالات وحالة معالجتها) '
+          'من كل الأقسام والشطرين بلا استثناء ولا رجعة. هل أنت متأكد؟',
+        ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('إلغاء'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('رفعة يوم تالٍ (إضافة فقط)'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade700),
-            child: const Text('رفع جديد (بداية دورة - يمسح القديم)'),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('إفراغ نهائيًا'),
           ),
         ],
       ),
     );
-  }
+    if (confirmed != true) return;
 
-  /// رفع ملف طلبات الحذف/الإضافة (مصدره Microsoft Forms، لا المنظومة
-  /// الداخلية - لذا بطاقة مستقلة مميَّزة بصريًا بدل الشبكة 2×2 العلوية).
-  /// نُقل هنا حرفيًا من admin_workspace_screen.dart بلا أي تغيير بالمنطق -
-  /// سليمان صراحةً 2026-08-19.
-  /// تنزيل ملف مضغوط بداخله ملف Excel خام منفصل لكل قسم/شطر (10 ملفات: 5
-  /// أقسام × شطرين) من "الملف الأساسي" الحالي كما هو - بلا أي فرز حسب مرشد
-  /// (خلافًا لـ[AdvisorZipService]) - ليتمكّن سليمان من إرساله يدويًا (بريد/
-  /// واتساب) لأي منسّق قسم يتعذّر عليه الدخول للموقع نفسه، بطلبه صراحةً
-  /// 2026-08-23.
-  Future<void> _downloadFormsFileZip() async {
-    setState(() => _downloadingFormsFile = true);
+    setState(() => _clearingFormsFile = true);
     try {
-      final tickets = await FirestoreTicketService.watchAllTickets().first;
-      if (tickets.isEmpty) {
-        throw Exception('لا توجد بيانات "الملف الأساسي" مرفوعة بعد لتنزيلها.');
-      }
-
-      final groups = ExcelParserService.groupByShatrAndDepartment(tickets);
-      final archive = Archive();
-      for (final entry in groups.entries) {
-        final parts = entry.key.split('|');
-        final shatr = parts[0];
-        final department = parts.length > 1 ? parts[1] : 'قسم';
-        final shatrLabel = shatr == ExcelParserService.shatrMale ? 'شطر_الطلاب' : 'شطر_الطالبات';
-        final bytes = ExcelExportService.buildDepartmentWorkbook(entry.value);
-        final safeName = '${department.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')}_$shatrLabel';
-        archive.addFile(ArchiveFile('$safeName.xlsx', bytes.length, bytes));
-      }
-
-      final zipBytes = Uint8List.fromList(ZipEncoder().encode(archive) ?? <int>[]);
-      downloadBytes(zipBytes, 'الملف_الأساسي_طلبات_الحذف_والإضافة.zip');
-
+      await FirestoreTicketService.clearAll();
       if (!mounted) return;
-      _showSuccessSnackBar('تم تنزيل ${groups.length} ملفًا (قسم/شطر) بنجاح');
+      _showSuccessSnackBar('تم إفراغ بيانات "الملف الأساسي" بنجاح');
     } catch (e) {
       if (!mounted) return;
-      showUploadErrorDialog(context, 'تعذّر تنزيل الملف', '$e');
+      showUploadErrorDialog(context, 'تعذّر إفراغ البيانات', '$e');
     } finally {
-      if (mounted) setState(() => _downloadingFormsFile = false);
-    }
-  }
-
-  Future<void> _pickAndUploadFormsFile() async {
-    final isNewCycle = await _confirmFormsUploadMode();
-    if (isNewCycle == null) return;
-
-    setState(() => _uploadingFormsFile = true);
-
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['xlsx'],
-      withData: true,
-    );
-
-    if (result == null || result.files.single.bytes == null) {
-      setState(() => _uploadingFormsFile = false);
-      return;
-    }
-
-    // كانت هذه الدالة بلا try/catch إطلاقًا - أي خطأ أثناء تحليل الملف
-    // (تنسيق غير مدعوم، عمود مفقود...) كان يوقف التنفيذ بصمت تام قبل الوصول
-    // لإنشاء أي حالة بقاعدة البيانات وقبل أي رسالة، فيظهر للمستخدم وكأن شيئًا
-    // لم يحدث بينما لم تُنشَأ أي حالة فعليًا (سليمان 2026-08-20: رفع بلا أي
-    // رسالة، ثم "0 مطابقة" بكل ملفات المعالجة لاحقًا لأن لا حالات أصلاً).
-    try {
-      final Uint8List bytes = result.files.single.bytes!;
-      final rawTickets = ExcelParserService.parseTickets(bytes);
-
-      final advisingRecords = [
-        ...await AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.allColleges),
-        ...await AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.allColleges),
-      ];
-      final tickets = AdvisorCorrectionService.applyAdvisorCorrection(rawTickets, advisingRecords);
-
-      String message;
-      if (isNewCycle) {
-        await FirestoreTicketService.replaceAllTickets(tickets);
-        message = 'تم رفع ${tickets.length} حالة بنجاح (دورة جديدة)';
-      } else {
-        final addedCount = await FirestoreTicketService.addNewTickets(tickets);
-        message = 'تمت إضافة $addedCount حالة جديدة (من أصل ${tickets.length} في الملف - '
-            'الباقي موجود مسبقًا وتم تجاهله حفاظًا على عمل المرشدين/المنسّقين)';
-      }
-
-      if (!mounted) return;
-      setState(() => _uploadingFormsFile = false);
-      _showSuccessSnackBar(message);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _uploadingFormsFile = false);
-      showUploadErrorDialog(context, 'تعذّر رفع ملف الفورم', '$e');
+      if (mounted) setState(() => _clearingFormsFile = false);
     }
   }
 
@@ -1220,25 +1044,31 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
       title: 'الملف الأساسي - طلبات الحذف والإضافة',
       subtitleIcon: Icons.description_outlined,
       subtitle: 'المصدر: نموذج Microsoft Forms',
+      // ثلاثة أزرار بطلب سليمان صراحةً (2026-08-24): "رفع الملف" نصي كما هو،
+      // و"تنزيل"/"إفراغ" أيقونة فقط بلا نص - ليست الأزرار الثلاثة بنفس الأهمية
+      // (الرفع هو الإجراء الأساسي المتكرر يوميًا).
       button: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
-            child: _bannerButton(
-              uploading: _downloadingFormsFile,
-              label: 'تنزيل الملف',
-              icon: Icons.download_outlined,
-              loadingLabel: 'جارٍ التنزيل...',
-              onPressed: _downloadFormsFileZip,
-            ),
+          RoundIconButton(
+            tooltip: 'تنزيل ملف مضغوط (10 ملفات - قسم/شطر)',
+            color: AppColors.gold,
+            icon: Icons.download_outlined,
+            isLoading: _downloadingFormsFile,
+            onPressed: _downloadingFormsFile ? null : _downloadFormsFileZip,
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: _bannerButton(
-              uploading: _uploadingFormsFile,
-              label: 'رفع الملف',
-              onPressed: _pickAndUploadFormsFile,
-            ),
+          RoundIconButton(
+            tooltip: 'إفراغ كل البيانات المرفوعة لهذا الملف',
+            color: Colors.red.shade700,
+            icon: Icons.delete_outline,
+            isLoading: _clearingFormsFile,
+            onPressed: _clearingFormsFile ? null : _confirmAndClearFormsFile,
+          ),
+          const SizedBox(width: 4),
+          _bannerButton(
+            uploading: _uploadingFormsFile,
+            label: 'رفع الملف',
+            onPressed: _pickAndUploadFormsFile,
           ),
         ],
       ),
