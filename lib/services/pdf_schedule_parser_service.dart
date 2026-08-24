@@ -37,25 +37,6 @@ class PdfScheduleParserService {
     return s;
   }
 
-  // القوسان "(" و")" يخرجان معكوسَي الترتيب من مستخرِج PDF (خلل اتجاه نص عند
-  // استخراج نص RTL، لا علاقة له بمحتوى الحقل) - يظهر بحقلَي "اسم المقرر"
-  // و"المستفيد" تحديدًا (الوحيدان اللذان يحويان أقواسًا بالملف الأصلي) -
-  // دليل فعلي من سليمان (2026-08-24): 47+710 اختلاف حقل بمقارنة برمجية، كلها
-  // معكوسة القوس فقط بلا فرق حقيقي بالمحتوى.
-  static String _swapParens(String s) {
-    final buffer = StringBuffer();
-    for (final ch in s.runes) {
-      if (ch == 0x28) {
-        buffer.writeCharCode(0x29);
-      } else if (ch == 0x29) {
-        buffer.writeCharCode(0x28);
-      } else {
-        buffer.writeCharCode(ch);
-      }
-    }
-    return buffer.toString();
-  }
-
   // لقب "د." أو "د/" قبل اسم المحاضر - غير مُزال بقارئ PDF خلافًا لقارئ docx
   // (استخدَم نفس النمط هناك) - دليل فعلي من سليمان (2026-08-24): 50 من 710
   // شعبة أظهرت اللقب ضمن الاسم بلوحة PDF فقط بعد مقارنة برمجية.
@@ -92,7 +73,7 @@ class PdfScheduleParserService {
       // فهرسة من نهاية الصف - انظر توثيق الصنف أعلاه لترتيب الأعمدة.
       final section = at(1);
       final courseCodeRaw = at(2);
-      final courseName = _swapParens(at(3));
+      final courseName = at(3);
       final hoursStr = at(4);
       final activity = at(5);
       final sequenceStr = at(6);
@@ -121,7 +102,7 @@ class PdfScheduleParserService {
         final searchLimit = n - 12;
         for (var i = 0; i < searchLimit; i++) {
           if (cells[i].contains('كلية')) {
-            beneficiary = _swapParens(cells[i]);
+            beneficiary = cells[i];
             if (i + 1 < searchLimit) {
               final next = cells[i + 1].trim();
               if (next.isNotEmpty && next != 'نعم' && next != 'لا' && !next.contains('كلية')) {
