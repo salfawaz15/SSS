@@ -26,13 +26,24 @@ class AdvisingScheduleSignageImageService {
     for (final card in cards) {
       final rasters = await Printing.raster(card.pdfBytes, dpi: _dpi).toList();
       if (rasters.isEmpty) continue;
-      final pngBytes = await rasters.first.toPng();
 
       var safeName = _sanitizeFileName(card.label);
       final count = usedNames.update(safeName, (v) => v + 1, ifAbsent: () => 1);
       if (count > 1) safeName = '${safeName}_$count';
 
-      archive.addFile(ArchiveFile('$safeName.png', pngBytes.length, pngBytes));
+      // البطاقة `pw.MultiPage` قد تفيض لصفحة ثانية إن لم يتّسع الجدول مع
+      // الترويسة بصفحة واحدة (`Row` لا يُقسَّم بين الصفحات، فتُدفَع كتلة
+      // الجدول كاملة للصفحة التالية) - أخذ الصفحة الأولى فقط (`rasters.first`)
+      // كان يُنتج صورة بلا جدول إطلاقًا (الترويسة فقط) بينما الجدول الفعلي
+      // بصفحة ثانية مُهمَلة تمامًا - دليل فعلي من سليمان (2026-08-25): بطاقة
+      // "الاقتصاد والتمويل - شطر الطالبات - الثلاثاء - الفترة الأولى" (15
+      // مرشدة) ظهرت فارغة تمامًا تحت مربع الفترة. تُصدَّر الآن كل صفحات
+      // البطاقة كصور منفصلة (يندر أن تتجاوز صفحتين) بدل فقد المحتوى بصمت.
+      for (var pageIndex = 0; pageIndex < rasters.length; pageIndex++) {
+        final pngBytes = await rasters[pageIndex].toPng();
+        final pageName = rasters.length > 1 ? '${safeName}_ص${pageIndex + 1}' : safeName;
+        archive.addFile(ArchiveFile('$pageName.png', pngBytes.length, pngBytes));
+      }
     }
 
     final zipBytes = ZipEncoder().encode(archive) ?? <int>[];
