@@ -163,26 +163,39 @@ class AdvisingSchedulePdfService {
             .toList()
           ..sort((a, b) => _periodOrder(a.periodLabel).compareTo(_periodOrder(b.periodLabel)));
         if (daySlots.isEmpty) continue;
-        // كل قسم/شطر يبدأ صفحة جديدة دائمًا (بلا هذا كان جدول قسم قد ينتهي
-        // قرب أسفل الصفحة فيظهر عنوان القسم التالي ملتصقًا به مباشرة بشكل
-        // غير احترافي - سليمان 2026-08-13، "قسم الإدارة مع المحاسبة بشكل
-        // غير احترافي"). نفس مبدأ [_daysWithPageBreaks] لكن على مستوى القسم
-        // داخل صفحات اليوم الواحد.
-        if (sections.isNotEmpty) sections.add(pw.NewPage());
         final coordinatorMatch = CollegeRosterLookupService.coordinatorFor(roster, department, shatr);
         final coordinatorLabel = coordinatorMatch == null
             ? null
             : '${coordinatorMatch.male ? 'منسّق القسم' : 'منسّقة القسم'}: ${coordinatorMatch.name}';
-        // مسطَّحة (بلا Column يجمعها) - السبب الجذري الحقيقي للتجمّد اللانهائي
-        // (تحقَّق فعليًا 2026-08-10 عبر متصفح حقيقي: ScriptDuration/JSHeap
-        // يتصاعدان بلا توقّف بلا نهاية): pw.Column **لا يدعم التقسيم بين
-        // الصفحات** بمكتبة pdf (بخلاف pw.Table المصمَّم لذلك)، فأي Column
-        // يجمع قسمًا كبيرًا (بفترتين حتى 26 مرشدًا بخط شاشات العرض الضخم)
-        // يتجاوز ارتفاعه أي صفحة منفردة، فتدخل المكتبة حلقة إضافة صفحات
-        // فارغة بلا نهاية محاولةً وضعه. الإصلاح: تُضاف عناصر كل قسم منفصلة
-        // مباشرة لقائمة محتوى الصفحة (لا داخل Column واحد)، فيبقى pw.Table
-        // وحده الكتلة الكبيرة، وهو قابل للتقسيم فعليًا بين الصفحات.
-        sections.addAll(_deptShatrWidgets(department, shatr, coordinatorLabel, daySlots, signage: signage));
+        if (signage) {
+          // كل فترة = صفحة مستقلة تمامًا (طلب سليمان صراحةً 2026-08-24: "كل
+          // فترة في صفحة مستقلة") - بدل محاولة حشر فترتين بنفس الصفحة
+          // (جنبًا لجنب أو مكدّستين)، التي كانت تُنتج أحيانًا محتوى مفقودًا
+          // تمامًا (بطاقة فارغة، أو فترة ثانية مختفية بالكامل) حين يتجاوز
+          // مجموعهما ارتفاع الصفحة الثابتة - تحقَّق فعليًا من ملفات اختبار
+          // حقيقية رفعها سليمان.
+          for (final slot in daySlots) {
+            if (sections.isNotEmpty) sections.add(pw.NewPage());
+            sections.addAll(_periodCardWidgets(department, shatr, coordinatorLabel, slot));
+          }
+        } else {
+          // كل قسم/شطر يبدأ صفحة جديدة دائمًا (بلا هذا كان جدول قسم قد ينتهي
+          // قرب أسفل الصفحة فيظهر عنوان القسم التالي ملتصقًا به مباشرة بشكل
+          // غير احترافي - سليمان 2026-08-13، "قسم الإدارة مع المحاسبة بشكل
+          // غير احترافي"). نفس مبدأ [_daysWithPageBreaks] لكن على مستوى القسم
+          // داخل صفحات اليوم الواحد.
+          if (sections.isNotEmpty) sections.add(pw.NewPage());
+          // مسطَّحة (بلا Column يجمعها) - السبب الجذري الحقيقي للتجمّد اللانهائي
+          // (تحقَّق فعليًا 2026-08-10 عبر متصفح حقيقي: ScriptDuration/JSHeap
+          // يتصاعدان بلا توقّف بلا نهاية): pw.Column **لا يدعم التقسيم بين
+          // الصفحات** بمكتبة pdf (بخلاف pw.Table المصمَّم لذلك)، فأي Column
+          // يجمع قسمًا كبيرًا يتجاوز ارتفاعه أي صفحة منفردة، فتدخل المكتبة
+          // حلقة إضافة صفحات فارغة بلا نهاية محاولةً وضعه. الإصلاح: تُضاف
+          // عناصر كل قسم منفصلة مباشرة لقائمة محتوى الصفحة (لا داخل Column
+          // واحد)، فيبقى pw.Table وحده الكتلة الكبيرة، وهو قابل للتقسيم
+          // فعليًا بين الصفحات.
+          sections.addAll(_deptShatrWidgets(department, shatr, coordinatorLabel, daySlots, signage: false));
+        }
       }
       if (sections.isEmpty) continue;
       anyDataAtAll = true;
@@ -241,13 +254,17 @@ class AdvisingSchedulePdfService {
     return doc.save();
   }
 
-  /// نسخة "بطاقات" منفصلة لوضع شاشات العرض: كل بطاقة = يوم × قسم × شطر في
-  /// ملف PDF أحادي الصفحة مستقل تمامًا (لا يتقاسم أي انقسام مع بطاقة أخرى)،
-  /// لتحويلها لاحقًا لصور PNG (راجع AdvisingScheduleSignageImageService)
-  /// تُرسَل لسكرتارية الكلية لعرضها كشرائح على شاشات الإسياب - طلب سليمان
-  /// 2026-08-24. تعيد نفس ترتيب البطاقات المستخدَم فعليًا بـ[buildAll]
-  /// (اليوم أولًا حسب [AdvisingScheduleExcelService.dayColumnLabels]، ثم
-  /// الشطر، ثم القسم).
+  /// نسخة "بطاقات" منفصلة لوضع شاشات العرض: كل بطاقة = يوم × قسم × شطر ×
+  /// **فترة واحدة فقط** في ملف PDF مستقل تمامًا (طلب سليمان صراحةً
+  /// 2026-08-24: "كل فترة في صفحة مستقلة" - لا فترتان بنفس البطاقة بأي
+  /// تخطيط، مهما كان). تحويلها لاحقًا لصور PNG (راجع
+  /// AdvisingScheduleSignageImageService) تُرسَل لسكرتارية الكلية لعرضها
+  /// كشرائح على شاشات الإسياب. تُستخدَم `pw.MultiPage` (لا `pw.Page`
+  /// الثابتة) حتى لو تجاوز محتوى فترة واحدة (نادر جدًا) ارتفاع صفحة واحدة -
+  /// `pw.Page` كانت تُنتج بطاقات فارغة تمامًا بصمت عند أي تجاوز طفيف
+  /// (تحقَّق فعليًا من ملفات اختبار حقيقية). تعيد نفس ترتيب البطاقات
+  /// المستخدَم فعليًا بـ[buildAll] (اليوم أولًا، ثم الشطر، ثم القسم، ثم
+  /// الفترة).
   static Future<List<({String label, Uint8List pdfBytes})>> buildSignageCards({
     required Map<(String, String), List<AdvisingScheduleSlot>> byDeptShatr,
   }) async {
@@ -276,15 +293,14 @@ class AdvisingSchedulePdfService {
             ? null
             : '${coordinatorMatch.male ? 'منسّق القسم' : 'منسّقة القسم'}: ${coordinatorMatch.name}';
 
-        final doc = pw.Document(theme: pw.ThemeData.withFont(base: regular, bold: bold));
-        doc.addPage(
-          pw.Page(
-            pageFormat: PdfPageFormat.a4.landscape,
-            margin: const pw.EdgeInsets.all(28),
-            textDirection: pw.TextDirection.rtl,
-            build: (context) => pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-              children: [
+        for (final slot in daySlots) {
+          final doc = pw.Document(theme: pw.ThemeData.withFont(base: regular, bold: bold));
+          doc.addPage(
+            pw.MultiPage(
+              pageFormat: PdfPageFormat.a4.landscape,
+              margin: const pw.EdgeInsets.all(28),
+              textDirection: pw.TextDirection.rtl,
+              build: (context) => [
                 _genericHeader(logo: logo, scale: 1.6),
                 pw.SizedBox(height: 14),
                 pw.Center(
@@ -293,20 +309,50 @@ class AdvisingSchedulePdfService {
                 pw.SizedBox(height: 4),
                 pw.Center(child: pw.Container(height: 2, width: 160, color: _gold)),
                 pw.SizedBox(height: 16),
-                ..._deptShatrWidgets(department, shatr, coordinatorLabel, daySlots, signage: true),
+                ..._periodCardWidgets(department, shatr, coordinatorLabel, slot),
               ],
             ),
-          ),
-        );
+          );
 
-        cards.add((
-          label: '$day - ${department.replaceFirst(RegExp(r'^قسم\s+'), '')} - $shatr',
-          pdfBytes: await doc.save(),
-        ));
+          cards.add((
+            label:
+                '$day - ${department.replaceFirst(RegExp(r'^قسم\s+'), '')} - $shatr - ${AdvisingScheduleExcelService.periodDisplayLabel(slot.periodLabel)}',
+            pdfBytes: await doc.save(),
+          ));
+        }
       }
     }
 
     return cards;
+  }
+
+  /// عناصر بطاقة فترة واحدة مستقلة: عنوان القسم/الشطر (+ المنسّق إن وُجد)
+  /// ثم جدول تلك الفترة فقط (يُقسَّم أعمدته داخليًا عند الحاجة عبر
+  /// [_periodTableSignage]). قائمة مسطَّحة (لا Column يجمعها) لنفس سبب
+  /// [_deptShatrWidgets] - راجع تعليقها.
+  static List<pw.Widget> _periodCardWidgets(
+    String department,
+    String shatr,
+    String? coordinatorLabel,
+    AdvisingScheduleSlot slot,
+  ) {
+    return [
+      pw.Container(
+        margin: const pw.EdgeInsets.only(top: 6),
+        padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: pw.BoxDecoration(color: _greenDark, borderRadius: pw.BorderRadius.circular(6)),
+        child: pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Text('${department.replaceFirst(RegExp(r'^قسم\s+'), '')} - $shatr',
+                style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 16)),
+            if (coordinatorLabel != null)
+              pw.Text(coordinatorLabel, style: pw.TextStyle(color: PdfColors.white, fontSize: 14)),
+          ],
+        ),
+      ),
+      ..._periodTableSignage(slot),
+    ];
   }
 
   /// عنوان عام لصفحة يوم كامل (بلا قسم/شطر مفرد، لأن الصفحة تجمع عدة أقسام) -
@@ -352,12 +398,14 @@ class AdvisingSchedulePdfService {
     );
   }
 
-  /// قسم فرعي واحد (قسم أكاديمي × شطر) ضمن صفحة يوم كامل - عنوان مصغَّر
-  /// (القسم + الشطر + المنسّق إن وُجد) ثم جداول الفترات لنفس اليوم فقط.
-  /// **قائمة مسطَّحة من العناصر، لا Column واحد يجمعها** - Column لا يدعم
-  /// التقسيم بين صفحات PDF (بخلاف pw.Table)، فتجميع قسم كبير بداخله يسبّب
-  /// تجمّدًا لانهائيًا إن تجاوز ارتفاعه صفحة واحدة (راجع التعليق بموقع
-  /// الاستدعاء بـ[buildAll] للتفاصيل الكاملة - تحقَّق فعليًا 2026-08-10).
+  /// قسم فرعي واحد (قسم أكاديمي × شطر) ضمن صفحة يوم كامل بوضع الطباعة
+  /// الرسمي (غير شاشات العرض - راجع [_periodCardWidgets] لبطاقة فترة
+  /// مستقلة بوضع شاشات العرض) - عنوان مصغَّر (القسم + الشطر + المنسّق إن
+  /// وُجد) ثم جداول الفترات لنفس اليوم. **قائمة مسطَّحة من العناصر، لا
+  /// Column واحد يجمعها** - Column لا يدعم التقسيم بين صفحات PDF (بخلاف
+  /// pw.Table)، فتجميع قسم كبير بداخله يسبّب تجمّدًا لانهائيًا إن تجاوز
+  /// ارتفاعه صفحة واحدة (راجع التعليق بموقع الاستدعاء بـ[buildAll]
+  /// للتفاصيل الكاملة - تحقَّق فعليًا 2026-08-10).
   static List<pw.Widget> _deptShatrWidgets(
     String department,
     String shatr,
@@ -365,49 +413,22 @@ class AdvisingSchedulePdfService {
     List<AdvisingScheduleSlot> daySlots, {
     required bool signage,
   }) {
-    final titleFontSize = signage ? 16.0 : 11.0;
+    assert(!signage, 'وضع شاشات العرض يستخدم _periodCardWidgets (فترة واحدة لكل بطاقة) لا هذه الدالة');
     return [
       pw.Container(
         margin: const pw.EdgeInsets.only(top: 6),
-        padding: pw.EdgeInsets.symmetric(horizontal: signage ? 14 : 10, vertical: signage ? 8 : 6),
+        padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: pw.BoxDecoration(color: _greenDark, borderRadius: pw.BorderRadius.circular(6)),
         child: pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
             pw.Text('${department.replaceFirst(RegExp(r'^قسم\s+'), '')} - $shatr',
-                style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: titleFontSize)),
+                style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 11)),
             if (coordinatorLabel != null)
-              pw.Text(coordinatorLabel, style: pw.TextStyle(color: PdfColors.white, fontSize: titleFontSize - 2)),
+              pw.Text(coordinatorLabel, style: pw.TextStyle(color: PdfColors.white, fontSize: 9)),
           ],
         ),
       ),
-      // نفس تحسين "جدولا الفترتين جنبًا إلى جنب" أدناه، مطبَّق أيضًا بوضع
-      // شاشات العرض - **دائمًا** حين تكون فترتان بالضبط (لا شرط حجم)، لأن
-      // تكديسهما رأسيًا كان يُنتج بالضبط نفس مشكلة الصفوف اليتيمة الأصلية:
-      // فترتان كل منهما ~10 صفوف تبقيان تحت حد التقسيم الداخلي لكل فترة على
-      // حدة، لكن مجموعهما على نفس الصفحة يتجاوز ارتفاعها فيقسمهما pw.Table
-      // تلقائيًا بلا رأس مكرر (تحقَّق فعليًا 2026-08-24 بملف اختباري حقيقي:
-      // "الإدارة - شطر الطالبات" فترتان بـ10 صفوف لكل منهما). كل فترة تبقى
-      // تُقسِّم أعمدتها الخاصة عند الحاجة عبر `_periodTableSignage` أدناه،
-      // فهذا التحسين آمن حتى للفترات الكبيرة.
-      if (signage)
-        if (daySlots.length == 2)
-          pw.Row(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              for (var i = 0; i < daySlots.length; i++) ...[
-                if (i > 0) pw.SizedBox(width: 14),
-                pw.Expanded(
-                  child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-                    children: _periodTableSignage(daySlots[i]),
-                  ),
-                ),
-              ],
-            ],
-          )
-        else
-          for (final slot in daySlots) ..._periodTableSignage(slot)
       // جدولا الفترتين جنبًا إلى جنب (عمودان) بدل تحت بعض - سليمان
       // 2026-08-13: "قسم الاقتصاد شطر الطالبات أعدادهم كبيرة، يجب أن يستوعب
       // الجميع بصفحة واحدة، شرط يوم واحد فيه جدولان". يقلّل الارتفاع
@@ -417,7 +438,7 @@ class AdvisingSchedulePdfService {
       // بالضبط - وإلا يُستخدَم التكديس الرأسي القابل للتقسيم بين الصفحات
       // (الأصلي) تفاديًا لخطر تجمّد pw.Column اللانهائي الموثَّق أعلى
       // [buildAll] لو تجاوز المحتوى ارتفاع صفحة واحدة فعليًا.
-      else if (daySlots.length == 2 &&
+      if (daySlots.length == 2 &&
           daySlots.fold<int>(0, (sum, s) => sum + s.entries.length) <= 70)
         _periodTablesSideBySide(daySlots)
       else
@@ -624,7 +645,12 @@ class AdvisingSchedulePdfService {
           child: pw.Text(dayLabel, style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 20)),
         ),
         pw.SizedBox(height: 10),
-        for (final p in periods) ..._periodTableSignage(p),
+        // كل فترة صفحة مستقلة (راجع تعليق [_periodCardWidgets]) - بلا هذا
+        // فإن فترتين على نفس الصفحة قد يتجاوز مجموعهما ارتفاعها.
+        for (var i = 0; i < periods.length; i++) ...[
+          if (i > 0) pw.NewPage(),
+          ..._periodTableSignage(periods[i]),
+        ],
         pw.SizedBox(height: 22),
       ],
     );
