@@ -14,6 +14,22 @@ import 'excel_protection_service.dart';
 class AdvisorZipService {
   static String _normalizeForMatch(String s) => normalizeAdvisorNameForMatch(s);
 
+  /// يوحّد نص القسم للمقارنة بين مصدرين يختلفان فعليًا بطريقتين معًا: (1)
+  /// قائمة مرشدي القسم الرسمية (`advisor_roster`) تخزّنه بادئة "قسم ..."
+  /// (مثال: "قسم نظم المعلومات الادارية") بينما حقل القسم بالتذكرة نفسها
+  /// (من `ExcelParserService`) يخزّنه بلا البادئة. (2) تهجئة "الاقتصاد
+  /// والتمويل" تحديدًا تختلف بمسافة حول "و" بين المصدرين ("الاقتصاد و
+  /// التمويل" بالـroster مقابل "الاقتصاد والتمويل" بالتذكرة) - فتُحذف كل
+  /// المسافات لا البادئة فقط. بدون هذا التوحيد الكامل، أي مطابقة مفتاح
+  /// (قسم|شطر) بين المصدرين تفشل بصمت لبعض الأقسام - هذا بالضبط ما كان
+  /// يمنع توزيع حالات المنسّقين فعليًا رغم التعرّف عليها بنجاح (خلل حقيقي
+  /// مؤكَّد ببيانات حية عبر محاكاة Node.js على تذاكر Firestore الفعلية،
+  /// سليمان 2026-08-25).
+  static String _normalizeDept(String s) {
+    final noPrefix = s.trim().replaceFirst(RegExp(r'^قسم\s*'), '');
+    return noPrefix.replaceAll(RegExp(r'\s+'), '');
+  }
+
   /// يجمّع الحالات حسب المرشد الأكاديمي المذكور في كل حالة كما هي (بلا أي
   /// إعادة توزيع) - السلوك الافتراضي عند عدم توفر قائمة مرشدي القسم.
   static Map<String, List<Map<String, dynamic>>> _groupByAdvisorName(
@@ -47,7 +63,7 @@ class AdvisorZipService {
     // وجود تطابق بالمفتاح الكامل، وفقط إن كان الاسم فريدًا في كل القائمة.
     final rosterByNameOnly = <String, List<AdvisorRosterEntry>>{};
     for (final r in roster) {
-      rosterByKey['${r.department}|${r.shatr}|${_normalizeForMatch(r.name)}'] = r;
+      rosterByKey['${_normalizeDept(r.department)}|${r.shatr}|${_normalizeForMatch(r.name)}'] = r;
       rosterByNameOnly.putIfAbsent(_normalizeForMatch(r.name), () => []).add(r);
     }
     // بقية مرشدي كل (قسم|شطر) بلا المنسّقين ولا من هم في إجازة - لتوزيع
@@ -55,7 +71,7 @@ class AdvisorZipService {
     final regularsByGroup = <String, List<AdvisorRosterEntry>>{};
     for (final r in roster) {
       if (r.isCoordinator || r.isOnLeave) continue;
-      regularsByGroup.putIfAbsent('${r.department}|${r.shatr}', () => []).add(r);
+      regularsByGroup.putIfAbsent('${_normalizeDept(r.department)}|${r.shatr}', () => []).add(r);
     }
 
     // حالات كل مُعفى (منسّق أو في إجازة) مجمَّعة أولاً بمفتاح (قسم|شطر)
@@ -65,7 +81,7 @@ class AdvisorZipService {
 
     for (final t in tickets) {
       final advisorName = (t['advisor'] ?? '').toString().trim();
-      final department = (t['department'] ?? '').toString();
+      final department = _normalizeDept((t['department'] ?? '').toString());
       final shatr = (t['shatr'] ?? '').toString();
       final key = advisorName.isEmpty ? 'بدون مرشد محدد' : advisorName;
 
