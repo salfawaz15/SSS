@@ -836,6 +836,86 @@ Future<void> runDownloadAllAdvisorsZip({
   }
 }
 
+/// تنزيل ملف مضغوط واحد بداخله كل ملفات "مرحلة منسّق القسم" العشرة (5
+/// أقسام × شطرين) دفعة واحدة - بدل تنزيل كل قسم/شطر على حدة بضغطة منفصلة.
+/// كل ملف يخص قسمًا/شطرًا كاملاً (بلا فرز حسب مرشد، يراجعه منسّق القسم
+/// نفسه) - يُرسِله سليمان يدويًا لمنسّقي الأقسام (سليمان صراحةً 2026-08-25:
+/// هو من يتولى كل عمليات الرفع/التنزيل هذا الفصل نيابة عن الجميع).
+Future<void> runDownloadAllStage2Zip({
+  required BuildContext context,
+  required ValueChanged<bool> setDownloading,
+  required ValueChanged<String> onMessage,
+}) async {
+  setDownloading(true);
+  try {
+    final tickets = await FirestoreTicketService.watchAllTickets().first;
+    if (tickets.isEmpty) {
+      throw Exception('لا توجد بيانات "الملف الأساسي" مرفوعة بعد لتنزيلها.');
+    }
+
+    final groups = ExcelParserService.groupByShatrAndDepartment(tickets);
+    final archive = Archive();
+    for (final entry in groups.entries) {
+      final parts = entry.key.split('|');
+      final shatr = parts[0];
+      final department = parts.length > 1 ? parts[1] : 'قسم';
+      final shatrLabel = shatr == ExcelParserService.shatrMale ? 'male' : 'female';
+
+      final bytes = EscalationFileService.buildStage2File(entry.value);
+      final safeName = '${department.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')}_${shatrLabel}_مرحلة_المنسق';
+      archive.addFile(ArchiveFile('$safeName.xlsx', bytes.length, bytes));
+    }
+
+    final zipBytes = Uint8List.fromList(ZipEncoder().encode(archive) ?? <int>[]);
+    await downloadBytes(zipBytes, 'ملفات_منسقي_الأقسام_مرحلة_المنسق.zip');
+
+    if (!context.mounted) return;
+    onMessage('تم تنزيل ${groups.length} ملفًا (مرحلة منسّق القسم) بنجاح');
+  } catch (e) {
+    if (!context.mounted) return;
+    showUploadErrorDialog(context, 'تعذّر تنزيل الملفات', '$e');
+  } finally {
+    setDownloading(false);
+  }
+}
+
+/// تنزيل ملفَي "مرحلة منسّق الكلية" (شطر الطلاب وشطر الطالبات) دفعة واحدة
+/// بملف مضغوط واحد - يكمل بقية أزرار "أستطيع أفعل كل شيء من هذا الشريط"
+/// (سليمان صراحةً 2026-08-25).
+Future<void> runDownloadAllStage3Zip({
+  required BuildContext context,
+  required ValueChanged<bool> setDownloading,
+  required ValueChanged<String> onMessage,
+}) async {
+  setDownloading(true);
+  try {
+    final tickets = await FirestoreTicketService.watchAllTickets().first;
+    if (tickets.isEmpty) {
+      throw Exception('لا توجد بيانات "الملف الأساسي" مرفوعة بعد لتنزيلها.');
+    }
+
+    final archive = Archive();
+    for (final shatr in [ExcelParserService.shatrMale, ExcelParserService.shatrFemale]) {
+      final shatrTickets = tickets.where((t) => t['shatr'] == shatr).toList();
+      if (shatrTickets.isEmpty) continue;
+      final shatrLabel = shatr == ExcelParserService.shatrMale ? 'male' : 'female';
+      final bytes = EscalationFileService.buildStage3File(shatrTickets);
+      archive.addFile(ArchiveFile('منسق_الكلية_$shatrLabel.xlsx', bytes.length, bytes));
+    }
+
+    final zipBytes = Uint8List.fromList(ZipEncoder().encode(archive) ?? <int>[]);
+    await downloadBytes(zipBytes, 'ملفات_منسقي_الكلية.zip');
+
+    if (!context.mounted) return;
+    onMessage('تم تنزيل ملفي منسّق الكلية بنجاح');
+  } catch (e) {
+    if (!context.mounted) return;
+    showUploadErrorDialog(context, 'تعذّر تنزيل الملفات', '$e');
+  } finally {
+    setDownloading(false);
+  }
+}
+
 /// رفع المقررات الدراسية (الحويّة) بملف واحد يحوي الشطرين معًا - يحدَّد شطر
 /// كل شعبة تلقائيًا من حقل "المقر". يقبل Word (.docx) أو PDF مباشرة (سليمان
 /// صراحةً 2026-08-24: اعتماد PDF لأن رافع الملف مستقبلاً قد لا يعرف تحويله

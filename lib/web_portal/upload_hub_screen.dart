@@ -82,6 +82,8 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   bool _uploadingFormsFile = false;
   bool _downloadingFormsFile = false;
   bool _downloadingAllAdvisors = false;
+  bool _downloadingAllStage2 = false;
+  bool _downloadingAllStage3 = false;
   bool _clearingFormsFile = false;
 
   // ==================== رفع/تنزيل ملفات مراحل الحذف والإضافة ====================
@@ -169,6 +171,22 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   Future<void> _downloadAllAdvisorsZip() => runDownloadAllAdvisorsZip(
         context: context,
         setDownloading: (v) => setState(() => _downloadingAllAdvisors = v),
+        onMessage: _showSuccessSnackBar,
+      );
+
+  /// تنزيل كل ملفات "مرحلة منسّق القسم" (10 ملفات) دفعة واحدة -
+  /// [runDownloadAllStage2Zip] (2026-08-25).
+  Future<void> _downloadAllStage2Zip() => runDownloadAllStage2Zip(
+        context: context,
+        setDownloading: (v) => setState(() => _downloadingAllStage2 = v),
+        onMessage: _showSuccessSnackBar,
+      );
+
+  /// تنزيل ملفَي "مرحلة منسّق الكلية" (شطر الطلاب/الطالبات) دفعة واحدة -
+  /// [runDownloadAllStage3Zip] (2026-08-25).
+  Future<void> _downloadAllStage3Zip() => runDownloadAllStage3Zip(
+        context: context,
+        setDownloading: (v) => setState(() => _downloadingAllStage3 = v),
         onMessage: _showSuccessSnackBar,
       );
 
@@ -774,65 +792,17 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
               });
             },
           ),
-          const SizedBox(height: 14),
-          const Divider(height: 1),
-          const SizedBox(height: 10),
-          Text('رفع دفعي سريع (اختياري - بديل عن الرفع لكل قسم على حدة)', style: TextStyle(fontSize: 11, color: Colors.grey.shade500, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 8),
-          LayoutBuilder(builder: (context, constraints) {
-            final narrow = constraints.maxWidth < 1000;
-            final cards = [
-              _bulkStageCard(
-                icon: Icons.groups_2_outlined,
-                accentColor: const Color(0xFF2F6B4F),
-                title: 'ملفات المرشدين',
-                subtitle: 'كل الأقسام والشطرين',
-                uploading: _uploadingProcessedAll,
-                lastUpload: _processedAllLastUpload,
-                onPressed: _pickAndUploadProcessedFilesAll,
-              ),
-              _bulkStageCard(
-                icon: Icons.supervisor_account_outlined,
-                accentColor: const Color(0xFF8A6D1E),
-                title: 'ملفات منسّقي الأقسام',
-                subtitle: 'كل الأقسام والشطرين',
-                uploading: _uploadingCoordinatorAll,
-                lastUpload: _coordinatorAllLastUpload,
-                onPressed: _pickAndUploadCoordinatorProcessedFilesAll,
-              ),
-              _bulkStageCard(
-                icon: Icons.school_outlined,
-                accentColor: const Color(0xFF1E5F8A),
-                title: 'ملف منسّق الكلية',
-                subtitle: 'الأقسام الخمسة معًا',
-                uploading: _uploadingCollegeAll,
-                lastUpload: _collegeAllLastUpload,
-                onPressed: _pickAndUploadCollegeProcessedFilesAll,
-              ),
-            ];
-            return narrow
-                ? Column(children: [cards[0], const SizedBox(height: 10), cards[1], const SizedBox(height: 10), cards[2]])
-                : IntrinsicHeight(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Expanded(child: cards[0]),
-                        const SizedBox(width: 12),
-                        Expanded(child: cards[1]),
-                        const SizedBox(width: 12),
-                        Expanded(child: cards[2]),
-                      ],
-                    ),
-                  );
-          }),
         ],
       ),
     );
   }
 
   /// بطاقة رفع دفعي عمودية - شارة أيقونة ملوَّنة (لون مميّز لكل مرحلة) أعلاها
-  /// وزر رفع بعرض كامل أسفلها - الثلاث بطاقات (مرشدون/منسّقو أقسام/منسّق
-  /// كلية) بنفس الحجم تمامًا جنبًا إلى جنب (بطلب سليمان صراحةً 2026-08-20).
+  /// وزر رفع بعرض كامل أسفلها - كانت مستخدَمة لثلاث بطاقات (مرشدون/منسّقو
+  /// أقسام/منسّق كلية) قبل توحيدها بأيقونات شريط "الملف الأساسي" (سليمان
+  /// صراحةً 2026-08-25) - أُبقيت الدالة نفسها (غير مستخدَمة حاليًا) تحسبًا
+  /// لحاجة مستقبلية لعرض بطاقات بهذا الشكل.
+  // ignore: unused_element
   Widget _bulkStageCard({
     required IconData icon,
     required Color accentColor,
@@ -1053,25 +1023,24 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
       title: 'الملف الأساسي - طلبات الحذف والإضافة',
       subtitleIcon: Icons.description_outlined,
       subtitle: 'المصدر: نموذج Microsoft Forms',
-      // ثلاثة أزرار بطلب سليمان صراحةً (2026-08-24): "رفع الملف" نصي كما هو،
-      // و"تنزيل"/"إفراغ" أيقونة فقط بلا نص - ليست الأزرار الثلاثة بنفس الأهمية
-      // (الرفع هو الإجراء الأساسي المتكرر يوميًا).
-      button: Row(
-        mainAxisSize: MainAxisSize.min,
+      // شريط واحد موحَّد يغطّي دورة الحذف/الإضافة كاملة (بطلب سليمان صراحةً
+      // 2026-08-25: "أستطيع أفعل كل شيء من هذا الشريط" - هو من يتولى كل
+      // عمليات الرفع/التنزيل هذا الفصل نيابة عن المرشدين/المنسّقين). كل زرّ
+      // أيقونة فقط مع تلميح (tooltip) يشرحه عند تمرير الماوس - "رفع الملف"
+      // وحده نصّي (بطلب أقدم صريح 2026-08-24: هو الإجراء الأساسي المتكرر
+      // يوميًا، يستحق تمييزًا بصريًا عن البقية). فواصل رفيعة ذهبية تقسّم
+      // الأزرار لمجموعات حسب المرحلة (أساسي/مرشد/منسّق قسم/منسّق كلية).
+      button: Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 2,
+        runSpacing: 6,
         children: [
           RoundIconButton(
-            tooltip: 'تنزيل ملف مضغوط (10 ملفات - قسم/شطر)',
+            tooltip: 'تنزيل ملف مضغوط (10 ملفات خام - قسم/شطر، لإرسال منسّق القسم يدويًا)',
             color: AppColors.gold,
             icon: Icons.download_outlined,
             isLoading: _downloadingFormsFile,
             onPressed: _downloadingFormsFile ? null : _downloadFormsFileZip,
-          ),
-          RoundIconButton(
-            tooltip: 'تنزيل الكل مقسَّم لكل مرشد (شطر > قسم > ملف)',
-            color: AppColors.gold,
-            icon: Icons.folder_zip_outlined,
-            isLoading: _downloadingAllAdvisors,
-            onPressed: _downloadingAllAdvisors ? null : _downloadAllAdvisorsZip,
           ),
           RoundIconButton(
             tooltip: 'إفراغ كل البيانات المرفوعة لهذا الملف',
@@ -1085,6 +1054,51 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
             uploading: _uploadingFormsFile,
             label: 'رفع الملف',
             onPressed: _pickAndUploadFormsFile,
+          ),
+          _bannerDivider(),
+          RoundIconButton(
+            tooltip: 'مرحلة المرشد: تنزيل الكل مقسَّم لكل مرشد (شطر > قسم > ملف)',
+            color: AppColors.gold,
+            icon: Icons.folder_zip_outlined,
+            isLoading: _downloadingAllAdvisors,
+            onPressed: _downloadingAllAdvisors ? null : _downloadAllAdvisorsZip,
+          ),
+          RoundIconButton(
+            tooltip: 'مرحلة المرشد: رفع الملفات المعالجة العائدة من المرشدين',
+            color: AppColors.goldLight,
+            icon: Icons.upload_file_outlined,
+            isLoading: _uploadingProcessedAll,
+            onPressed: _uploadingProcessedAll ? null : _pickAndUploadProcessedFilesAll,
+          ),
+          _bannerDivider(),
+          RoundIconButton(
+            tooltip: 'مرحلة منسّق القسم: تنزيل كل ملفات الأقسام (10 ملفات) دفعة واحدة',
+            color: AppColors.gold,
+            icon: Icons.folder_zip_outlined,
+            isLoading: _downloadingAllStage2,
+            onPressed: _downloadingAllStage2 ? null : _downloadAllStage2Zip,
+          ),
+          RoundIconButton(
+            tooltip: 'مرحلة منسّق القسم: رفع الملفات المعالجة العائدة من منسّقي الأقسام',
+            color: AppColors.goldLight,
+            icon: Icons.upload_file_outlined,
+            isLoading: _uploadingCoordinatorAll,
+            onPressed: _uploadingCoordinatorAll ? null : _pickAndUploadCoordinatorProcessedFilesAll,
+          ),
+          _bannerDivider(),
+          RoundIconButton(
+            tooltip: 'مرحلة منسّق الكلية: تنزيل ملفَي الشطرين دفعة واحدة',
+            color: AppColors.gold,
+            icon: Icons.folder_zip_outlined,
+            isLoading: _downloadingAllStage3,
+            onPressed: _downloadingAllStage3 ? null : _downloadAllStage3Zip,
+          ),
+          RoundIconButton(
+            tooltip: 'مرحلة منسّق الكلية: رفع الملف المعالج العائد من منسّق الكلية',
+            color: AppColors.goldLight,
+            icon: Icons.upload_file_outlined,
+            isLoading: _uploadingCollegeAll,
+            onPressed: _uploadingCollegeAll ? null : _pickAndUploadCollegeProcessedFilesAll,
           ),
         ],
       ),
@@ -1150,6 +1164,16 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
       }),
     );
   }
+
+  /// فاصل رفيع بين مجموعات أزرار مرحلة/أخرى داخل شريط "الملف الأساسي" -
+  /// يفصل بصريًا بين مراحل الدورة (أساسي/مرشد/منسّق قسم/منسّق كلية) بلا
+  /// حاجة لتسميات نصية تُثقل الشريط.
+  Widget _bannerDivider() => Container(
+        width: 1,
+        height: 26,
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        color: AppColors.gold.withValues(alpha: 0.45),
+      );
 
   /// زر ذهبي موحَّد لكل أشرطة `_greenBanner`.
   Widget _bannerButton({
