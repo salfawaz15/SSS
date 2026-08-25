@@ -81,6 +81,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   bool _uploadingSchedule = false;
   bool _uploadingFormsFile = false;
   bool _downloadingFormsFile = false;
+  bool _downloadingAllAdvisors = false;
   bool _clearingFormsFile = false;
 
   // ==================== رفع/تنزيل ملفات مراحل الحذف والإضافة ====================
@@ -160,6 +161,14 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   Future<void> _downloadFormsFileZip() => runDownloadFormsZip(
         context: context,
         setDownloading: (v) => setState(() => _downloadingFormsFile = v),
+        onMessage: _showSuccessSnackBar,
+      );
+
+  /// تنزيل ملف مضغوط رئيسي واحد بمجلدات متداخلة (شطر > قسم > ملف لكل مرشد)
+  /// لكل الأقسام/الشطرين دفعة واحدة - [runDownloadAllAdvisorsZip] (2026-08-25).
+  Future<void> _downloadAllAdvisorsZip() => runDownloadAllAdvisorsZip(
+        context: context,
+        setDownloading: (v) => setState(() => _downloadingAllAdvisors = v),
         onMessage: _showSuccessSnackBar,
       );
 
@@ -1056,6 +1065,13 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
             icon: Icons.download_outlined,
             isLoading: _downloadingFormsFile,
             onPressed: _downloadingFormsFile ? null : _downloadFormsFileZip,
+          ),
+          RoundIconButton(
+            tooltip: 'تنزيل الكل مقسَّم لكل مرشد (شطر > قسم > ملف)',
+            color: AppColors.gold,
+            icon: Icons.folder_zip_outlined,
+            isLoading: _downloadingAllAdvisors,
+            onPressed: _downloadingAllAdvisors ? null : _downloadAllAdvisorsZip,
           ),
           RoundIconButton(
             tooltip: 'إفراغ كل البيانات المرفوعة لهذا الملف',

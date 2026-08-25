@@ -22,6 +22,8 @@ import '../services/advising_schedule_repository.dart';
 import '../services/advisor_correction_service.dart';
 import '../services/advisor_movement_repository.dart';
 import '../services/advisor_name_matching.dart';
+import '../services/advisor_roster_service.dart';
+import '../services/advisor_zip_service.dart';
 import '../services/college_roster_parser_service.dart';
 import '../services/college_roster_repository.dart';
 import '../services/course_schedule_change_repository.dart';
@@ -779,6 +781,56 @@ Future<void> runDownloadFormsZip({
   } catch (e) {
     if (!context.mounted) return;
     showUploadErrorDialog(context, 'تعذّر تنزيل الملف', '$e');
+  } finally {
+    setDownloading(false);
+  }
+}
+
+/// تنزيل ملف مضغوط رئيسي واحد بمجلدات متداخلة (شطر > قسم > ملف Excel محمي
+/// مستقل لكل مرشد أكاديمي) لكل الأقسام والشطرين دفعة واحدة - بخلاف
+/// [runDownloadFormsZip] (ملف خام واحد لكل قسم بلا فرز حسب مرشد، لإرسال
+/// المنسّق يدويًا)، هذا مقسَّم فعليًا لكل مرشد كملف "مرحلة 1" العادي، لكن
+/// الكل بضغطة واحدة بدل قسم/شطر بكل مرة (سليمان صراحةً 2026-08-25).
+Future<void> runDownloadAllAdvisorsZip({
+  required BuildContext context,
+  required ValueChanged<bool> setDownloading,
+  required ValueChanged<String> onMessage,
+}) async {
+  setDownloading(true);
+  try {
+    final tickets = await FirestoreTicketService.watchAllTickets().first;
+    if (tickets.isEmpty) {
+      throw Exception('لا توجد بيانات "الملف الأساسي" مرفوعة بعد لتنزيلها.');
+    }
+    final roster = await AdvisorRosterService.loadAll();
+
+    final groups = ExcelParserService.groupByShatrAndDepartment(tickets);
+    final archive = Archive();
+    var fileCount = 0;
+    for (final entry in groups.entries) {
+      final parts = entry.key.split('|');
+      final shatr = parts[0];
+      final department = parts.length > 1 ? parts[1] : 'قسم';
+      final shatrFolder = shatr == ExcelParserService.shatrMale ? 'شطر_الطلاب' : 'شطر_الطالبات';
+      final departmentFolder = department.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+
+      final advisorFiles = AdvisorZipService.buildAdvisorFiles(entry.value, roster: roster);
+      for (final fileEntry in advisorFiles.entries) {
+        archive.addFile(
+          ArchiveFile('$shatrFolder/$departmentFolder/${fileEntry.key}', fileEntry.value.length, fileEntry.value),
+        );
+        fileCount++;
+      }
+    }
+
+    final zipBytes = Uint8List.fromList(ZipEncoder().encode(archive) ?? <int>[]);
+    await downloadBytes(zipBytes, 'ملفات_المرشدين_الأكاديميين.zip');
+
+    if (!context.mounted) return;
+    onMessage('تم تنزيل $fileCount ملفًا (لكل مرشد أكاديمي) بنجاح');
+  } catch (e) {
+    if (!context.mounted) return;
+    showUploadErrorDialog(context, 'تعذّر تنزيل الملفات', '$e');
   } finally {
     setDownloading(false);
   }
