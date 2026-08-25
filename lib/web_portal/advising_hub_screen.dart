@@ -82,10 +82,12 @@ class _AdvisingHubScreenState extends State<AdvisingHubScreen> {
       final maleAnalysis = AdvisingCaseAnalyzer.analyze(students: loaded.male, facultyByNameKey: loaded.facultyByKey);
       final femaleAnalysis = AdvisingCaseAnalyzer.analyze(students: loaded.female, facultyByNameKey: loaded.facultyByKey);
       final maleClassification = AdvisingCaseAnalyzer.classifyAllColleges(
+        academicRecords: loaded.academicMaleRaw,
         allCollegeRecords: loaded.allCollegesMaleRaw,
         facultyByNameKey: loaded.facultyByKey,
       );
       final femaleClassification = AdvisingCaseAnalyzer.classifyAllColleges(
+        academicRecords: loaded.academicFemaleRaw,
         allCollegeRecords: loaded.allCollegesFemaleRaw,
         facultyByNameKey: loaded.facultyByKey,
       );

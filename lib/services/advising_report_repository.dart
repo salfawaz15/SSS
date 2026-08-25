@@ -149,6 +149,13 @@ class AdvisingReportRepository {
     return ts?.toDate();
   }
 
+  /// عدد السجلات المخزَّنة حاليًا (من حقل `studentsCount` بمستند [save]
+  /// الرئيسي) - بلا تحميل كل القطع (`chunks`)، لعرض عداد سريع بواجهات الرفع.
+  static Future<int> currentRecordsCount(Shatr shatr, {AdvisingReportKind kind = AdvisingReportKind.base}) async {
+    final doc = await _col(kind).doc(shatr.docId).get();
+    return (doc.data()?['studentsCount'] as num?)?.toInt() ?? 0;
+  }
+
   /// تفريغ كامل لتقرير معيّن لشطر واحد - لتسهيل إعادة الاختبار. حذف فردي
   /// مباشر لكل قطعة (لا دفعة Firestore مجمَّعة) - نفس أسلوب حذف القطع القديمة
   /// بـ[save]، بعد أن ثبت فعليًا (سليمان 2026-08-18) أن تجميع الحذف بدفعات

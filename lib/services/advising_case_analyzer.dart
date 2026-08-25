@@ -304,6 +304,21 @@ class CollegeAdvisingClassification {
   /// بين "نظرة عامة" و"متابعة حالات الإرشاد" الذي رصده سليمان.
   final List<AdvisingCaseRecord> dismissedStudents;
 
+  /// طلبة مستجدون (رقمهم الجامعي يبدأ برمز سنة القبول الحالية - انظر
+  /// [AdvisingCaseAnalyzer.isNewStudentId]) - مؤشر مستقل تمامًا، سواء كان لهم
+  /// مرشد أو لا (بطلب سليمان صراحةً 2026-08-26): "الطالب المستجد غير ملزم
+  /// بوجود مرشد أكاديمي؛ لذلك لا يجوز احتسابه ضمن مؤشر طلبة بلا مرشد".
+  /// **لا تُضَف هذه القائمة لأي من القوائم أعلاه** - المستجدون يُستبعَدون منها
+  /// جميعًا (حتى لو له مرشد فعليًا، يبقى مصنَّفًا هنا حصرًا لا ضمن
+  /// [studentsCorrectlyAssigned] مثلاً).
+  final List<AdvisingCaseRecord> newStudents;
+
+  /// الطلبة المستهدفون بالإرشاد = كل طلبة كليتنا المنتظمين − المستجدين. مجموع
+  /// [studentsCorrectlyAssigned] + [studentsWithWrongDeptAdvisor] +
+  /// [studentsWithoutAdvisor] بالضبط (لا يشمل حالات "خارج الكلية" لأنها أصلاً
+  /// ليست من كليتنا).
+  int get targetedStudentsCount => studentsCorrectlyAssigned.length + studentsWithWrongDeptAdvisor.length + studentsWithoutAdvisor.length;
+
   const CollegeAdvisingClassification({
     required this.studentsCorrectlyAssigned,
     required this.studentsWithWrongDeptAdvisor,
@@ -311,6 +326,7 @@ class CollegeAdvisingClassification {
     required this.ourAdvisorsWithExternalStudents,
     required this.studentsWithoutAdvisor,
     required this.dismissedStudents,
+    required this.newStudents,
   });
 }
 
@@ -328,6 +344,17 @@ class AdvisorMovement {
 }
 
 class AdvisingCaseAnalyzer {
+  /// رمز سنة القبول الحالية (أول 3 أرقام من الرقم الجامعي) - **يجب تحديثه
+  /// يدويًا كل عام دراسي عند بدء قبول الفصل الأول** (بطلب سليمان صراحةً
+  /// 2026-08-26). لا يوجد بالمشروع تحويل تقويم هجري موثوق لاشتقاقه تلقائيًا
+  /// (التواريخ الهجرية الأخرى بالمشروع نصوص ثابتة يدخلها سليمان)، فثابت واحد
+  /// موثَّق أكثر أمانًا من حساب تلقائي قد يُخطئ بصمت. مصدره الفعلي الحالي:
+  /// طلبة القبول لعام 1448هـ.
+  static const String currentAdmissionYearPrefix = '448';
+
+  /// هل هذا رقم جامعي لطالب مستجد (يبدأ برمز [currentAdmissionYearPrefix])؟
+  static bool isNewStudentId(String studentId) => studentId.trim().startsWith(currentAdmissionYearPrefix);
+
   /// توحيد اسم للمطابقة فقط - مُصدَّر ليُستخدم بنفس المنطق عند بناء خريطة
   /// منسوبي الكلية في الشاشة (facultyByNameKey) قبل تمريرها لـ [analyze].
   static String nameKey(String s) => _key(s);
@@ -382,13 +409,21 @@ class AdvisingCaseAnalyzer {
     }).toList();
   }
 
-  /// يصنّف سجلات تقرير "كل الكليات" غير المفلتَر (المصدر الوحيد الحالي لتوزيع
-  /// الطلبة على المرشدين) إلى الحالات الأربع + "بلا مرشد" - انظر توثيق
-  /// [CollegeAdvisingClassification]. المطابقة بقسم المرشد **المصحَّح فعليًا**
+  /// يصنّف طلبة كليتنا إلى الحالات الأربع + "بلا مرشد" - انظر توثيق
+  /// [CollegeAdvisingClassification]. **[academicRecords] ("بيانات الطلبة
+  /// الأكاديمية" - ملف الإكسل) هو الأصل الذي يحدّد قائمة طلبة كليتنا** (بطلب
+  /// سليمان صراحةً 2026-08-25: "ملف الإكسل هو الأصل... أي طالب ما يكون موجود
+  /// في ملف الإرشاد يتحول إلى طالب بدون مرشد") - أي طالب بهذا الملف لم يظهر
+  /// بتقرير "كل الكليات" [allCollegeRecords] (أو ظهر بلا مرشد) يُصنَّف "بلا
+  /// مرشد" فورًا. [allCollegeRecords] يبقى **الأصل** لحالتي "مرشد خارجي ←
+  /// طلابنا"/"مرشدنا ← طلاب خارجيون" وحدهما (طلاب/مرشدون من خارج كليتنا لن
+  /// يظهروا إطلاقًا بملف الإكسل، المقصور على كليتنا فقط)، ولمطابقة/جلب اسم
+  /// المرشد لكل طالب من ملف الإكسل. المطابقة بقسم المرشد **المصحَّح فعليًا**
   /// من ملف منسوبي الكلية (لا القسم الحرفي الرسمي) - فحالات الانتداب المعروفة
   /// (طارق حلمي/حنان عامر/غراس أبو الشامات...) تُحسَب تلقائيًا ضمن قسمها
   /// الفعلي المصحَّح بلا أي استثناء أسماء مكتوب هنا.
   static CollegeAdvisingClassification classifyAllColleges({
+    required List<AdvisingCaseRecord> academicRecords,
     required List<AdvisingCaseRecord> allCollegeRecords,
     required Map<String, CollegeRosterMember> facultyByNameKey,
   }) {
@@ -398,35 +433,67 @@ class AdvisingCaseAnalyzer {
     final externalStudents = <ExternalStudentCase>[];
     final withoutAdvisor = <AdvisingCaseRecord>[];
 
-    // ازدواج ظاهري: صف تعذّر تحديد شطره وقت التحليل (الحالة الشائعة: مرشده
-    // خارج كليتنا فلا يمكن معرفة شطره من خريطة شطر المرشدين، ولا عمود جنس
-    // بهذا التقرير) يُضاف لكلا الشطرين معًا وقت القراءة (انظر التعليق أعلى
-    // [unresolvedShatrRows] بـadvising_report_parser_service.dart) - عادة
-    // نسخة الشطر الخطأ تُتجاهَل بصمت لاحقًا لأنها لا تطابق أي طالب حقيقي بذلك
-    // الشطر، لكن هذا التصنيف يُغذَّى من دمج **الشطرين الخامين معًا** مباشرة
-    // (`[...male, ...female]`) بلا مطابقة وسيطة، فتظهر النسختان معًا فعليًا -
-    // لاحظه سليمان (2026-08-14): "فيصل نادر محمد أحمد محمد" مكرر بشطر
-    // الطلاب/الطالبات معًا بتبويب "مرشد خارجي ← طلابنا". يُزال التكرار هنا
-    // بالرقم الجامعي (لا يمكن أن يظهر نفس الرقم الجامعي بشطرين مختلفين
-    // فعليًا)، مع تفضيل النسخة التي لها شطر متوقَّع أوضح لو تعدَّدت.
-    final seenStudentIds = <String>{};
-    final dedupedRecords = <AdvisingCaseRecord>[];
-    for (final r in allCollegeRecords) {
-      if (seenStudentIds.add(r.studentId)) dedupedRecords.add(r);
+    // إزالة تكرار الرقم الجامعي (نفس مبدأ [allCollegeRecords] السابق) - سواء
+    // بملف الإكسل (شطرين خامين مدموجين) أو بتقرير "كل الكليات".
+    List<AdvisingCaseRecord> dedupe(List<AdvisingCaseRecord> records) {
+      final seen = <String>{};
+      final result = <AdvisingCaseRecord>[];
+      for (final r in records) {
+        if (seen.add(r.studentId)) result.add(r);
+      }
+      return result;
     }
 
-    // الطلاب المفصولون أكاديميًا يُستبعَدون كليًا هنا أيضًا (نفس معاملة
-    // [analyze]) - راجع توثيق [CollegeAdvisingClassification.dismissedStudents].
-    final dismissed = dedupedRecords.where((r) => r.isAcademicallyDismissed).toList();
-    final activeRecords = dedupedRecords.where((r) => !r.isAcademicallyDismissed).toList();
+    final dedupedAcademic = dedupe(academicRecords);
+    final dedupedAllColleges = dedupe(allCollegeRecords);
+    final advisorById = {for (final r in dedupedAllColleges) r.studentId: r};
 
-    for (final r in activeRecords) {
+    // الطلاب المفصولون أكاديميًا يُستبعَدون كليًا (عمود "الوضع في الفصل"
+    // بملف الإكسل - عادةً الملف مفلتَر أصلاً لـ"منتظم" فلا يظهر أي مفصول، لكن
+    // يبقى الفحص احتياطيًا).
+    final dismissed = dedupedAcademic.where((r) => r.isAcademicallyDismissed).toList();
+    final activeAcademicAll = dedupedAcademic.where((r) => !r.isAcademicallyDismissed).toList();
+
+    // الطلبة المستجدون (رقمهم يبدأ برمز سنة القبول الحالية) يُستبعَدون هنا
+    // **قبل** فحص المرشد (بطلب سليمان صراحةً 2026-08-26، نقطة 9: "يجب ألا
+    // يعتمد النظام على طرح جميع الطلبة الذين ليس لديهم مرشد مباشرة؛ بل يجب
+    // أولًا استبعاد المستجدين، ثم فحص بقية الطلبة") - مؤشر مستقل تمامًا
+    // [CollegeAdvisingClassification.newStudents]، سواء كان لهم مرشد بالفعل
+    // أم لا (نقطة 8: وجود مرشد لا يغيّر تصنيفه). يُثرى بمعلومات المرشد (إن
+    // وُجدت) للعرض فقط، بلا احتسابه ضمن أي من القوائم الأربع.
+    final newStudents = <AdvisingCaseRecord>[];
+    final activeAcademic = <AdvisingCaseRecord>[];
+    for (final academic in activeAcademicAll) {
+      if (isNewStudentId(academic.studentId)) {
+        final advisorRecord = advisorById[academic.studentId];
+        newStudents.add(advisorRecord != null
+            ? academic.copyWith(
+                advisorNameRaw: advisorRecord.advisorNameRaw,
+                advisorId: advisorRecord.advisorId,
+                advisorDepartment: advisorRecord.advisorDepartment,
+              )
+            : academic);
+      } else {
+        activeAcademic.add(academic);
+      }
+    }
+
+    for (final academic in activeAcademic) {
       // استبعاد كامل لطلاب "إدارة الأعمال التنفيذي" - طلب سليمان صراحةً
       // (2026-08-14): لا يظهرون في أي تصنيف (حتى "طلاب خارجيون") ولا يُحتسبون
       // في أي إحصائية، أيًا كان مرشدهم.
-      if (isExecutiveMbaProgram(r.department)) continue;
+      if (isExecutiveMbaProgram(academic.department)) continue;
 
-      final studentInOurCollege = isKnownBachelorDepartment(normalizeDepartmentName(r.department));
+      final studentInOurCollege = isKnownBachelorDepartment(normalizeDepartmentName(academic.department));
+
+      final advisorRecord = advisorById[academic.studentId];
+      final r = advisorRecord != null
+          ? academic.copyWith(
+              advisorNameRaw: advisorRecord.advisorNameRaw,
+              advisorId: advisorRecord.advisorId,
+              advisorDepartment: advisorRecord.advisorDepartment,
+            )
+          : academic;
 
       if (!r.hasAdvisor) {
         if (studentInOurCollege) withoutAdvisor.add(r);
@@ -454,10 +521,24 @@ class AdvisingCaseAnalyzer {
         }
       } else if (advisor == null && studentInOurCollege) {
         externalAdvisors.add(r);
-      } else if (advisor != null && !studentInOurCollege) {
-        externalStudents.add(r);
       }
-      // advisor == null && !studentInOurCollege: لا علاقة له بكليتنا إطلاقًا - يُتجاهَل.
+      // studentInOurCollege دومًا صحيح تقريبًا هنا (المصدر ملف إكسل كليتنا) -
+      // حالة "مرشدنا ← طلاب خارجيون" تُكتشَف أدناه من [allCollegeRecords]
+      // مباشرة (لن يظهر طالب خارجي بملف الإكسل إطلاقًا).
+    }
+
+    // "مرشدنا ← طلاب خارجيون": طالب من خارج كليتنا (لا يظهر بملف الإكسل) له
+    // مرشد من أعضاء كليتنا - يُكتشَف من تقرير "كل الكليات" مباشرة لكل طالب لم
+    // يظهر بملف الإكسل أصلاً (تفاديًا لازدواج مع الحلقة أعلاه).
+    final academicIds = {for (final a in dedupedAcademic) a.studentId};
+    for (final r in dedupedAllColleges) {
+      if (academicIds.contains(r.studentId)) continue;
+      if (!r.hasAdvisor) continue;
+      if (isExecutiveMbaProgram(r.department)) continue;
+      final studentInOurCollege = isKnownBachelorDepartment(normalizeDepartmentName(r.department));
+      if (studentInOurCollege) continue; // طالب كليتنا - عولج أعلاه من ملف الإكسل (أو غائب عنه سهوًا، لا يُحتسَب هنا لتفادي الالتباس).
+      final advisor = facultyByNameKey[_key(displayName(r.advisorNameRaw))];
+      if (advisor != null) externalStudents.add(r);
     }
 
     return CollegeAdvisingClassification(
@@ -467,6 +548,7 @@ class AdvisingCaseAnalyzer {
       ourAdvisorsWithExternalStudents: externalStudents,
       studentsWithoutAdvisor: withoutAdvisor,
       dismissedStudents: dismissed,
+      newStudents: newStudents,
     );
   }
 
@@ -510,6 +592,8 @@ class AdvisingCaseAnalyzer {
         List<AdvisingCaseRecord> allCollegesFemaleRaw,
         List<AdvisingCaseRecord> allCollegesMalePrevious,
         List<AdvisingCaseRecord> allCollegesFemalePrevious,
+        List<AdvisingCaseRecord> academicMaleRaw,
+        List<AdvisingCaseRecord> academicFemaleRaw,
         Map<String, CollegeRosterMember> facultyByKey,
       })> loadCollegeScopedStudents() async {
     final results = await Future.wait([
@@ -520,6 +604,10 @@ class AdvisingCaseAnalyzer {
       AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.health),
       AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.health),
       CollegeRosterRepository.load(),
+      AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.base),
+      AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.base),
+      AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.basePrevious),
+      AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.basePrevious),
     ]);
     final allMale = results[0] as List<AdvisingCaseRecord>;
     final allFemale = results[1] as List<AdvisingCaseRecord>;
@@ -528,22 +616,34 @@ class AdvisingCaseAnalyzer {
     final healthMale = results[4] as List<AdvisingCaseRecord>;
     final healthFemale = results[5] as List<AdvisingCaseRecord>;
     final roster = results[6] as List<CollegeRosterMember>;
+    final academicMale = results[7] as List<AdvisingCaseRecord>;
+    final academicFemale = results[8] as List<AdvisingCaseRecord>;
+    final academicMalePrevious = results[9] as List<AdvisingCaseRecord>;
+    final academicFemalePrevious = results[10] as List<AdvisingCaseRecord>;
 
     final facultyByKey = {for (final m in roster) nameKey(displayName(m.name)): m};
 
-    List<AdvisingCaseRecord> scopeToCollege(List<AdvisingCaseRecord> all, List<AdvisingCaseRecord> health) {
+    List<AdvisingCaseRecord> scopeToCollege(
+      List<AdvisingCaseRecord> all,
+      List<AdvisingCaseRecord> health,
+      List<AdvisingCaseRecord> academic,
+      List<AdvisingCaseRecord> academicPrevious,
+    ) {
       final scoped =
           all.where((r) => isKnownBachelorDepartment(normalizeDepartmentName(r.department))).toList();
-      return mergeHealthConditions(scoped, health);
+      final withHealth = mergeHealthConditions(scoped, health);
+      return mergeAcademicData(withHealth, academic, academicPrevious);
     }
 
     return (
-      male: scopeToCollege(allMale, healthMale),
-      female: scopeToCollege(allFemale, healthFemale),
+      male: scopeToCollege(allMale, healthMale, academicMale, academicMalePrevious),
+      female: scopeToCollege(allFemale, healthFemale, academicFemale, academicFemalePrevious),
       allCollegesMaleRaw: allMale,
       allCollegesFemaleRaw: allFemale,
       allCollegesMalePrevious: previousMale,
       allCollegesFemalePrevious: previousFemale,
+      academicMaleRaw: academicMale,
+      academicFemaleRaw: academicFemale,
       facultyByKey: facultyByKey,
     );
   }
@@ -559,6 +659,30 @@ class AdvisingCaseAnalyzer {
       final h = healthById[s.studentId];
       if (h == null) return s;
       return s.copyWith(healthCondition: h.healthCondition);
+    }).toList();
+  }
+
+  /// يدمج بيانات تقرير "بيانات الطلبة الأكاديمية" (المعدل التراكمي + ساعات
+  /// الخطة/المتبقية) مع قائمة الطلاب - مطابقة بالرقم الجامعي، والمعدل السابق
+  /// أيضًا (من basePrevious) كـ"النطاق السابق" لنفس التقرير. طالب لم يظهر بعد
+  /// في تقرير بيانات الطلبة الأكاديمية يبقى بلا معدل/ساعات (null).
+  static List<AdvisingCaseRecord> mergeAcademicData(
+    List<AdvisingCaseRecord> students,
+    List<AdvisingCaseRecord> academic,
+    List<AdvisingCaseRecord> academicPrevious,
+  ) {
+    final academicById = {for (final a in academic) a.studentId: a};
+    final previousById = {for (final p in academicPrevious) p.studentId: p};
+    return students.map((s) {
+      final a = academicById[s.studentId];
+      if (a == null) return s;
+      final p = previousById[s.studentId];
+      return s.copyWith(
+        gpa: a.gpa,
+        planHours: a.planHours,
+        remainingHours: a.remainingHours,
+        previousGpa: p?.gpa,
+      );
     }).toList();
   }
 

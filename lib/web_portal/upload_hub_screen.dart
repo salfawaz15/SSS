@@ -72,12 +72,18 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   DateTime? _allCollegesFemaleDate;
   DateTime? _healthMaleDate;
   DateTime? _healthFemaleDate;
+  DateTime? _academicMaleDate;
+  DateTime? _academicFemaleDate;
+  int _academicMaleCount = 0;
+  int _academicFemaleCount = 0;
   DateTime? _scheduleLatestDate;
   int _scheduleUploadedCount = 0;
   bool _loadingDates = true;
 
   bool _uploadingAllColleges = false;
   bool _uploadingHealth = false;
+  bool _uploadingAcademicMale = false;
+  bool _uploadingAcademicFemale = false;
   bool _uploadingSchedule = false;
   bool _uploadingFormsFile = false;
   bool _downloadingFormsFile = false;
@@ -118,6 +124,10 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
         AdvisingReportRepository.currentUploadDate(Shatr.female, kind: AdvisingReportKind.allColleges),
         AdvisingReportRepository.currentUploadDate(Shatr.male, kind: AdvisingReportKind.health),
         AdvisingReportRepository.currentUploadDate(Shatr.female, kind: AdvisingReportKind.health),
+        AdvisingReportRepository.currentUploadDate(Shatr.male, kind: AdvisingReportKind.base),
+        AdvisingReportRepository.currentUploadDate(Shatr.female, kind: AdvisingReportKind.base),
+        AdvisingReportRepository.currentRecordsCount(Shatr.male, kind: AdvisingReportKind.base),
+        AdvisingReportRepository.currentRecordsCount(Shatr.female, kind: AdvisingReportKind.base),
         AdvisingScheduleRepository.latestUploadDate(),
         AdvisingScheduleRepository.uploadedCount(),
         CourseScheduleRepository.loadSchedule(Shatr.male),
@@ -126,7 +136,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
         CollegeRosterRepository.load(),
       ]);
       if (!mounted) return;
-      final roster = results[11] as List<CollegeRosterMember>;
+      final roster = results[15] as List<CollegeRosterMember>;
       setState(() {
         _maleExportDate = results[0] as DateTime?;
         _femaleExportDate = results[1] as DateTime?;
@@ -134,11 +144,15 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
         _allCollegesFemaleDate = results[3] as DateTime?;
         _healthMaleDate = results[4] as DateTime?;
         _healthFemaleDate = results[5] as DateTime?;
-        _scheduleLatestDate = results[6] as DateTime?;
-        _scheduleUploadedCount = results[7] as int;
-        _maleCourseCount = (results[8] as List<CourseSectionRecord>).length;
-        _femaleCourseCount = (results[9] as List<CourseSectionRecord>).length;
-        _rosterLastSavedAt = results[10] as DateTime?;
+        _academicMaleDate = results[6] as DateTime?;
+        _academicFemaleDate = results[7] as DateTime?;
+        _academicMaleCount = results[8] as int;
+        _academicFemaleCount = results[9] as int;
+        _scheduleLatestDate = results[10] as DateTime?;
+        _scheduleUploadedCount = results[11] as int;
+        _maleCourseCount = (results[12] as List<CourseSectionRecord>).length;
+        _femaleCourseCount = (results[13] as List<CourseSectionRecord>).length;
+        _rosterLastSavedAt = results[14] as DateTime?;
         _rosterFacultyCount = roster.where((m) => m.type == CollegeMemberType.faculty).length;
         _rosterAdminCount = roster.where((m) => m.type == CollegeMemberType.admin).length;
       });
@@ -595,7 +609,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                         // دون تمرير").
                         child: LayoutBuilder(builder: (context, constraints) {
                           final wide = constraints.maxWidth >= 1100;
-                          final boxes = [_coursesBanner(), _rosterBanner(), _advisingSection()];
+                          final boxes = [_advisingSection(), _academicDataBanner(), _rosterBanner(), _coursesBanner()];
                           if (!wide) {
                             return Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1182,6 +1196,79 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                 child: _clearDataButton(
                   label: 'مسح بيانات المنسوبين',
                   onPressed: () => _clearRoster(),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// اختيار الشطر قبل رفع "بيانات الطلبة الأكاديمية" - الملفان منفصلان
+  /// أصلاً (لا عمود جنس يفرزهما كملف "طلبة ذوي الإعاقة")، فزر الرفع الواحد
+  /// (بنفس هوية بقية أشرطة هذه الصفحة) يسأل أولًا عن الشطر بدل زرَّين
+  /// منفصلين - بطلب سليمان صراحةً (2026-08-26): "أرغب في أن يكون التصميم
+  /// مثل" بقية المربعات (شريط + زر رفع واحد + إحصائيتان).
+  Future<void> _pickAndUploadAcademicData() async {
+    final shatr = await showDialog<Shatr>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('تحديد الشطر'),
+        content: const Text('ملف "بيانات الطلبة الأكاديمية" منفصل لكل شطر - حدّد الشطر الذي تريد رفع ملفه.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, Shatr.male), child: const Text('شطر الطلاب')),
+          TextButton(onPressed: () => Navigator.pop(context, Shatr.female), child: const Text('شطر الطالبات')),
+        ],
+      ),
+    );
+    if (shatr == null || !mounted) return;
+    await runUploadAcademicData(
+      context: context,
+      shatr: shatr,
+      setUploading: (v) => setState(() => shatr == Shatr.male ? _uploadingAcademicMale = v : _uploadingAcademicFemale = v),
+      onSuccess: () async {
+        await _loadDates();
+        if (mounted) _showSuccessSnackBar('تم رفع الملف بنجاح');
+      },
+    );
+  }
+
+  /// مربع "بيانات الطلبة الأكاديمية" (المعدل/الساعات) - نفس هوية "منسوبي
+  /// الكلية"/"المقررات الدراسية" حرفيًا (بطلب سليمان صراحةً 2026-08-26).
+  Widget _academicDataBanner() {
+    final academicDate = _latestOf(_academicMaleDate, _academicFemaleDate);
+    final dateFmt = DateFormat('d MMMM yyyy، h:mm a', 'ar');
+    final uploading = _uploadingAcademicMale || _uploadingAcademicFemale;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: Colors.white, border: Border.all(color: AppColors.goldLight), borderRadius: BorderRadius.circular(16)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _greenBanner(
+            icon: Icons.school_outlined,
+            title: 'بيانات الطلبة الأكاديمية',
+            subtitleIcon: Icons.info_outline,
+            subtitle: academicDate != null ? 'آخر رفع: ${dateFmt.format(academicDate)}' : 'بيانات الطلبة والتخصص والشطر والحالة الأكاديمية',
+            button: _bannerButton(uploading: uploading, label: 'رفع الملف', onPressed: _pickAndUploadAcademicData),
+            verticalPadding: 12,
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(child: _courseCountStat(label: 'طلبة شطر الطلاب', count: _academicMaleCount, emoji: '👨‍🎓')),
+              const SizedBox(width: 10),
+              Expanded(child: _courseCountStat(label: 'طلبة شطر الطالبات', count: _academicFemaleCount, emoji: '👩‍🎓')),
+            ],
+          ),
+          if (academicDate != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: _clearDataButton(
+                  label: 'مسح بيانات الطلبة الأكاديمية',
+                  onPressed: () => _clearKindBoth(AdvisingReportKind.base, 'ملف بيانات الطلبة الأكاديمية'),
                 ),
               ),
             ),

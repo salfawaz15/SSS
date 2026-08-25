@@ -4,6 +4,7 @@ import 'package:printing/printing.dart';
 
 import '../models/advising_case_record.dart';
 import '../utils/name_display.dart';
+import '../services/advising_case_analyzer.dart';
 import '../services/advising_case_excel_service.dart';
 import '../services/advising_case_pdf_service.dart';
 import '../services/advising_report_repository.dart';
@@ -70,8 +71,14 @@ class _AdvisorStudentsLookupScreenState extends State<AdvisorStudentsLookupScree
       final results = await Future.wait([
         AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.allColleges),
         AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.allColleges),
+        AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.base),
+        AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.base),
+        AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.basePrevious),
+        AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.basePrevious),
       ]);
-      final all = [...results[0], ...results[1]];
+      final academic = [...results[2], ...results[3]];
+      final academicPrevious = [...results[4], ...results[5]];
+      final all = AdvisingCaseAnalyzer.mergeAcademicData([...results[0], ...results[1]], academic, academicPrevious);
 
       final byAdvisor = <String, List<AdvisingCaseRecord>>{};
       for (final r in all) {
@@ -80,13 +87,33 @@ class _AdvisorStudentsLookupScreenState extends State<AdvisorStudentsLookupScree
         byAdvisor.putIfAbsent(key, () => []).add(r);
       }
 
+      // ترتيب طلاب كل مرشد تنازليًا حسب المعدل التراكمي (كما تظهر بالمنظومة
+      // الداخلية) - بطلب سليمان صراحةً (2026-08-25). عند تساوي المعدل (أو
+      // غيابه لدى الطرفين): الأقدم أولاً حسب الرقم الجامعي **الأصغر رقميًا**
+      // (مثال: 43005957 قبل 44005957) - الأرقام الجامعية الأقدم تبدأ بسنة
+      // قبول أصغر فتصبح قيمتها الرقمية أصغر.
+      int compareStudents(AdvisingCaseRecord a, AdvisingCaseRecord b) {
+        final ga = a.gpa;
+        final gb = b.gpa;
+        if (ga != null && gb != null) {
+          final c = gb.compareTo(ga);
+          if (c != 0) return c;
+        } else if (ga != null || gb != null) {
+          return ga != null ? -1 : 1;
+        }
+        final ia = int.tryParse(a.studentId);
+        final ib = int.tryParse(b.studentId);
+        if (ia != null && ib != null) return ia.compareTo(ib);
+        return a.studentId.compareTo(b.studentId);
+      }
+
       final groups = byAdvisor.entries.map((e) {
         final first = e.value.first;
         return _AdvisorGroup(
           name: displayName(first.advisorNameRaw),
           advisorId: first.advisorId,
           shatr: first.shatr,
-          students: e.value..sort((a, b) => a.studentName.compareTo(b.studentName)),
+          students: e.value..sort(compareStudents),
         );
       }).toList()
         ..sort((a, b) => a.name.compareTo(b.name));
@@ -268,12 +295,22 @@ class _AdvisorStudentsLookupScreenState extends State<AdvisorStudentsLookupScree
 
   Widget _buildAdvisorPanel(_AdvisorGroup group) {
     // عمود "التخصص" غير مفيد هنا (كل الطلاب أصلاً لنفس المرشد، غالبًا نفس
-    // القسم) - أُزيل بطلب سليمان الصريح (2026-08-15). مستقبلاً حين تكتمل
-    // بيانات الطلبة الأكاديمية (المعدل/النطاق)، يُضاف عمودا "المعدل"/"النطاق"
-    // بدلاً منه هنا.
+    // القسم) - أُزيل بطلب سليمان الصريح (2026-08-15). أُضيفت أعمدة "المعدل"/
+    // "الساعات المجتازة"/"الساعات المتبقية" بدلاً منه (2026-08-25) بعد ربط
+    // رفع "بيانات الطلبة الأكاديمية" - القائمة نفسها مرتَّبة تنازليًا حسب
+    // المعدل (انظر `compareStudents` بـ[_load]).
     final title = '${group.name} - ${group.shatr}${group.advisorId.isNotEmpty ? ' (رقم المرشد: ${group.advisorId})' : ''}';
-    final headers = ['الرقم الجامعي', 'اسم الطالب'];
-    final rows = [for (final s in group.students) [s.studentId, s.studentName]];
+    final headers = ['الرقم الجامعي', 'اسم الطالب', 'المعدل', 'الساعات المجتازة', 'الساعات المتبقية'];
+    final rows = [
+      for (final s in group.students)
+        [
+          s.studentId,
+          s.studentName,
+          s.gpa != null ? s.gpa!.toStringAsFixed(2) : '—',
+          s.completedHours?.toString() ?? '—',
+          s.remainingHours?.toString() ?? '—',
+        ],
+    ];
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(

@@ -13,6 +13,7 @@ import '../models/advising_case_record.dart';
 import '../models/advising_schedule.dart';
 import '../models/college_roster_member.dart';
 import '../models/course_section_record.dart';
+import '../services/academic_data_excel_parser_service.dart';
 import '../services/advising_case_analyzer.dart';
 import '../services/advising_report_parser_service.dart';
 import '../services/advising_report_pdf_parser_service.dart';
@@ -122,6 +123,30 @@ Future<void> runUploadAllColleges({
                 'تحديد شطرها - ستظهر مؤقتًا تحت كلا الشطرين معًا حتى يُتاح مصدر أفضل لتحديد شطر '
                 'مرشدي الكليات الأخرى:\n\n'
                 '${r.unresolvedShatrRows.join('\n')}',
+              ),
+            ),
+          ),
+          actions: [
+            FilledButton(onPressed: () => Navigator.pop(context), child: const Text('حسنًا')),
+          ],
+        ),
+      );
+    }
+
+    if (r.exclusionCounts.isNotEmpty) {
+      if (!context.mounted) return;
+      final totalExcluded = r.exclusionCounts.values.fold<int>(0, (a, b) => a + b);
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('$totalExcluded صف مستبعَد من الملف'),
+          content: SizedBox(
+            width: 480,
+            child: SingleChildScrollView(
+              child: Text(
+                'الصفوف التالية استُبعدت من إجمالي بيانات الملف الخام ولم تُدرَج ضمن '
+                '${records.length} سجلًا المعتمَدة:\n\n'
+                '${r.exclusionCounts.entries.map((e) => '${e.key}: ${e.value}').join('\n')}',
               ),
             ),
           ),
@@ -298,6 +323,76 @@ Future<void> runUploadHealth({
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('تم اعتماد ملف "طلبة ذوي الإعاقة" بنجاح (${records.length} سجل).')),
+    );
+  } catch (e) {
+    if (!context.mounted) return;
+    showUploadErrorDialog(context, 'تعذّر إتمام العملية', '$e');
+  } finally {
+    setUploading(false);
+  }
+}
+
+// ==================== بيانات الطلبة الأكاديمية (المعدل/الساعات) ====================
+
+/// رفع ملف "بيانات الطلبة الأكاديمية" (قوائم اكسل 481 - طلاب/طالبات - منتظم)
+/// لشطر واحد محدَّد - الملف منفصل أصلاً بين الشطرين (لا عمود جنس يفرزهما كملف
+/// "طلبة ذوي الإعاقة"), فيُرفع كل شطر بزر مستقل. ينقل النسخة الحالية لـ
+/// "basePrevious" أولًا (مصدر "النطاق السابق" للرفعة القادمة) قبل استبدالها.
+Future<void> runUploadAcademicData({
+  required BuildContext context,
+  required Shatr shatr,
+  required ValueChanged<bool> setUploading,
+  required VoidCallback onSuccess,
+}) async {
+  final result = await FilePicker.platform.pickFiles(
+    type: FileType.custom,
+    allowedExtensions: const ['xlsx'],
+    withData: true,
+  );
+  if (result == null || result.files.single.bytes == null) return;
+  final Uint8List bytes = result.files.single.bytes!;
+
+  setUploading(true);
+  try {
+    showUploadProcessingDialog(context, 'جاري معالجة الملف...');
+    List<AdvisingCaseRecord> records;
+    try {
+      records = AcademicDataExcelParserService.parse(bytes, shatr);
+    } finally {
+      hideUploadProcessingDialog(context);
+    }
+
+    if (!context.mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('تأكيد اعتماد ملف "بيانات الطلبة الأكاديمية" (${shatr.label})'),
+        content: SizedBox(
+          width: 480,
+          child: SingleChildScrollView(
+            child: Text(
+              records.isEmpty
+                  ? 'الملف لا يحتوي أي بيانات صالحة. هل تريد المتابعة؟'
+                  : 'تم استخراج ${records.length} سجل طالب/ة (معدل تراكمي + ساعات).\n\n'
+                      'سيستبدل هذا آخر نسخة معتمدة لهذا الشطر (وتُحفظ النسخة الحالية كـ"النطاق السابق"). هل تريد الاعتماد؟',
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('اعتماد')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    await AdvisingReportRepository.promoteBaseToPrevious(shatr);
+    await AdvisingReportRepository.save(shatr, records, kind: AdvisingReportKind.base);
+
+    onSuccess();
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('تم اعتماد ملف "بيانات الطلبة الأكاديمية" (${shatr.label}) بنجاح (${records.length} سجل).')),
     );
   } catch (e) {
     if (!context.mounted) return;

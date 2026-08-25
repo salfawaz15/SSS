@@ -73,6 +73,8 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
   List<AdvisingCaseRecord> _scopedFemale = [];
   List<AdvisingCaseRecord> _allCollegesMaleRaw = [];
   List<AdvisingCaseRecord> _allCollegesFemaleRaw = [];
+  List<AdvisingCaseRecord> _academicMaleRaw = [];
+  List<AdvisingCaseRecord> _academicFemaleRaw = [];
 
   // سجل حركات الإرشاد الدائم/التراكمي (كل الرفعات، لا آخر رفعتين فقط) - انظر
   // [AdvisorMovementRepository].
@@ -123,6 +125,8 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
         _scopedFemale = loaded.female;
         _allCollegesMaleRaw = loaded.allCollegesMaleRaw;
         _allCollegesFemaleRaw = loaded.allCollegesFemaleRaw;
+        _academicMaleRaw = loaded.academicMaleRaw;
+        _academicFemaleRaw = loaded.academicFemaleRaw;
         _movementsLog = movements;
         _facultyByKey = loaded.facultyByKey;
         // فلتر القسم هنا لفرز الطلاب حسب قسمهم العلمي فقط - لا معنى لظهور
@@ -254,7 +258,10 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
   CollegeAdvisingClassification get _classification {
     final male = _shatrFilter == Shatr.female.label ? const <AdvisingCaseRecord>[] : _allCollegesMaleRaw;
     final female = _shatrFilter == Shatr.male.label ? const <AdvisingCaseRecord>[] : _allCollegesFemaleRaw;
+    final academicMale = _shatrFilter == Shatr.female.label ? const <AdvisingCaseRecord>[] : _academicMaleRaw;
+    final academicFemale = _shatrFilter == Shatr.male.label ? const <AdvisingCaseRecord>[] : _academicFemaleRaw;
     final c = AdvisingCaseAnalyzer.classifyAllColleges(
+      academicRecords: [...academicMale, ...academicFemale],
       allCollegeRecords: [...male, ...female],
       facultyByNameKey: _facultyByKey,
     );
@@ -300,6 +307,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       ('خطة إعادة التوزيع العادل', _tabTransfer),
       ('إحصائيات الإرشاد', _tabAdvisorStatistics),
       ('حركات الإرشاد', _tabMovements),
+      ('الطلبة المستجدون', _tabNewStudents),
     ];
     final isSuperAdmin = FirebaseAuth.instance.currentUser?.email == PortalAccounts.superAdminEmail ||
         PortalAccounts.isCurrentSessionSuperAdmin;
@@ -442,6 +450,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       _analysis.transferSuggestions.length,
       _analysis.advisorStatistics.fold<int>(0, (sum, b) => sum + b.totalAdvisors),
       _movementsLog.length,
+      _classification.newStudents.length,
     ];
     const icons = <IconData>[
       Icons.groups_outlined,
@@ -458,6 +467,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       Icons.published_with_changes_outlined,
       Icons.bar_chart_outlined,
       Icons.history_outlined,
+      Icons.fiber_new_outlined,
     ];
     final colors = <Color>[
       AppColors.greenDark,
@@ -474,6 +484,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       Colors.pink.shade700,
       Colors.lime.shade800,
       Colors.blueGrey.shade400,
+      Colors.orange.shade700,
     ];
 
     // 14 بطاقة (لكل التبويبات الأربعة عشر - كانت 10 فقط قبل ذلك) - سليمان لاحظ
@@ -507,7 +518,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
         );
 
     const primaryIndices = [0, 1, 2, 3, 4];
-    const secondaryIndices = [6, 7, 8, 9, 10, 11, 12, 13];
+    const secondaryIndices = [6, 7, 8, 9, 10, 11, 12, 13, 14];
 
     Widget grid({required List<int> indices, required bool compact, required int Function(double width) columnsFor}) {
       return LayoutBuilder(
@@ -525,7 +536,12 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
             ),
             itemBuilder: (context, i) {
               final idx = indices[i];
-              return tile(idx, compact: compact, note: idx == 4 ? 'منهم ${counts[5]} من ذوي الإعاقة' : null);
+              final note = switch (idx) {
+                0 => 'المستهدفون بالإرشاد: ${_classification.targetedStudentsCount}',
+                4 => 'منهم ${counts[5]} من ذوي الإعاقة',
+                _ => null,
+              };
+              return tile(idx, compact: compact, note: note);
             },
           );
         },
@@ -701,18 +717,32 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
   /// "الكل" - كل طلاب التصنيفات الأربعة + بلا مرشد مجتمعين بجدول واحد مع
   /// عمود "الوضع" يوضّح تصنيف كل طالب - بطلب سليمان الصريح (2026-08-15):
   /// خيار يعرض كل الطلاب بغض النظر عن وضعهم بدل التنقّل بين التبويبات.
+  static String _gpaCell(AdvisingCaseRecord s) => s.gpa != null ? s.gpa!.toStringAsFixed(2) : '—';
+  static String _completedHoursCell(AdvisingCaseRecord s) => s.completedHours?.toString() ?? '—';
+  static String _remainingHoursCell(AdvisingCaseRecord s) => s.remainingHours?.toString() ?? '—';
+
   Widget _tabAllStudents() {
     final rows = <List<String>>[];
     for (final s in _classification.studentsCorrectlyAssigned) {
       if (_deptMatches(s.department) &&
           _advisorMatches(s.advisorNameRaw) &&
           _matchesSearch(s.studentName, s.studentId, advisorName: s.advisorNameRaw)) {
-        rows.add([s.studentName, s.studentId, s.department, s.shatr, displayName(s.advisorNameRaw).ifEmptyDash(), 'على مرشدهم']);
+        rows.add([
+          s.studentName,
+          s.studentId,
+          s.department,
+          s.shatr,
+          displayName(s.advisorNameRaw).ifEmptyDash(),
+          'على مرشدهم',
+          _gpaCell(s),
+          _completedHoursCell(s),
+          _remainingHoursCell(s),
+        ]);
       }
     }
     for (final s in _classification.studentsWithoutAdvisor) {
       if (_deptMatches(s.department) && _advisorMatches(s.advisorNameRaw) && _matchesSearch(s.studentName, s.studentId)) {
-        rows.add([s.studentName, s.studentId, s.department, s.shatr, '—', 'بلا مرشد']);
+        rows.add([s.studentName, s.studentId, s.department, s.shatr, '—', 'بلا مرشد', _gpaCell(s), _completedHoursCell(s), _remainingHoursCell(s)]);
       }
     }
     for (final c in _classification.studentsWithWrongDeptAdvisor) {
@@ -726,6 +756,9 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
           c.student.shatr,
           displayName(c.student.advisorNameRaw).ifEmptyDash(),
           'على غير مرشدهم',
+          _gpaCell(c.student),
+          _completedHoursCell(c.student),
+          _remainingHoursCell(c.student),
         ]);
       }
     }
@@ -733,19 +766,42 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       if (_deptMatches(s.department) &&
           _advisorMatches(s.advisorNameRaw) &&
           _matchesSearch(s.studentName, s.studentId, advisorName: s.advisorNameRaw)) {
-        rows.add([s.studentName, s.studentId, s.department, s.shatr, displayName(s.advisorNameRaw).ifEmptyDash(), 'مرشد خارجي ← طلابنا']);
+        rows.add([
+          s.studentName,
+          s.studentId,
+          s.department,
+          s.shatr,
+          displayName(s.advisorNameRaw).ifEmptyDash(),
+          'مرشد خارجي ← طلابنا',
+          _gpaCell(s),
+          _completedHoursCell(s),
+          _remainingHoursCell(s),
+        ]);
       }
     }
     for (final s in _classification.ourAdvisorsWithExternalStudents) {
       if (_deptMatches(s.department) &&
           _advisorMatches(s.advisorNameRaw) &&
           _matchesSearch(s.studentName, s.studentId, advisorName: s.advisorNameRaw)) {
-        rows.add([s.studentName, s.studentId, s.department, s.shatr, displayName(s.advisorNameRaw).ifEmptyDash(), 'مرشدنا ← طلاب خارجيون']);
+        rows.add([
+          s.studentName,
+          s.studentId,
+          s.department,
+          s.shatr,
+          displayName(s.advisorNameRaw).ifEmptyDash(),
+          'مرشدنا ← طلاب خارجيون',
+          _gpaCell(s),
+          _completedHoursCell(s),
+          _remainingHoursCell(s),
+        ]);
       }
     }
     return _buildPanel(
       title: 'كل الطلاب',
-      headers: const ['الاسم', 'الرقم الجامعي', 'القسم', 'الشطر', 'المرشد', 'الوضع'],
+      // أعمدة المعدل/الساعات المجتازة/المتبقية بطلب سليمان (2026-08-25) بعد
+      // ربط رفع "بيانات الطلبة الأكاديمية" - null (تُعرض "—") لطالب لم يظهر
+      // بعد بذلك الملف.
+      headers: const ['الاسم', 'الرقم الجامعي', 'القسم', 'الشطر', 'المرشد', 'الوضع', 'المعدل', 'الساعات المجتازة', 'الساعات المتبقية'],
       rows: rows,
     );
   }
@@ -773,6 +829,24 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       title: 'طلاب بلا مرشد',
       headers: const ['الاسم', 'الرقم الجامعي', 'القسم', 'الشطر'],
       rows: [for (final s in list) [s.studentName, s.studentId, s.department, s.shatr]],
+    );
+  }
+
+  /// الطلبة المستجدون (رقمهم يبدأ برمز سنة القبول الحالية) - مؤشر مستقل تمامًا
+  /// عن "طلبة بلا مرشد"، بطلب سليمان صراحةً (2026-08-26): "الطالب المستجد غير
+  /// ملزم بوجود مرشد أكاديمي؛ لذلك لا يجوز احتسابه ضمن مؤشر طلبة بلا مرشد".
+  /// عمود "المرشد" هنا للعرض فقط (إن وُجد فعلاً بتقرير "كل الكليات") - وجوده
+  /// لا يغيّر تصنيف الطالب (يبقى هنا حصرًا، لا يُحتسَب "على مرشدهم").
+  Widget _tabNewStudents() {
+    final list = _classification.newStudents
+        .where((s) => _deptMatches(s.department) && _matchesSearch(s.studentName, s.studentId, advisorName: s.advisorNameRaw))
+        .toList();
+    return _buildPanel(
+      title: 'الطلبة المستجدون',
+      headers: const ['الاسم', 'الرقم الجامعي', 'القسم', 'الشطر', 'المرشد (إن وُجد)'],
+      rows: [
+        for (final s in list) [s.studentName, s.studentId, s.department, s.shatr, displayName(s.advisorNameRaw).ifEmptyDash()],
+      ],
     );
   }
 
@@ -1383,8 +1457,37 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
     );
   }
 
+  /// أسماء أعمدة "المرشد" المحتملة عبر التبويبات الاثني عشر (كل تبويب يسمّي
+  /// عمود المرشد بصيغة مختلفة قليلًا حسب سياقه - انظر رؤوس كل [_buildPanel]).
+  static const List<String> _advisorColumnNames = [
+    'المرشد',
+    'اسم المرشد',
+    'المرشد الحالي',
+    'المرشد المعفى',
+    'المرشد (من خارج الكلية)',
+  ];
+
+  /// فهرس عمود المرشد إن وُجد ضمن [headers] **وكان التجميع مفيدًا فعليًا**
+  /// (أكثر من صف واحد لنفس المرشد بالمتوسط) - وإلا (كتبويب "تقرير النصاب"
+  /// حيث كل مرشد صف واحد أصلًا) يبقى التصدير مسطَّحًا كالسابق بلا فائدة من
+  /// كتلة عنوان لكل صف منفرد. بطلب سليمان الصريح 2026-08-25: تصدير كل
+  /// التبويبات الاثني عشر بأسلوب "كتلة لكل مرشد" (عنوان ممتد بلون + عدد
+  /// طلابه) بدل قائمة مسطَّحة مرتَّبة أبجديًا، مطابقةً لتقارير المنظومة
+  /// الجامعية الأصلية.
+  int? _groupColumnIndexFor(List<String> headers, List<List<String>> rows) {
+    final idx = headers.indexWhere(_advisorColumnNames.contains);
+    if (idx == -1 || rows.isEmpty) return null;
+    final distinctValues = rows.map((r) => idx < r.length ? r[idx] : '').toSet().length;
+    return distinctValues < rows.length ? idx : null;
+  }
+
   void _exportExcel(String title, List<String> headers, List<List<String>> rows) {
-    final bytes = AdvisingCaseExcelService.build(title: title, headers: headers, rows: rows);
+    final bytes = AdvisingCaseExcelService.build(
+      title: title,
+      headers: headers,
+      rows: rows,
+      groupColumnIndex: _groupColumnIndexFor(headers, rows),
+    );
     downloadBytes(bytes, '$title.xlsx');
   }
 }

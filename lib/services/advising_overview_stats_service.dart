@@ -89,6 +89,7 @@ class AdvisingOverviewStatsService {
     final data = await AdvisingCaseAnalyzer.loadCollegeScopedStudents();
 
     final classification = AdvisingCaseAnalyzer.classifyAllColleges(
+      academicRecords: [...data.academicMaleRaw, ...data.academicFemaleRaw],
       allCollegeRecords: [...data.allCollegesMaleRaw, ...data.allCollegesFemaleRaw],
       facultyByNameKey: data.facultyByKey,
     );

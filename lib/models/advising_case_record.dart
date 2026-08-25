@@ -27,6 +27,14 @@ class AdvisingCaseRecord {
   /// رفعة للطالب (لا يوجد نطاق سابق بعد، يظهر تلقائيًا من الفصل الذي يليه).
   final double? previousGpa;
 
+  /// "ساعات الخطة" من تقرير "بيانات الطلبة الأكاديمية" - إجمالي ساعات خطة
+  /// الطالب الدراسية (لا يتغيّر عادةً بين الرفعات). null إن لم تُرفع بيانات
+  /// الطلبة الأكاديمية بعد لهذا الطالب.
+  final int? planHours;
+
+  /// "الساعات المتبقية" من نفس التقرير - يُحسَب منها [completedHours] تلقائيًا.
+  final int? remainingHours;
+
   const AdvisingCaseRecord({
     required this.studentId,
     required this.studentName,
@@ -39,10 +47,16 @@ class AdvisingCaseRecord {
     this.healthCondition = '',
     this.enrollmentStatus = '',
     this.previousGpa,
+    this.planHours,
+    this.remainingHours,
   });
 
   bool get hasAdvisor => advisorNameRaw.trim().isNotEmpty;
   bool get hasHealthCondition => healthCondition.trim().isNotEmpty;
+
+  /// الساعات المجتازة = ساعات الخطة − الساعات المتبقية. null إن لم تتوفر
+  /// بيانات الساعات لهذا الطالب بعد.
+  int? get completedHours => (planHours != null && remainingHours != null) ? planHours! - remainingHours! : null;
 
   /// طالب مفصول أكاديميًا - يُستبعَد من كل قوائم متابعة الإرشاد العادية
   /// ويُعرَض في قائمة منفصلة (انظر [AdvisingCaseAnalyzer.analyze]).
@@ -55,6 +69,8 @@ class AdvisingCaseRecord {
     double? gpa,
     String? healthCondition,
     double? previousGpa,
+    int? planHours,
+    int? remainingHours,
   }) =>
       AdvisingCaseRecord(
         studentId: studentId,
@@ -68,6 +84,8 @@ class AdvisingCaseRecord {
         healthCondition: healthCondition ?? this.healthCondition,
         enrollmentStatus: enrollmentStatus,
         previousGpa: previousGpa ?? this.previousGpa,
+        planHours: planHours ?? this.planHours,
+        remainingHours: remainingHours ?? this.remainingHours,
       );
 
   Map<String, dynamic> toJson() => {
@@ -82,6 +100,8 @@ class AdvisingCaseRecord {
         'healthCondition': healthCondition,
         'enrollmentStatus': enrollmentStatus,
         'previousGpa': previousGpa,
+        'planHours': planHours,
+        'remainingHours': remainingHours,
       };
 
   factory AdvisingCaseRecord.fromJson(Map<String, dynamic> json) => AdvisingCaseRecord(
@@ -96,6 +116,8 @@ class AdvisingCaseRecord {
         healthCondition: json['healthCondition'] as String? ?? '',
         enrollmentStatus: json['enrollmentStatus'] as String? ?? '',
         previousGpa: (json['previousGpa'] as num?)?.toDouble(),
+        planHours: (json['planHours'] as num?)?.toInt(),
+        remainingHours: (json['remainingHours'] as num?)?.toInt(),
       );
 }
 
