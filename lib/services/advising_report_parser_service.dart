@@ -250,6 +250,34 @@ class AdvisingReportParserService {
   /// الصفوف المستبعَدة نهائيًا من [result] لكل سبب (بلا اسم/رقم، دراسات عليا،
   /// قسم غير معروف) - ليعرف المستخدم لماذا عدد السجلات المعتمَد أقل من عدد
   /// صفوف الملف الخام، بدل استبعاد صامت بلا تفسير.
+  /// يُصلح حالة انقسام خلية "الاسم" الفعلي لخليتين متجاورتين - اكتُشفت
+  /// فعليًا (سليمان 2026-08-25) بفارق 25 طالبة عن ملف "بيانات الطلبة" اليدوي
+  /// المرجعي، كلها بنفس النمط تحديدًا: فجوة أفقية غير معتادة بين اسم
+  /// العائلة/القبيلة وبقية الاسم أثناء استخراج PDF (مثال خام حقيقي: `[الإدارة,
+  /// المالكي, انتصار منصور بن محمد, 44450079, 8]` بدل 4 خلايا متوقَّعة) تُزيح
+  /// كل الأعمدة اللاحقة لعمود الاسم خانة واحدة، فيفشل استخراج الرقم الجامعي
+  /// الصحيح. عكس [_splitMergedNameAndDepartment] (تلك تُصلح اندماج خليتين في
+  /// واحدة، هذه تُصلح انقسام خلية واحدة لاثنتين). يُعيد بناء الصف بدمج
+  /// الخليتين مكان [nameCol] الأصلي محافظًا على ترتيب النص كما استُخرج (يطابق
+  /// كيف تظهر أسماء مشابهة لم تنقسم أصلًا بنفس التقرير) - null لو لم تنطبق
+  /// شروط الإصلاح الآمنة (إحدى الخليتين فارغة أو أرقام صرفة، لا اسمًا حقيقيًا).
+  static List<String>? _repairSplitNameCell(List<String> row, int nameCol) {
+    if (nameCol < 0 || nameCol + 1 >= row.length) return null;
+    final familyNameFragment = row[nameCol].trim();
+    final givenNames = row[nameCol + 1].trim();
+    if (familyNameFragment.isEmpty || givenNames.isEmpty) return null;
+    if (RegExp(r'^\d+$').hasMatch(familyNameFragment) || RegExp(r'^\d+$').hasMatch(givenNames)) return null;
+    final merged = [...row]..removeAt(nameCol + 1);
+    // الخلية الأولى تحمل اسم العائلة/القبيلة (يظهر مبتورًا وحده بسبب
+    // الفجوة)، والثانية بقية الاسم (الاسم الأول + الأب + الجد) - العائلة
+    // تأتي آخرًا بالترتيب العربي الصحيح للاسم الكامل، لا أولًا كترتيب
+    // الخليتين وقت الاستخراج (تحقَّقتُ من أسماء حقيقية معروفة سليمان
+    // 2026-08-25: "المالكي" + "انتصار منصور بن محمد" ← "انتصار منصور بن محمد
+    // المالكي"، لا العكس).
+    merged[nameCol] = '$givenNames $familyNameFragment';
+    return merged;
+  }
+
   static List<AdvisingCaseRecord> parseRows(
     List<List<String>> rows, {
     Shatr? shatr,
@@ -275,6 +303,7 @@ class AdvisingReportParserService {
     var sawHeader = false;
     var missingRequiredColumns = false;
     var firstHeaderRaw = '';
+    var headerColumnCount = 0;
 
     String? currentAdvisorId;
     String? currentAdvisorName;
@@ -285,7 +314,8 @@ class AdvisingReportParserService {
 
     final result = <AdvisingCaseRecord>[];
 
-    for (final row in rows) {
+    for (final rawRow in rows) {
+      var row = rawRow;
       if (_isAdvisorHeaderRow(row)) {
         currentAdvisorName = row[0].trim();
         currentAdvisorId = row[1].trim();
@@ -328,6 +358,7 @@ class AdvisingReportParserService {
             missingRequiredColumns = requireDepartment && deptCol == -1;
           }
           sawHeader = true;
+          headerColumnCount = row.length;
           continue;
         }
       }
@@ -337,6 +368,15 @@ class AdvisingReportParserService {
       if (currentBranch.isNotEmpty) {
         exclusionCounts?.update('طالب من خارج كليتنا: $currentBranch', (v) => v + 1, ifAbsent: () => 1);
         continue;
+      }
+
+      if (headerColumnCount > 0 && row.length == headerColumnCount + 1) {
+        final repaired = _repairSplitNameCell(row, nameCol);
+        if (repaired != null) {
+          row = repaired;
+          exclusionCounts?.update(
+              'صف أُصلح تلقائيًا (اسم انقسم لخليتين أثناء استخراج PDF) - لم يُستبعَد', (v) => v + 1, ifAbsent: () => 1);
+        }
       }
 
       var name = _cell(row, nameCol).trim();
