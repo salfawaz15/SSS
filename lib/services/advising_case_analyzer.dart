@@ -666,6 +666,12 @@ class AdvisingCaseAnalyzer {
   /// الخطة/المتبقية) مع قائمة الطلاب - مطابقة بالرقم الجامعي، والمعدل السابق
   /// أيضًا (من basePrevious) كـ"النطاق السابق" لنفس التقرير. طالب لم يظهر بعد
   /// في تقرير بيانات الطلبة الأكاديمية يبقى بلا معدل/ساعات (null).
+  ///
+  /// **يُعوَّض اسم الطالب وقسمه دائمًا من ملف الإكسل** (بطلب سليمان صراحةً
+  /// 2026-08-26) - رقم الطالب هو المفتاح الموثوق دومًا مهما حدث لخلية الاسم
+  /// أثناء استخراج تقرير "كل الكليات" (PDF)، فلا داعي للاعتماد على اسم ذلك
+  /// التقرير إطلاقًا ما دام رقم الطالب مطابقًا بملف الإكسل - يضمن عدم فقدان
+  /// أو تشويه أي اسم بصرف النظر عن أي خلل مستقبلي باستخراج PDF.
   static List<AdvisingCaseRecord> mergeAcademicData(
     List<AdvisingCaseRecord> students,
     List<AdvisingCaseRecord> academic,
@@ -678,6 +684,8 @@ class AdvisingCaseAnalyzer {
       if (a == null) return s;
       final p = previousById[s.studentId];
       return s.copyWith(
+        studentName: a.studentName,
+        department: a.department,
         gpa: a.gpa,
         planHours: a.planHours,
         remainingHours: a.remainingHours,

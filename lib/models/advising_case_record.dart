@@ -63,6 +63,8 @@ class AdvisingCaseRecord {
   bool get isAcademicallyDismissed => enrollmentStatus.contains('مفصول');
 
   AdvisingCaseRecord copyWith({
+    String? studentName,
+    String? department,
     String? advisorNameRaw,
     String? advisorId,
     String? advisorDepartment,
@@ -74,8 +76,8 @@ class AdvisingCaseRecord {
   }) =>
       AdvisingCaseRecord(
         studentId: studentId,
-        studentName: studentName,
-        department: department,
+        studentName: studentName ?? this.studentName,
+        department: department ?? this.department,
         shatr: shatr,
         advisorNameRaw: advisorNameRaw ?? this.advisorNameRaw,
         advisorId: advisorId ?? this.advisorId,
