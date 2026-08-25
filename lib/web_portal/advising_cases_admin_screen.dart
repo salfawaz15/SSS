@@ -719,6 +719,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
   /// عمود "الوضع" يوضّح تصنيف كل طالب - بطلب سليمان الصريح (2026-08-15):
   /// خيار يعرض كل الطلاب بغض النظر عن وضعهم بدل التنقّل بين التبويبات.
   static String _gpaCell(AdvisingCaseRecord s) => s.gpa != null ? s.gpa!.toStringAsFixed(2) : '—';
+  static String _rangeCell(AdvisingCaseRecord s) => gpaStatusOf(s.gpa).label;
   static String _completedHoursCell(AdvisingCaseRecord s) => s.completedHours?.toString() ?? '—';
   static String _remainingHoursCell(AdvisingCaseRecord s) => s.remainingHours?.toString() ?? '—';
 
@@ -736,6 +737,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
           displayName(s.advisorNameRaw).ifEmptyDash(),
           'على مرشدهم',
           _gpaCell(s),
+          _rangeCell(s),
           _completedHoursCell(s),
           _remainingHoursCell(s),
         ]);
@@ -743,7 +745,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
     }
     for (final s in _classification.studentsWithoutAdvisor) {
       if (_deptMatches(s.department) && _advisorMatches(s.advisorNameRaw) && _matchesSearch(s.studentName, s.studentId)) {
-        rows.add([s.studentName, s.studentId, s.department, s.shatr, '—', 'بلا مرشد', _gpaCell(s), _completedHoursCell(s), _remainingHoursCell(s)]);
+        rows.add([s.studentName, s.studentId, s.department, s.shatr, '—', 'بلا مرشد', _gpaCell(s), _rangeCell(s), _completedHoursCell(s), _remainingHoursCell(s)]);
       }
     }
     for (final c in _classification.studentsWithWrongDeptAdvisor) {
@@ -758,6 +760,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
           displayName(c.student.advisorNameRaw).ifEmptyDash(),
           'على غير مرشدهم',
           _gpaCell(c.student),
+          _rangeCell(c.student),
           _completedHoursCell(c.student),
           _remainingHoursCell(c.student),
         ]);
@@ -775,6 +778,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
           displayName(s.advisorNameRaw).ifEmptyDash(),
           'مرشد خارجي ← طلابنا',
           _gpaCell(s),
+          _rangeCell(s),
           _completedHoursCell(s),
           _remainingHoursCell(s),
         ]);
@@ -792,6 +796,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
           displayName(s.advisorNameRaw).ifEmptyDash(),
           'مرشدنا ← طلاب خارجيون',
           _gpaCell(s),
+          _rangeCell(s),
           _completedHoursCell(s),
           _remainingHoursCell(s),
         ]);
@@ -802,7 +807,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       // أعمدة المعدل/الساعات المجتازة/المتبقية بطلب سليمان (2026-08-25) بعد
       // ربط رفع "بيانات الطلبة الأكاديمية" - null (تُعرض "—") لطالب لم يظهر
       // بعد بذلك الملف.
-      headers: const ['الاسم', 'الرقم الجامعي', 'القسم', 'الشطر', 'المرشد', 'الوضع', 'المعدل', 'الساعات المجتازة', 'الساعات المتبقية'],
+      headers: const ['الاسم', 'الرقم الجامعي', 'القسم', 'الشطر', 'المرشد', 'الوضع', 'المعدل', 'النطاق', 'الساعات المجتازة', 'الساعات المتبقية'],
       rows: rows,
     );
   }

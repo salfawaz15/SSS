@@ -11,6 +11,7 @@ import '../services/advising_report_repository.dart';
 import '../services/course_schedule_repository.dart' show Shatr;
 import '../services/web_download.dart';
 import '../theme/app_theme.dart';
+import '../theme/dashboard_table.dart';
 import '../theme/dashboard_tokens.dart';
 import 'admin_nav.dart';
 import 'advising_workspace.dart';
@@ -54,6 +55,23 @@ class _AdvisorStudentsLookupScreenState extends State<AdvisorStudentsLookupScree
   String _query = '';
   String? _selectedKey;
 
+  // فرز بالضغط على رأس العمود - نفس الآلية الموحَّدة المعتمَدة بكل جداول
+  // الموقع (`DashTable`، أول تطبيق بجدول منسوبي الكلية) - بطلب سليمان
+  // صراحةً (2026-08-26). مفتاح دلالي لا رقم عمود ثابت.
+  String? _sortKey;
+  bool _sortAscending = true;
+
+  void _onSort(String key) {
+    setState(() {
+      if (_sortKey == key) {
+        _sortAscending = !_sortAscending;
+      } else {
+        _sortKey = key;
+        _sortAscending = true;
+      }
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -87,16 +105,18 @@ class _AdvisorStudentsLookupScreenState extends State<AdvisorStudentsLookupScree
         byAdvisor.putIfAbsent(key, () => []).add(r);
       }
 
-      // ترتيب طلاب كل مرشد تنازليًا حسب المعدل التراكمي (كما تظهر بالمنظومة
-      // الداخلية) - بطلب سليمان صراحةً (2026-08-25). عند تساوي المعدل (أو
-      // غيابه لدى الطرفين): الأقدم أولاً حسب الرقم الجامعي **الأصغر رقميًا**
-      // (مثال: 43005957 قبل 44005957) - الأرقام الجامعية الأقدم تبدأ بسنة
-      // قبول أصغر فتصبح قيمتها الرقمية أصغر.
+      // ترتيب طلاب كل مرشد تصاعديًا حسب المعدل التراكمي (الأقل معدلاً أولاً -
+      // بطلب سليمان صراحةً 2026-08-26، الأولوية لمن يحتاج متابعة المرشد
+      // أكثر) - هذا الترتيب الافتراضي فقط، يبقى قابلاً لإعادة الفرز يدويًا
+      // بالضغط على أي رأس عمود (انظر `_sortKey`/`DashTable`). عند تساوي
+      // المعدل (أو غيابه لدى الطرفين): الأقدم أولاً حسب الرقم الجامعي
+      // **الأصغر رقميًا** (مثال: 43005957 قبل 44005957) - الأرقام الجامعية
+      // الأقدم تبدأ بسنة قبول أصغر فتصبح قيمتها الرقمية أصغر.
       int compareStudents(AdvisingCaseRecord a, AdvisingCaseRecord b) {
         final ga = a.gpa;
         final gb = b.gpa;
         if (ga != null && gb != null) {
-          final c = gb.compareTo(ga);
+          final c = ga.compareTo(gb);
           if (c != 0) return c;
         } else if (ga != null || gb != null) {
           return ga != null ? -1 : 1;
@@ -293,24 +313,99 @@ class _AdvisorStudentsLookupScreenState extends State<AdvisorStudentsLookupScree
     );
   }
 
+  static String _gpaText(AdvisingCaseRecord s) => s.gpa != null ? s.gpa!.toStringAsFixed(2) : '—';
+  static String _rangeText(AdvisingCaseRecord s) => gpaStatusOf(s.gpa).label;
+
+  /// نسخة مرتَّبة من طلاب المرشد وفق العمود المختار بالضغط على رأس عمود
+  /// (`_sortKey`) - ترتيب افتراضي (بلا اختيار) يبقى تصاعديًا حسب المعدل كما
+  /// حُمِّل أصلاً بـ[_load]. نفس القائمة تُستخدَم للعرض والتصدير معًا حتى
+  /// يطابق الملف المصدَّر ما يظهر على الشاشة بالضبط.
+  List<AdvisingCaseRecord> _sortedStudents(_AdvisorGroup group) {
+    if (_sortKey == null) return group.students;
+    int cmp(AdvisingCaseRecord a, AdvisingCaseRecord b) {
+      switch (_sortKey) {
+        case 'studentId':
+          return a.studentId.compareTo(b.studentId);
+        case 'gpa':
+        case 'range':
+          final ga = a.gpa;
+          final gb = b.gpa;
+          if (ga == null && gb == null) return 0;
+          if (ga == null || gb == null) return ga == null ? 1 : -1;
+          return ga.compareTo(gb);
+        case 'completedHours':
+          final ca = a.completedHours;
+          final cb = b.completedHours;
+          if (ca == null && cb == null) return 0;
+          if (ca == null || cb == null) return ca == null ? 1 : -1;
+          return ca.compareTo(cb);
+        case 'remainingHours':
+          final ra = a.remainingHours;
+          final rb = b.remainingHours;
+          if (ra == null && rb == null) return 0;
+          if (ra == null || rb == null) return ra == null ? 1 : -1;
+          return ra.compareTo(rb);
+        case 'studentName':
+        default:
+          return a.studentName.compareTo(b.studentName);
+      }
+    }
+
+    final sorted = [...group.students]..sort(cmp);
+    if (!_sortAscending) return sorted.reversed.toList();
+    return sorted;
+  }
+
   Widget _buildAdvisorPanel(_AdvisorGroup group) {
     // عمود "التخصص" غير مفيد هنا (كل الطلاب أصلاً لنفس المرشد، غالبًا نفس
     // القسم) - أُزيل بطلب سليمان الصريح (2026-08-15). أُضيفت أعمدة "المعدل"/
-    // "الساعات المجتازة"/"الساعات المتبقية" بدلاً منه (2026-08-25) بعد ربط
-    // رفع "بيانات الطلبة الأكاديمية" - القائمة نفسها مرتَّبة تنازليًا حسب
-    // المعدل (انظر `compareStudents` بـ[_load]).
+    // "النطاق"/"الساعات المجتازة"/"الساعات المتبقية" بدلاً منه (2026-08-25/26)
+    // بعد ربط رفع "بيانات الطلبة الأكاديمية". الجدول بهوية `DashTable`
+    // الموحَّدة لكل جداول الموقع (فرز بالضغط على أي رأس عمود) - بطلب سليمان
+    // صراحةً (2026-08-26)، بدل `DataTable` القياسي السابق.
     final title = '${group.name} - ${group.shatr}${group.advisorId.isNotEmpty ? ' (رقم المرشد: ${group.advisorId})' : ''}';
-    final headers = ['الرقم الجامعي', 'اسم الطالب', 'المعدل', 'الساعات المجتازة', 'الساعات المتبقية'];
+    final students = _sortedStudents(group);
+    final headers = ['الرقم الجامعي', 'اسم الطالب', 'المعدل', 'النطاق', 'الساعات المجتازة', 'الساعات المتبقية'];
     final rows = [
-      for (final s in group.students)
+      for (final s in students)
         [
           s.studentId,
           s.studentName,
-          s.gpa != null ? s.gpa!.toStringAsFixed(2) : '—',
+          _gpaText(s),
+          _rangeText(s),
           s.completedHours?.toString() ?? '—',
           s.remainingHours?.toString() ?? '—',
         ],
     ];
+    final columns = <DashTableColumn>[
+      const DashTableColumn(key: 'studentId', label: 'الرقم الجامعي', flex: 14, sortable: true),
+      const DashTableColumn(key: 'studentName', label: 'اسم الطالب', flex: 26, sortable: true, align: TextAlign.right),
+      const DashTableColumn(key: 'gpa', label: 'المعدل', flex: 10, sortable: true),
+      const DashTableColumn(key: 'range', label: 'النطاق', flex: 12, sortable: true),
+      const DashTableColumn(key: 'completedHours', label: 'الساعات المجتازة', flex: 14, sortable: true),
+      const DashTableColumn(key: 'remainingHours', label: 'الساعات المتبقية', flex: 14, sortable: true),
+    ];
+
+    Widget cell(BuildContext context, int i, String key) {
+      final s = students[i];
+      switch (key) {
+        case 'studentId':
+          return Text(s.studentId, style: const TextStyle(fontSize: 12.5));
+        case 'studentName':
+          return Text(s.studentName, textAlign: TextAlign.right, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600));
+        case 'gpa':
+          return Text(_gpaText(s), style: const TextStyle(fontSize: 12.5));
+        case 'range':
+          return Text(_rangeText(s), style: const TextStyle(fontSize: 12.5));
+        case 'completedHours':
+          return Text(s.completedHours?.toString() ?? '—', style: const TextStyle(fontSize: 12.5));
+        case 'remainingHours':
+          return Text(s.remainingHours?.toString() ?? '—', style: const TextStyle(fontSize: 12.5));
+        default:
+          return const SizedBox.shrink();
+      }
+    }
+
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -343,19 +438,14 @@ class _AdvisorStudentsLookupScreenState extends State<AdvisorStudentsLookupScree
             ],
           ),
           const SizedBox(height: 10),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: DataTable(
-              headingRowColor: WidgetStateProperty.all(AppColors.green),
-              headingTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-              columns: [for (final h in headers) DataColumn(label: Expanded(child: Text(h, textAlign: TextAlign.center)))],
-              rows: [
-                for (var i = 0; i < rows.length; i++)
-                  DataRow(
-                    color: WidgetStateProperty.all(i.isEven ? Colors.white : const Color(0xFFF7F5EF)),
-                    cells: [for (final v in rows[i]) DataCell(Center(child: Text(v)))],
-                  ),
-              ],
+          DashTableCard(
+            table: DashTable(
+              columns: columns,
+              rowCount: students.length,
+              sortKey: _sortKey,
+              sortAscending: _sortAscending,
+              onSort: _onSort,
+              cellBuilder: cell,
             ),
           ),
         ],
