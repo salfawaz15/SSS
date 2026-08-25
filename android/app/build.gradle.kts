@@ -1,3 +1,6 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -5,6 +8,22 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
     // Firebase / Google services
     id("com.google.gms.google-services")
+}
+
+// توقيع ثابت (upload key) بدل مفتاح "debug" الافتراضي العشوائي - كل مُشغِّل
+// GitHub Actions يُنشئ ~/.android/debug.keystore عشوائيًا جديدًا (لا يُخزَّن
+// بين التشغيلات)، فكان توقيع كل تشغيل CI يختلف عن السابق، فيرفض أندرويد
+// "App not installed as package conflicts with an existing package" عند أي
+// تحديث - خلل حقيقي واجهه سليمان فعليًا 2026-08-25 بتطبيق "بوابة الإرشاد"
+// عند أول تشغيل CI له. الملف `key.properties` (غير موجود بالمستودع - يُكتَب
+// وقت تشغيل CI فقط من GitHub Secrets، انظر deploy.yml) يوفّر مسار/كلمات
+// مرور مفتاح ثابت؛ إن غاب (تطوير محلي عادي) يُستخدَم توقيع "debug" الافتراضي
+// كما كان - لا يُكسَر أي بناء محلي حالي.
+val keystorePropertiesFile = rootProject.file("key.properties")
+val keystoreProperties = Properties()
+val hasUploadKeystore = keystorePropertiesFile.exists()
+if (hasUploadKeystore) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
 android {
@@ -49,11 +68,22 @@ android {
         }
     }
 
+    signingConfigs {
+        if (hasUploadKeystore) {
+            create("upload") {
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // مفتاح ثابت (upload) إن توفّر key.properties (دومًا بـCI)، وإلا
+            // مفتاح "debug" الافتراضي كما كان (تطوير محلي بلا الملف).
+            signingConfig = if (hasUploadKeystore) signingConfigs.getByName("upload") else signingConfigs.getByName("debug")
         }
     }
 }
