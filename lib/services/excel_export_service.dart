@@ -8,8 +8,12 @@ class ExcelExportService {
   // العمود المطلوب بالاسم بدل الفهرس الثابت.
   static const String universityIdHeader = 'الرقم الجامعي';
   static const String actionTypeHeader = 'نوع الإجراء';
-  static const String courseHeader = 'المقرر';
-  static const String requiredSectionHeader = 'رقم الشعبة';
+  static const String courseNameHeader = 'اسم المقرر';
+  static const String courseCodeHeader = 'رمز المقرر';
+  static const String addSectionHeader = 'رقم الشعبة المراد إضافتها';
+  static const String deleteSectionHeader = 'رقم الشعبة المراد حذفها';
+  static const String currentSectionHeader = 'رقم الشعبة الحالية (المطلوب تعديلها)';
+  static const String requestedSectionHeader = 'رقم الشعبة المطلوبة (بعد التعديل)';
   static const String advisorStatusHeader = 'حالة الإنجاز من قبل المرشد الأكاديمي';
   static const String advisorNotesHeader = 'ملاحظات المرشد الأكاديمي';
   static const String advisorOtherReasonHeader = 'يرجى كتابة السبب الآخر (فقط إن اخترت "سبب آخر")';
@@ -55,8 +59,12 @@ class ExcelExportService {
     'خريج متوقع',
     'ذوي إعاقة',
     actionTypeHeader,
-    courseHeader,
-    requiredSectionHeader,
+    courseNameHeader,
+    courseCodeHeader,
+    addSectionHeader,
+    deleteSectionHeader,
+    currentSectionHeader,
+    requestedSectionHeader,
     'سبب الطلب',
     advisorStatusHeader,
     advisorNotesHeader,
@@ -77,8 +85,12 @@ class ExcelExportService {
     10,
     10,
     16,
-    42,
-    12,
+    30,
+    14,
+    16,
+    16,
+    16,
+    16,
     22,
     16,
     24,
@@ -90,26 +102,26 @@ class ExcelExportService {
   ];
 
   /// فهرس عمود "حالة الإنجاز من قبل المرشد الأكاديمي" (صفر-فهرسة)
-  static const int advisorStatusColumnIndex = 12;
+  static const int advisorStatusColumnIndex = 16;
 
   /// فهرس عمود "ملاحظات المرشد الأكاديمي" (قائمة أسباب جاهزة - صفر-فهرسة)
-  static const int advisorNotesColumnIndex = 13;
+  static const int advisorNotesColumnIndex = 17;
 
   /// فهرس عمود "يرجى كتابة السبب الآخر" (نص حر، يُستخدم فقط عند اختيار
   /// "سبب آخر" بعمود الملاحظات - صفر-فهرسة)
-  static const int advisorOtherReasonColumnIndex = 14;
+  static const int advisorOtherReasonColumnIndex = 18;
 
   /// فهرس عمود "حالة الإنجاز من قبل منسق القسم" (صفر-فهرسة)
-  static const int coordinatorStatusColumnIndex = 15;
+  static const int coordinatorStatusColumnIndex = 19;
 
   /// فهرس عمود "ملاحظات منسق القسم" (صفر-فهرسة)
-  static const int coordinatorNotesColumnIndex = 16;
+  static const int coordinatorNotesColumnIndex = 20;
 
   /// فهرس عمود "حالة الإنجاز من قبل منسق الكلية" (صفر-فهرسة)
-  static const int collegeStatusColumnIndex = 17;
+  static const int collegeStatusColumnIndex = 21;
 
   /// فهرس عمود "ملاحظات منسق الكلية" (صفر-فهرسة)
-  static const int collegeNotesColumnIndex = 18;
+  static const int collegeNotesColumnIndex = 22;
 
   static final _thinGrayBorder = Border(
     borderStyle: BorderStyle.Thin,
@@ -191,8 +203,11 @@ class ExcelExportService {
           _headerStyle();
     }
 
-    var dataRowIndex = 0; // صفر-فهرسة بين صفوف البيانات (بدون العناوين/التعليمات)
-
+    // نجمّع كل (تذكرة، إجراء) بصف مستقل أولاً بدل الكتابة المباشرة، لنرتّبها
+    // بعدها حسب نوع الإجراء (إضافة ثم حذف ثم تعديل) - يسهّل على المرشد مسح
+    // الملف بصريًا كتلة كتلة بدل التنقل بين الأنواع الثلاثة بشكل عشوائي بين
+    // الصفوف (أكثر من 100 مرشد أكاديمي، بعضهم غير معتاد على إكسل إطلاقًا).
+    final rowSpecs = <_RowSpec>[];
     for (final t in tickets) {
       final baseInfo = [
         t['name'] ?? '',
@@ -207,12 +222,16 @@ class ExcelExportService {
       final actions = (t['actions'] as List?) ?? [];
 
       if (actions.isEmpty) {
-        _appendStyledRow(sheet, [
+        rowSpecs.add(_RowSpec(priority: 99, values: [
           ...baseInfo,
           '',
           '',
           '',
           '',
+          '',
+          '',
+          '',
+          '',
           ' ',
           ' ',
           ' ',
@@ -220,13 +239,13 @@ class ExcelExportService {
           ' ',
           ' ',
           ' ',
-        ], dataRowIndex, headerRowIndex);
-        dataRowIndex++;
+        ]));
         continue;
       }
 
       for (final a in actions) {
         final action = a as Map<String, dynamic>;
+        final actionType = (action['action_type'] ?? '').toString();
         final advisorStatus = (action['advisor_status'] ?? '').toString();
         final advisorNotes = (action['advisor_notes'] ?? '').toString();
         final advisorOtherReason = (action['advisor_other_reason'] ?? '').toString();
@@ -234,11 +253,24 @@ class ExcelExportService {
         final coordinatorNotes = (action['coordinator_notes'] ?? '').toString();
         final collegeStatus = (action['college_status'] ?? '').toString();
         final collegeNotes = (action['college_notes'] ?? '').toString();
+        // .contains بدل == لتحمّل تسميات إجراء أوسع من الثلاث القياسية
+        // (مثل 'إضافة شعبة' بدل 'إضافة' بمصادر بيانات أقدم/اختبارات).
+        final isAdd = actionType.contains('إضافة');
+        final isDelete = actionType.contains('حذف');
+        final isChange = actionType.contains('تعديل');
+        // توافق رجعي: تذاكر بلا course_name/course_code منفصلين (لم تمرّ
+        // عبر ExcelParserService الحالي) - نستخدم حقل 'course' الخام كاسم.
+        final courseName = action['course_name'] ?? action['course'] ?? '';
+        final courseCode = action['course_code'] ?? '';
         final row = [
           ...baseInfo,
-          action['action_type'] ?? '',
-          action['course'] ?? '',
-          action['required_section'] ?? action['current_section'] ?? '',
+          actionType,
+          courseName,
+          courseCode,
+          isAdd ? (action['required_section'] ?? '') : '',
+          isDelete ? (action['current_section'] ?? '') : '',
+          isChange ? (action['current_section'] ?? '') : '',
+          isChange ? (action['required_section'] ?? '') : '',
           action['reason_detail'] ?? action['reason'] ?? '',
           advisorStatus.isEmpty ? ' ' : advisorStatus,
           advisorNotes.isEmpty ? ' ' : advisorNotes,
@@ -248,9 +280,16 @@ class ExcelExportService {
           collegeStatus.isEmpty ? ' ' : collegeStatus,
           collegeNotes.isEmpty ? ' ' : collegeNotes,
         ];
-        _appendStyledRow(sheet, row, dataRowIndex, headerRowIndex);
-        dataRowIndex++;
+        rowSpecs.add(_RowSpec(priority: isAdd ? 0 : (isDelete ? 1 : (isChange ? 2 : 98)), values: row));
       }
+    }
+
+    rowSpecs.sort((a, b) => a.priority.compareTo(b.priority));
+
+    var dataRowIndex = 0; // صفر-فهرسة بين صفوف البيانات (بدون العناوين/التعليمات)
+    for (final spec in rowSpecs) {
+      _appendStyledRow(sheet, spec.values, dataRowIndex, headerRowIndex);
+      dataRowIndex++;
     }
 
     return Uint8List.fromList(workbook.encode()!);
@@ -274,4 +313,12 @@ class ExcelExportService {
           style;
     }
   }
+}
+
+/// صف مبنى مؤقتًا قبل الكتابة الفعلية بالشيت - [priority] يحدّد ترتيب
+/// التجميع (0=إضافة، 1=حذف، 2=تعديل، أكبر=غير مصنَّف/بلا إجراءات).
+class _RowSpec {
+  final int priority;
+  final List<dynamic> values;
+  const _RowSpec({required this.priority, required this.values});
 }

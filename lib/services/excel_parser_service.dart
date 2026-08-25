@@ -320,11 +320,14 @@ class ExcelParserService {
           }
           for (var i = 0; i < dropdownCourses.length && i < _maxAddActions; i++) {
             final course = dropdownCourses[i];
+            final dashIdx = course.indexOf('-');
             actions.add({
               'action_type': 'إضافة',
               'required_section': _matchDropdownSection(course, freeTexts) ?? '',
               'current_section': '',
               'course': course,
+              'course_code': dashIdx >= 0 ? course.substring(0, dashIdx).trim() : '',
+              'course_name': dashIdx >= 0 ? course.substring(dashIdx + 1).trim() : course,
               'reason': reason,
               'reason_detail': reason,
             });
@@ -341,6 +344,8 @@ class ExcelParserService {
               'required_section': parsed['section'] ?? '',
               'current_section': '',
               'course': _joinCourse(parsed),
+              'course_code': parsed['code'] ?? '',
+              'course_name': parsed['name'] ?? '',
               'reason': reason,
               'reason_detail': reason,
             });
@@ -361,6 +366,8 @@ class ExcelParserService {
             'required_section': '',
             'current_section': parsed['section'] ?? '',
             'course': _joinCourse(parsed),
+            'course_code': parsed['code'] ?? '',
+            'course_name': parsed['name'] ?? '',
             'reason': reason,
             'reason_detail': detail.isNotEmpty ? detail : reason,
           });
@@ -380,6 +387,8 @@ class ExcelParserService {
             'required_section': parsed['requestedSection'] ?? '',
             'current_section': parsed['currentSection'] ?? '',
             'course': _joinCourse(parsed),
+            'course_code': parsed['code'] ?? '',
+            'course_name': parsed['name'] ?? '',
             'reason': reason,
             'reason_detail': detail.isNotEmpty ? detail : reason,
           });
@@ -632,5 +641,75 @@ class ExcelParserService {
     orderedGroups.addAll(rawGroups);
 
     return orderedGroups;
+  }
+
+  /// يستبدل اسم/رمز المقرر بحالتي "حذف" و"تعديل" بالقيمة الصحيحة من جدول
+  /// المقررات الفعلي (الحويّة) عند وجود تطابق واثق - على عكس "إضافة" (قائمة
+  /// منسدلة حقيقية)، حقل الحذف/التعديل حر تمامًا بلا قائمة، فقد يكتب الطالب
+  /// اسمًا غير دقيق (خطأ إملائي، حذف "ال" التعريف...). لا يُغيَّر رقم الشعبة
+  /// الذي كتبه الطالب - فقط اسم/رمز المقرر يُنظَّف عند التطابق؛ يبقى كما هو
+  /// لو لم يوجد تطابق واثق (لا نخمّن).
+  static List<Map<String, dynamic>> enrichWithCourseCatalog(
+    List<Map<String, dynamic>> tickets,
+    List<({String code, String name})> catalog,
+  ) {
+    if (catalog.isEmpty) return tickets;
+    final uniqueCatalog = <String, ({String code, String name})>{};
+    for (final c in catalog) {
+      if (c.name.trim().isEmpty) continue;
+      uniqueCatalog['${c.code}|${c.name}'] = c;
+    }
+    final list = uniqueCatalog.values.toList();
+
+    for (final t in tickets) {
+      final actions = (t['actions'] as List?) ?? const [];
+      for (final a in actions) {
+        final action = a as Map<String, dynamic>;
+        final actionType = action['action_type'];
+        if (actionType != 'حذف' && actionType != 'تعديل') continue;
+        final freeName = (action['course_name'] ?? '').toString();
+        if (freeName.isEmpty) continue;
+        final match = _bestCatalogMatch(freeName, list);
+        if (match != null) {
+          action['course_name'] = match.name;
+          action['course_code'] = match.code;
+          action['course'] = match.code.isEmpty ? match.name : '${match.code} - ${match.name}';
+        }
+      }
+    }
+    return tickets;
+  }
+
+  static ({String code, String name})? _bestCatalogMatch(
+    String freeName,
+    List<({String code, String name})> catalog,
+  ) {
+    final normalizedFree = _normalizeForMatch(freeName);
+    if (normalizedFree.isEmpty) return null;
+
+    for (final entry in catalog) {
+      final normalizedCatalog = _normalizeForMatch(entry.name);
+      if (normalizedCatalog.isEmpty) continue;
+      if (normalizedFree.contains(normalizedCatalog) || normalizedCatalog.contains(normalizedFree)) {
+        return entry;
+      }
+    }
+
+    ({String code, String name})? best;
+    var bestDistance = 1 << 30;
+    for (final entry in catalog) {
+      final normalizedCatalog = _normalizeForMatch(entry.name);
+      if (normalizedCatalog.isEmpty) continue;
+      final minLen = normalizedFree.length < normalizedCatalog.length
+          ? normalizedFree.length
+          : normalizedCatalog.length;
+      final tolerance = (minLen * 0.2).ceil().clamp(1, 4);
+      final distance = _levenshtein(normalizedFree, normalizedCatalog);
+      if (distance <= tolerance && distance < bestDistance) {
+        bestDistance = distance;
+        best = entry;
+      }
+    }
+    return best;
   }
 }

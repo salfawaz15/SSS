@@ -678,7 +678,23 @@ Future<void> runUploadForms({
 
   try {
     final Uint8List bytes = result.files.single.bytes!;
-    final rawTickets = ExcelParserService.parseTickets(bytes);
+    var rawTickets = ExcelParserService.parseTickets(bytes);
+
+    // تنظيف اسم/رمز مقرر "حذف"/"تعديل" (بلا قائمة منسدلة بالنموذج لهما) وفق
+    // جدول المقررات الفعلي (الحويّة) المرفوع بالموقع - يبقى النص كما كتبه
+    // الطالب لو تعذّر تحميل الجدول أو كان فارغًا (لا كسر للرفع بسبب هذا).
+    try {
+      final courseSections = [
+        ...await CourseScheduleRepository.loadSchedule(Shatr.male),
+        ...await CourseScheduleRepository.loadSchedule(Shatr.female),
+      ];
+      final catalog = courseSections
+          .map((s) => (code: s.courseCode, name: s.courseName))
+          .toList();
+      rawTickets = ExcelParserService.enrichWithCourseCatalog(rawTickets, catalog);
+    } catch (_) {
+      // تجاهل - يبقى النص الحر كما هو لو تعذّرت قراءة جدول المقررات
+    }
 
     final advisingRecords = [
       ...await AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.allColleges),

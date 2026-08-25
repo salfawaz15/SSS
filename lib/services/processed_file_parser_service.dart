@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:excel/excel.dart';
 
+import '../utils/xlsx_sanitizer.dart';
 import 'excel_export_service.dart';
 
 /// يقرأ ملف Excel عائد من مرشد (بعد تعبئة عمودي حالة الإنجاز والملاحظات)
@@ -13,7 +14,7 @@ import 'excel_export_service.dart';
 /// الأعمدة بالخطأ.
 class ProcessedFileParserService {
   static List<Map<String, dynamic>> parseProcessedRows(Uint8List bytes) {
-    final excel = Excel.decodeBytes(bytes);
+    final excel = Excel.decodeBytes(sanitizeXlsxBytes(bytes));
     final sheet = excel.tables[excel.tables.keys.first]!;
 
     if (sheet.maxRows < 2) return [];
@@ -41,8 +42,11 @@ class ProcessedFileParserService {
 
     final universityIdCol = columnIndex[ExcelExportService.universityIdHeader];
     final actionTypeCol = columnIndex[ExcelExportService.actionTypeHeader];
-    final courseCol = columnIndex[ExcelExportService.courseHeader];
-    final sectionCol = columnIndex[ExcelExportService.requiredSectionHeader];
+    final courseNameCol = columnIndex[ExcelExportService.courseNameHeader];
+    final courseCodeCol = columnIndex[ExcelExportService.courseCodeHeader];
+    final addSectionCol = columnIndex[ExcelExportService.addSectionHeader];
+    final deleteSectionCol = columnIndex[ExcelExportService.deleteSectionHeader];
+    final requestedSectionCol = columnIndex[ExcelExportService.requestedSectionHeader];
     final advisorStatusCol = columnIndex[ExcelExportService.advisorStatusHeader];
     final advisorNotesCol = columnIndex[ExcelExportService.advisorNotesHeader];
     final advisorOtherReasonCol = columnIndex[ExcelExportService.advisorOtherReasonHeader];
@@ -53,8 +57,11 @@ class ProcessedFileParserService {
 
     if (universityIdCol == null ||
         actionTypeCol == null ||
-        courseCol == null ||
-        sectionCol == null ||
+        courseNameCol == null ||
+        courseCodeCol == null ||
+        addSectionCol == null ||
+        deleteSectionCol == null ||
+        requestedSectionCol == null ||
         advisorStatusCol == null ||
         advisorNotesCol == null ||
         coordinatorStatusCol == null ||
@@ -62,7 +69,8 @@ class ProcessedFileParserService {
         collegeStatusCol == null ||
         collegeNotesCol == null) {
       throw const FormatException(
-        'الملف لا يحتوي على كل الأعمدة المتوقعة (الرقم الجامعي، نوع الإجراء، المقرر، رقم الشعبة، وأعمدة حالة/ملاحظات المرشد ومنسق القسم ومنسق الكلية الستة)',
+        'الملف لا يحتوي على كل الأعمدة المتوقعة (الرقم الجامعي، نوع الإجراء، اسم/رمز المقرر، '
+        'أعمدة أرقام الشعب الأربعة، وأعمدة حالة/ملاحظات المرشد ومنسق القسم ومنسق الكلية)',
       );
     }
 
@@ -75,11 +83,26 @@ class ProcessedFileParserService {
       final universityId = _cellText(row, universityIdCol);
       if (universityId.isEmpty) continue;
 
+      final actionType = _cellText(row, actionTypeCol);
+      final courseName = _cellText(row, courseNameCol);
+      final courseCode = _cellText(row, courseCodeCol);
+      // نعيد بناء 'course' و'section' بنفس صيغة/منطق التذكرة الأصلية
+      // (FirestoreTicketService._actionKey/_ticketActionSection) للمطابقة
+      // معها عند الدمج - انظر التوثيق هناك.
+      final course = courseCode.isEmpty
+          ? courseName
+          : (courseName.isEmpty ? courseCode : '$courseCode - $courseName');
+      // .contains بدل == - يطابق نفس منطق التصنيف الأوسع بـExcelExportService
+      // (يتحمّل تسميات إجراء أوسع من الثلاث القياسية).
+      final section = actionType.contains('إضافة')
+          ? _cellText(row, addSectionCol)
+          : (actionType.contains('تعديل') ? _cellText(row, requestedSectionCol) : _cellText(row, deleteSectionCol));
+
       rows.add({
         'university_id': universityId,
-        'action_type': _cellText(row, actionTypeCol),
-        'course': _cellText(row, courseCol),
-        'section': _cellText(row, sectionCol),
+        'action_type': actionType,
+        'course': course,
+        'section': section,
         'advisor_status': _cellText(row, advisorStatusCol),
         'advisor_notes': _cellText(row, advisorNotesCol),
         if (advisorOtherReasonCol != null) 'advisor_other_reason': _cellText(row, advisorOtherReasonCol),
