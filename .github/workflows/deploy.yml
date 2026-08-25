@@ -74,3 +74,32 @@ jobs:
             --token "$FIREBASE_TOKEN"
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+
+      # تطبيق "بوابة الإرشاد" (com.taif.cba.advisingportal) - نقطة دخول
+      # منفصلة كليًا (lib/main_advising_portal.dart، معمارية lib/mobile_portal/)
+      # عن "CBA Advising" القديم أعلاه (lib/main_advising_app.dart) - لم تكن
+      # مبنية/موزَّعة عبر CI إطلاقًا رغم وجود flavor لها فعليًا بـ
+      # android/app/build.gradle.kts، فكانت كل تحديثات بوابة الإرشاد الجوّالة
+      # (كالشريط الموحَّد) لا تصل سليمان أبدًا عبر التوزيع التلقائي (اكتُشف
+      # فعليًا 2026-08-25 حين وصلت رسالة تحديث "CBA Advising" القديم بدلاً
+      # من "بوابة الإرشاد" الجديدة التي كان يتوقعها).
+      - name: Build APK (advisingPortal flavor)
+        run: flutter build apk --release --flavor advisingPortal -t lib/main_advising_portal.dart
+
+      - name: Upload advisingPortal APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-advisingportal-release
+          path: build/app/outputs/flutter-apk/app-advisingportal-release.apk
+          retention-days: 30
+
+      - name: Distribute advisingPortal APK via Firebase App Distribution
+        run: |
+          npx firebase-tools appdistribution:distribute \
+            build/app/outputs/flutter-apk/app-advisingportal-release.apk \
+            --app 1:843787630334:android:b13a15e0e42a7b19ea97af \
+            --release-notes "نشر تلقائي من الفرع main - $(git log -1 --pretty=%s)" \
+            --testers "salfawaz50@gmail.com" \
+            --token "$FIREBASE_TOKEN"
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
