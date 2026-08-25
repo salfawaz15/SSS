@@ -35,6 +35,7 @@ import '../services/escalation_file_service.dart';
 import '../services/excel_parser_service.dart';
 import '../services/firestore_ticket_service.dart';
 import '../services/outside_course_repository.dart';
+import '../services/processed_file_parser_service.dart';
 import '../services/unit_committee_repository.dart';
 import '../services/web_download.dart';
 import '../services/xlsx_metadata_service.dart';
@@ -913,6 +914,59 @@ Future<void> runDownloadAllStage3Zip({
     showUploadErrorDialog(context, 'تعذّر تنزيل الملفات', '$e');
   } finally {
     setDownloading(false);
+  }
+}
+
+/// رفع دفعي (10+ ملفات دفعة واحدة) لملفات معالجة عائدة من أي مرحلة (مرشد/
+/// منسّق قسم/منسّق كلية) - مُستخرَجة من `upload_hub_screen.dart` (كانت
+/// مكرَّرة ثلاث مرات بنفس المنطق تمامًا لثلاث مراحل مختلفة، فرقها فقط اسم
+/// متغيّر الحالة) لإعادة استخدامها أيضًا بشاشة رفع الجوال المتجاوبة
+/// (`portal_uploads_screen.dart`) - سليمان صراحةً 2026-08-25: "بنفس الآلية
+/// التي في الموقع في الشريط العلوي". `mergeAllProcessedRows` لا تميّز بين
+/// المراحل (كل صف يحمل مفتاحه الخاص)، فنفس الدالة تخدم الثلاث دون تمييز.
+Future<void> runUploadProcessedFiles({
+  required BuildContext context,
+  required ValueChanged<bool> setUploading,
+  required void Function(MergeResult result) onResult,
+}) async {
+  final result = await FilePicker.platform.pickFiles(
+    type: FileType.custom,
+    allowedExtensions: ['xlsx'],
+    allowMultiple: true,
+    withData: true,
+  );
+  if (result == null || result.files.isEmpty) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('لم يتم اختيار أي ملف - حاول مرة أخرى.')),
+      );
+    }
+    return;
+  }
+
+  setUploading(true);
+  try {
+    final allRows = <Map<String, dynamic>>[];
+    for (final file in result.files) {
+      if (file.bytes == null) continue;
+      allRows.addAll(ProcessedFileParserService.parseProcessedRows(file.bytes!));
+    }
+    if (allRows.isEmpty) {
+      throw Exception('تعذّرت قراءة محتوى الملفات المختارة (قد تكون فارغة أو غير مدعومة).');
+    }
+
+    final mergeResult = await FirestoreTicketService.mergeAllProcessedRows(allRows).timeout(
+      const Duration(seconds: 30),
+      onTimeout: () => throw Exception('انتهت مهلة الاتصال بالخادم (30 ثانية بلا استجابة) - تأكد من اتصال الإنترنت وحاول مرة أخرى'),
+    );
+
+    setUploading(false);
+    if (!context.mounted) return;
+    onResult(mergeResult);
+  } catch (e) {
+    setUploading(false);
+    if (!context.mounted) return;
+    showUploadErrorDialog(context, 'تعذّر رفع ملفات المعالجة', '$e');
   }
 }
 

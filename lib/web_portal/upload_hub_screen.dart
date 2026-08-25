@@ -237,152 +237,37 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     }
   }
 
-  /// رفع دفعي (10+ ملفات دفعة واحدة) لملفات معالجة عائدة من أي مرشد/منسّق
-  /// قسم - يطابق كل صف بمفتاحه الخاص بصرف النظر عن قسمه/شطره
-  /// (`mergeAllProcessedRows`)، فلا حاجة لاختيار قسم أو شطر يدويًا. إجراء
-  /// وقائي/احتياطي بطلب سليمان صراحةً 2026-08-20.
-  Future<void> _pickAndUploadProcessedFilesAll() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['xlsx'],
-      allowMultiple: true,
-      withData: true,
-    );
-    if (result == null || result.files.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('لم يتم اختيار أي ملف - حاول مرة أخرى.')),
-        );
-      }
-      return;
-    }
-
-    setState(() => _uploadingProcessedAll = true);
-    try {
-      final allRows = <Map<String, dynamic>>[];
-      for (final file in result.files) {
-        if (file.bytes == null) continue;
-        allRows.addAll(ProcessedFileParserService.parseProcessedRows(file.bytes!));
-      }
-      if (allRows.isEmpty) {
-        throw Exception('تعذّرت قراءة محتوى الملفات المختارة (قد تكون فارغة أو غير مدعومة).');
-      }
-
-      final mergeResult = await FirestoreTicketService.mergeAllProcessedRows(allRows).timeout(
-        const Duration(seconds: 30),
-        onTimeout: () => throw Exception('انتهت مهلة الاتصال بالخادم (30 ثانية بلا استجابة) - تأكد من اتصال الإنترنت وحاول مرة أخرى'),
+  /// رفع دفعي (10+ ملفات دفعة واحدة) لملفات معالجة عائدة من مرحلة المرشد -
+  /// [runUploadProcessedFiles] (2026-08-25، مُستخرَجة من هنا - كانت مكرَّرة
+  /// ثلاث مرات بنفس المنطق تمامًا).
+  Future<void> _pickAndUploadProcessedFilesAll() => runUploadProcessedFiles(
+        context: context,
+        setUploading: (v) => setState(() => _uploadingProcessedAll = v),
+        onResult: (r) {
+          setState(() => _processedAllLastUpload = DateTime.now());
+          _showMergeResultSnackBar(r);
+        },
       );
 
-      if (!mounted) return;
-      setState(() {
-        _uploadingProcessedAll = false;
-        _processedAllLastUpload = DateTime.now();
-      });
-      _showMergeResultSnackBar(mergeResult);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _uploadingProcessedAll = false);
-      showUploadErrorDialog(context, 'تعذّر رفع ملفات المعالجة', '$e');
-    }
-  }
-
-  /// نفس فكرة الرفع الدفعي الشامل أعلاه لكن كزرّ مستقل لملفات "منسّقي
-  /// الأقسام" تحديدًا (بطلب سليمان صراحةً 2026-08-20: فصل الزرّين حتى لا
-  /// يلتبس الأمر بين مرحلة المرشدين ومرحلة منسّقي الأقسام) - تُستخدَم نفس
-  /// دالة الدمج الشاملة تمامًا (`mergeAllProcessedRows` لا تميّز بين
-  /// المراحل، كل صف يحمل مفتاحه الخاص) بحالة/تتبّع منفصلَين فقط لوضوح
-  /// الواجهة.
-  Future<void> _pickAndUploadCoordinatorProcessedFilesAll() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['xlsx'],
-      allowMultiple: true,
-      withData: true,
-    );
-    if (result == null || result.files.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('لم يتم اختيار أي ملف - حاول مرة أخرى.')),
-        );
-      }
-      return;
-    }
-
-    setState(() => _uploadingCoordinatorAll = true);
-    try {
-      final allRows = <Map<String, dynamic>>[];
-      for (final file in result.files) {
-        if (file.bytes == null) continue;
-        allRows.addAll(ProcessedFileParserService.parseProcessedRows(file.bytes!));
-      }
-      if (allRows.isEmpty) {
-        throw Exception('تعذّرت قراءة محتوى الملفات المختارة (قد تكون فارغة أو غير مدعومة).');
-      }
-
-      final mergeResult = await FirestoreTicketService.mergeAllProcessedRows(allRows).timeout(
-        const Duration(seconds: 30),
-        onTimeout: () => throw Exception('انتهت مهلة الاتصال بالخادم (30 ثانية بلا استجابة) - تأكد من اتصال الإنترنت وحاول مرة أخرى'),
+  /// نفس الفكرة لملفات "منسّقي الأقسام" - [runUploadProcessedFiles].
+  Future<void> _pickAndUploadCoordinatorProcessedFilesAll() => runUploadProcessedFiles(
+        context: context,
+        setUploading: (v) => setState(() => _uploadingCoordinatorAll = v),
+        onResult: (r) {
+          setState(() => _coordinatorAllLastUpload = DateTime.now());
+          _showMergeResultSnackBar(r);
+        },
       );
 
-      if (!mounted) return;
-      setState(() {
-        _uploadingCoordinatorAll = false;
-        _coordinatorAllLastUpload = DateTime.now();
-      });
-      _showMergeResultSnackBar(mergeResult);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _uploadingCoordinatorAll = false);
-      showUploadErrorDialog(context, 'تعذّر رفع ملفات المعالجة', '$e');
-    }
-  }
-
-  /// نفس الفكرة لكن لملفات منسّق الكلية (تُجمِّع الأقسام الخمسة لشطر واحد) -
-  /// نفس دالة الدمج الشاملة تعمل بلا تمييز لأن كل صف يحمل مفتاحه الخاص.
-  Future<void> _pickAndUploadCollegeProcessedFilesAll() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['xlsx'],
-      allowMultiple: true,
-      withData: true,
-    );
-    if (result == null || result.files.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('لم يتم اختيار أي ملف - حاول مرة أخرى.')),
-        );
-      }
-      return;
-    }
-
-    setState(() => _uploadingCollegeAll = true);
-    try {
-      final allRows = <Map<String, dynamic>>[];
-      for (final file in result.files) {
-        if (file.bytes == null) continue;
-        allRows.addAll(ProcessedFileParserService.parseProcessedRows(file.bytes!));
-      }
-      if (allRows.isEmpty) {
-        throw Exception('تعذّرت قراءة محتوى الملفات المختارة (قد تكون فارغة أو غير مدعومة).');
-      }
-
-      final mergeResult = await FirestoreTicketService.mergeAllProcessedRows(allRows).timeout(
-        const Duration(seconds: 30),
-        onTimeout: () => throw Exception('انتهت مهلة الاتصال بالخادم (30 ثانية بلا استجابة) - تأكد من اتصال الإنترنت وحاول مرة أخرى'),
+  /// نفس الفكرة لملف منسّق الكلية - [runUploadProcessedFiles].
+  Future<void> _pickAndUploadCollegeProcessedFilesAll() => runUploadProcessedFiles(
+        context: context,
+        setUploading: (v) => setState(() => _uploadingCollegeAll = v),
+        onResult: (r) {
+          setState(() => _collegeAllLastUpload = DateTime.now());
+          _showMergeResultSnackBar(r);
+        },
       );
-
-      if (!mounted) return;
-      setState(() {
-        _uploadingCollegeAll = false;
-        _collegeAllLastUpload = DateTime.now();
-      });
-      _showMergeResultSnackBar(mergeResult);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _uploadingCollegeAll = false);
-      showUploadErrorDialog(context, 'تعذّر رفع ملفات منسّق الكلية', '$e');
-    }
-  }
 
   /// تنزيل ملف مضغوط بداخله ملف Excel منفصل لكل مرشد أكاديمي (مرحلة 1) لقسم/
   /// شطر واحد - نفس منطق `admin_workspace_screen.dart` بالضبط.

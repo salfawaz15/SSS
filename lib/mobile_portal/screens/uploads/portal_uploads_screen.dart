@@ -29,6 +29,16 @@ class _PortalUploadsScreenState extends State<PortalUploadsScreen> {
   bool _uploadingCourses = false;
   bool _uploadingAdvising = false;
 
+  // نفس آلية الشريط الموحَّد بالموقع (upload_hub_screen.dart) - سليمان
+  // صراحةً 2026-08-25: يتولى هو بنفسه كل رفع/تنزيل مراحل الحذف والإضافة
+  // هذا الفصل، فيحتاج نفس القدرة من الجوال أيضًا.
+  bool _downloadingAllAdvisors = false;
+  bool _uploadingProcessedAdvisors = false;
+  bool _downloadingAllStage2 = false;
+  bool _uploadingProcessedCoordinators = false;
+  bool _downloadingAllStage3 = false;
+  bool _uploadingProcessedCollege = false;
+
   DateTime? _coursesDate;
   DateTime? _advisingDate;
   bool _loadingDates = true;
@@ -67,6 +77,18 @@ class _PortalUploadsScreenState extends State<PortalUploadsScreen> {
   void _showMessage(String message) {
     if (!mounted) return;
     AppNotice.success(context, message);
+  }
+
+  /// يبني نفس رسالة نتيجة الدمج المستخدَمة بالموقع (`upload_hub_screen.dart`
+  /// - `_mergeResultMessage`) - عدد الحالات المطابَقة/غير المطابَقة، وتنبيه
+  /// إضافي لو وُجدت حالات "لم يتم التنفيذ" بلا سبب محدَّد.
+  void _showMergeResult(MergeResult result) {
+    final base = 'تم الدمج: ${result.matchedCount} حالة مطابَقة'
+        '${result.unmatchedCount > 0 ? '، ${result.unmatchedCount} غير مطابَقة' : ''}';
+    final message = result.missingReasonCount > 0
+        ? '$base\nتنبيه: ${result.missingReasonCount} حالة اختار فيها المرشد "لم يتم التنفيذ" بلا تحديد السبب'
+        : base;
+    _showMessage(message);
   }
 
   /// إفراغ كل بيانات "الملف الأساسي - طلبات الحذف والإضافة" - نفس منطق
@@ -121,10 +143,22 @@ class _PortalUploadsScreenState extends State<PortalUploadsScreen> {
               icon: Icons.fact_check_outlined,
               color: AppColors.green,
               statusText: null,
-              busy: _uploadingForms || _downloadingForms || _clearingForms,
+              busy: _uploadingForms ||
+                  _downloadingForms ||
+                  _clearingForms ||
+                  _downloadingAllAdvisors ||
+                  _uploadingProcessedAdvisors ||
+                  _downloadingAllStage2 ||
+                  _uploadingProcessedCoordinators ||
+                  _downloadingAllStage3 ||
+                  _uploadingProcessedCollege,
+              // نفس آلية شريط "الملف الأساسي" الموحَّد بالموقع (سليمان
+              // صراحةً 2026-08-25: "بنفس الآلية التي في الموقع في الشريط
+              // العلوي") - مجموعة لكل مرحلة (أساسي/مرشد/منسّق قسم/منسّق
+              // كلية)، أيقونة تنزيل ذهبية وأيقونة رفع ذهبية فاتحة لكل مرحلة.
               actions: [
                 _UploadActionButton(
-                  tooltip: 'تنزيل ملف مضغوط (10 ملفات - قسم/شطر)',
+                  tooltip: 'تنزيل ملف مضغوط (10 ملفات خام - قسم/شطر، لإرسال منسّق القسم يدويًا)',
                   icon: Icons.download_outlined,
                   busy: _downloadingForms,
                   iconOnly: true,
@@ -151,6 +185,76 @@ class _PortalUploadsScreenState extends State<PortalUploadsScreen> {
                     setUploading: (v) => setState(() => _uploadingForms = v),
                     onSuccess: () {},
                     onMessage: _showMessage,
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm, height: 1),
+                _UploadActionButton(
+                  tooltip: 'مرحلة المرشد: تنزيل الكل مقسَّم لكل مرشد (شطر > قسم > ملف)',
+                  icon: Icons.folder_zip_outlined,
+                  busy: _downloadingAllAdvisors,
+                  iconOnly: true,
+                  onPressed: () => runDownloadAllAdvisorsZip(
+                    context: context,
+                    setDownloading: (v) => setState(() => _downloadingAllAdvisors = v),
+                    onMessage: _showMessage,
+                  ),
+                ),
+                _UploadActionButton(
+                  tooltip: 'مرحلة المرشد: رفع الملفات المعالجة العائدة من المرشدين',
+                  icon: Icons.upload_file_outlined,
+                  busy: _uploadingProcessedAdvisors,
+                  iconOnly: true,
+                  color: AppColors.goldLight,
+                  onPressed: () => runUploadProcessedFiles(
+                    context: context,
+                    setUploading: (v) => setState(() => _uploadingProcessedAdvisors = v),
+                    onResult: _showMergeResult,
+                  ),
+                ),
+                _UploadActionButton(
+                  tooltip: 'مرحلة منسّق القسم: تنزيل كل ملفات الأقسام (10 ملفات) دفعة واحدة',
+                  icon: Icons.folder_zip_outlined,
+                  busy: _downloadingAllStage2,
+                  iconOnly: true,
+                  onPressed: () => runDownloadAllStage2Zip(
+                    context: context,
+                    setDownloading: (v) => setState(() => _downloadingAllStage2 = v),
+                    onMessage: _showMessage,
+                  ),
+                ),
+                _UploadActionButton(
+                  tooltip: 'مرحلة منسّق القسم: رفع الملفات المعالجة العائدة من منسّقي الأقسام',
+                  icon: Icons.upload_file_outlined,
+                  busy: _uploadingProcessedCoordinators,
+                  iconOnly: true,
+                  color: AppColors.goldLight,
+                  onPressed: () => runUploadProcessedFiles(
+                    context: context,
+                    setUploading: (v) => setState(() => _uploadingProcessedCoordinators = v),
+                    onResult: _showMergeResult,
+                  ),
+                ),
+                _UploadActionButton(
+                  tooltip: 'مرحلة منسّق الكلية: تنزيل ملفَي الشطرين دفعة واحدة',
+                  icon: Icons.folder_zip_outlined,
+                  busy: _downloadingAllStage3,
+                  iconOnly: true,
+                  onPressed: () => runDownloadAllStage3Zip(
+                    context: context,
+                    setDownloading: (v) => setState(() => _downloadingAllStage3 = v),
+                    onMessage: _showMessage,
+                  ),
+                ),
+                _UploadActionButton(
+                  tooltip: 'مرحلة منسّق الكلية: رفع الملف المعالج العائد من منسّق الكلية',
+                  icon: Icons.upload_file_outlined,
+                  busy: _uploadingProcessedCollege,
+                  iconOnly: true,
+                  color: AppColors.goldLight,
+                  onPressed: () => runUploadProcessedFiles(
+                    context: context,
+                    setUploading: (v) => setState(() => _uploadingProcessedCollege = v),
+                    onResult: _showMergeResult,
                   ),
                 ),
               ],
