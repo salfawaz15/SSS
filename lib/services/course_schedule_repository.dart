@@ -36,6 +36,15 @@ class CourseScheduleRepository {
     return ts?.toDate();
   }
 
+  /// تاريخ آخر رفع فعلي للملف (بخلاف [currentExportDate] الذي يبقى فارغًا
+  /// دائمًا لأن `runUploadCourses` لا يمرّر `exportDate`) - هذا هو الحقل
+  /// المناسب لعرض "آخر تحديث" بالواجهة.
+  static Future<DateTime?> currentUploadedAt(Shatr shatr) async {
+    final doc = await _col.doc(shatr.docId).get();
+    final ts = doc.data()?['uploadedAt'] as Timestamp?;
+    return ts?.toDate();
+  }
+
   static Future<List<CourseSectionRecord>> loadSchedule(Shatr shatr) async {
     final doc = await _col.doc(shatr.docId).get();
     if (!doc.exists) return [];

@@ -53,8 +53,8 @@ class _PortalUploadsScreenState extends State<PortalUploadsScreen> {
     setState(() => _loadingDates = true);
     try {
       final results = await Future.wait([
-        CourseScheduleRepository.currentExportDate(Shatr.male),
-        CourseScheduleRepository.currentExportDate(Shatr.female),
+        CourseScheduleRepository.currentUploadedAt(Shatr.male),
+        CourseScheduleRepository.currentUploadedAt(Shatr.female),
         AdvisingReportRepository.currentUploadDate(Shatr.male, kind: AdvisingReportKind.allColleges),
         AdvisingReportRepository.currentUploadDate(Shatr.female, kind: AdvisingReportKind.allColleges),
       ]);
@@ -137,141 +137,155 @@ class _PortalUploadsScreenState extends State<PortalUploadsScreen> {
         child: ListView(
           padding: const EdgeInsets.all(AppSpacing.lg),
           children: [
-            _UploadCategoryCard(
-              title: 'حالات الحذف والإضافة',
-              subtitle: 'الملف الأساسي (Microsoft Forms)',
-              icon: Icons.fact_check_outlined,
-              color: AppColors.green,
-              statusText: null,
-              busy: _uploadingForms ||
-                  _downloadingForms ||
-                  _clearingForms ||
-                  _downloadingAllAdvisors ||
-                  _uploadingProcessedAdvisors ||
-                  _downloadingAllStage2 ||
-                  _uploadingProcessedCoordinators ||
-                  _downloadingAllStage3 ||
-                  _uploadingProcessedCollege,
-              // نفس آلية شريط "الملف الأساسي" الموحَّد بالموقع (سليمان
-              // صراحةً 2026-08-25: "بنفس الآلية التي في الموقع في الشريط
-              // العلوي") - مجموعة لكل مرحلة (أساسي/مرشد/منسّق قسم/منسّق
-              // كلية)، أيقونة تنزيل ذهبية وأيقونة رفع ذهبية فاتحة لكل مرحلة.
-              actions: [
-                _UploadActionButton(
-                  tooltip: 'تنزيل ملف مضغوط (10 ملفات خام - قسم/شطر، لإرسال منسّق القسم يدويًا)',
-                  icon: Icons.download_outlined,
-                  busy: _downloadingForms,
-                  iconOnly: true,
-                  onPressed: () => runDownloadFormsZip(
-                    context: context,
-                    setDownloading: (v) => setState(() => _downloadingForms = v),
-                    onMessage: _showMessage,
-                  ),
+            _CycleStagesCard(
+              // إعادة تصميم كاملة (سليمان صراحةً 2026-08-25: الشكل السابق -
+              // 9 أيقونات متلاصقة بصف واحد بلا تمييز - غير واضح إطلاقًا).
+              // سطر مستقل لكل مرحلة (أساسي/مرشد/منسّق قسم/منسّق كلية):
+              // عنوان المرحلة + أيقونات إجراءاتها، وسطر شرح خفيف اللون تحته
+              // مباشرة - يستغل المساحة البيضاء أسفل البطاقة بدل تركها فارغة،
+              // بلا حاجة لأي تمرير.
+              stages: [
+                _CycleStage(
+                  label: 'الملف الأساسي',
+                  caption: 'رفع/تنزيل/إفراغ الملف الخام',
+                  actions: [
+                    _UploadActionButton(
+                      tooltip: 'تنزيل ملف مضغوط (10 ملفات خام - قسم/شطر، لإرسال منسّق القسم يدويًا)',
+                      icon: Icons.download_outlined,
+                      busy: _downloadingForms,
+                      iconOnly: true,
+                      onPressed: () => runDownloadFormsZip(
+                        context: context,
+                        setDownloading: (v) => setState(() => _downloadingForms = v),
+                        onMessage: _showMessage,
+                      ),
+                    ),
+                    _UploadActionButton(
+                      tooltip: 'رفع ملف الفورم الأساسي',
+                      icon: Icons.upload_file_outlined,
+                      busy: _uploadingForms,
+                      iconOnly: true,
+                      color: AppColors.green,
+                      onPressed: () => runUploadForms(
+                        context: context,
+                        setUploading: (v) => setState(() => _uploadingForms = v),
+                        onSuccess: () {},
+                        onMessage: _showMessage,
+                      ),
+                    ),
+                    _UploadActionButton(
+                      tooltip: 'إفراغ كل البيانات المرفوعة لهذا الملف',
+                      icon: Icons.delete_outline,
+                      busy: _clearingForms,
+                      iconOnly: true,
+                      color: Colors.red.shade700,
+                      onPressed: _confirmAndClearForms,
+                    ),
+                  ],
                 ),
-                _UploadActionButton(
-                  tooltip: 'إفراغ كل البيانات المرفوعة لهذا الملف',
-                  icon: Icons.delete_outline,
-                  busy: _clearingForms,
-                  iconOnly: true,
-                  color: Colors.red.shade700,
-                  onPressed: _confirmAndClearForms,
+                _CycleStage(
+                  label: 'مرحلة المرشد',
+                  caption: 'تنزيل لكل مرشد + رفع الملفات المعالجة',
+                  actions: [
+                    _UploadActionButton(
+                      tooltip: 'تنزيل الكل مقسَّم لكل مرشد (شطر > قسم > ملف)',
+                      icon: Icons.folder_zip_outlined,
+                      busy: _downloadingAllAdvisors,
+                      iconOnly: true,
+                      onPressed: () => runDownloadAllAdvisorsZip(
+                        context: context,
+                        setDownloading: (v) => setState(() => _downloadingAllAdvisors = v),
+                        onMessage: _showMessage,
+                      ),
+                    ),
+                    _UploadActionButton(
+                      tooltip: 'رفع الملفات المعالجة العائدة من المرشدين',
+                      icon: Icons.upload_file_outlined,
+                      busy: _uploadingProcessedAdvisors,
+                      iconOnly: true,
+                      color: AppColors.goldLight,
+                      onPressed: () => runUploadProcessedFiles(
+                        context: context,
+                        setUploading: (v) => setState(() => _uploadingProcessedAdvisors = v),
+                        onResult: _showMergeResult,
+                      ),
+                    ),
+                  ],
                 ),
-                _UploadActionButton(
-                  label: 'رفع ملف جديد',
-                  icon: Icons.upload_file_outlined,
-                  busy: _uploadingForms,
-                  onPressed: () => runUploadForms(
-                    context: context,
-                    setUploading: (v) => setState(() => _uploadingForms = v),
-                    onSuccess: () {},
-                    onMessage: _showMessage,
-                  ),
+                _CycleStage(
+                  label: 'مرحلة منسّق القسم',
+                  caption: 'تنزيل كل الأقسام + رفع الملفات المعالجة',
+                  actions: [
+                    _UploadActionButton(
+                      tooltip: 'تنزيل كل ملفات الأقسام (10 ملفات) دفعة واحدة',
+                      icon: Icons.folder_zip_outlined,
+                      busy: _downloadingAllStage2,
+                      iconOnly: true,
+                      onPressed: () => runDownloadAllStage2Zip(
+                        context: context,
+                        setDownloading: (v) => setState(() => _downloadingAllStage2 = v),
+                        onMessage: _showMessage,
+                      ),
+                    ),
+                    _UploadActionButton(
+                      tooltip: 'رفع الملفات المعالجة العائدة من منسّقي الأقسام',
+                      icon: Icons.upload_file_outlined,
+                      busy: _uploadingProcessedCoordinators,
+                      iconOnly: true,
+                      color: AppColors.goldLight,
+                      onPressed: () => runUploadProcessedFiles(
+                        context: context,
+                        setUploading: (v) => setState(() => _uploadingProcessedCoordinators = v),
+                        onResult: _showMergeResult,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: AppSpacing.sm, height: 1),
-                _UploadActionButton(
-                  tooltip: 'مرحلة المرشد: تنزيل الكل مقسَّم لكل مرشد (شطر > قسم > ملف)',
-                  icon: Icons.folder_zip_outlined,
-                  busy: _downloadingAllAdvisors,
-                  iconOnly: true,
-                  onPressed: () => runDownloadAllAdvisorsZip(
-                    context: context,
-                    setDownloading: (v) => setState(() => _downloadingAllAdvisors = v),
-                    onMessage: _showMessage,
-                  ),
-                ),
-                _UploadActionButton(
-                  tooltip: 'مرحلة المرشد: رفع الملفات المعالجة العائدة من المرشدين',
-                  icon: Icons.upload_file_outlined,
-                  busy: _uploadingProcessedAdvisors,
-                  iconOnly: true,
-                  color: AppColors.goldLight,
-                  onPressed: () => runUploadProcessedFiles(
-                    context: context,
-                    setUploading: (v) => setState(() => _uploadingProcessedAdvisors = v),
-                    onResult: _showMergeResult,
-                  ),
-                ),
-                _UploadActionButton(
-                  tooltip: 'مرحلة منسّق القسم: تنزيل كل ملفات الأقسام (10 ملفات) دفعة واحدة',
-                  icon: Icons.folder_zip_outlined,
-                  busy: _downloadingAllStage2,
-                  iconOnly: true,
-                  onPressed: () => runDownloadAllStage2Zip(
-                    context: context,
-                    setDownloading: (v) => setState(() => _downloadingAllStage2 = v),
-                    onMessage: _showMessage,
-                  ),
-                ),
-                _UploadActionButton(
-                  tooltip: 'مرحلة منسّق القسم: رفع الملفات المعالجة العائدة من منسّقي الأقسام',
-                  icon: Icons.upload_file_outlined,
-                  busy: _uploadingProcessedCoordinators,
-                  iconOnly: true,
-                  color: AppColors.goldLight,
-                  onPressed: () => runUploadProcessedFiles(
-                    context: context,
-                    setUploading: (v) => setState(() => _uploadingProcessedCoordinators = v),
-                    onResult: _showMergeResult,
-                  ),
-                ),
-                _UploadActionButton(
-                  tooltip: 'مرحلة منسّق الكلية: تنزيل ملفَي الشطرين دفعة واحدة',
-                  icon: Icons.folder_zip_outlined,
-                  busy: _downloadingAllStage3,
-                  iconOnly: true,
-                  onPressed: () => runDownloadAllStage3Zip(
-                    context: context,
-                    setDownloading: (v) => setState(() => _downloadingAllStage3 = v),
-                    onMessage: _showMessage,
-                  ),
-                ),
-                _UploadActionButton(
-                  tooltip: 'مرحلة منسّق الكلية: رفع الملف المعالج العائد من منسّق الكلية',
-                  icon: Icons.upload_file_outlined,
-                  busy: _uploadingProcessedCollege,
-                  iconOnly: true,
-                  color: AppColors.goldLight,
-                  onPressed: () => runUploadProcessedFiles(
-                    context: context,
-                    setUploading: (v) => setState(() => _uploadingProcessedCollege = v),
-                    onResult: _showMergeResult,
-                  ),
+                _CycleStage(
+                  label: 'مرحلة منسّق الكلية',
+                  caption: 'تنزيل الشطرين + رفع الملف المعالج',
+                  actions: [
+                    _UploadActionButton(
+                      tooltip: 'تنزيل ملفَي الشطرين دفعة واحدة',
+                      icon: Icons.folder_zip_outlined,
+                      busy: _downloadingAllStage3,
+                      iconOnly: true,
+                      onPressed: () => runDownloadAllStage3Zip(
+                        context: context,
+                        setDownloading: (v) => setState(() => _downloadingAllStage3 = v),
+                        onMessage: _showMessage,
+                      ),
+                    ),
+                    _UploadActionButton(
+                      tooltip: 'رفع الملف المعالج العائد من منسّق الكلية',
+                      icon: Icons.upload_file_outlined,
+                      busy: _uploadingProcessedCollege,
+                      iconOnly: true,
+                      color: AppColors.goldLight,
+                      onPressed: () => runUploadProcessedFiles(
+                        context: context,
+                        setUploading: (v) => setState(() => _uploadingProcessedCollege = v),
+                        onResult: _showMergeResult,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
             const SizedBox(height: AppSpacing.md),
             _UploadCategoryCard(
               title: 'المقررات الدراسية',
-              subtitle: 'ملف الحويّة (Word .docx) - الشطرين معًا',
               icon: Icons.menu_book_outlined,
               color: AppColors.gold,
               statusText: _loadingDates ? null : _dateStatusText(_coursesDate),
               busy: _uploadingCourses,
               actions: [
                 _UploadActionButton(
-                  label: 'رفع ملف جديد',
+                  tooltip: 'رفع ملف الحويّة الجديد',
                   icon: Icons.upload_file_outlined,
                   busy: _uploadingCourses,
+                  iconOnly: true,
+                  color: AppColors.green,
                   onPressed: () => runUploadCourses(
                     context: context,
                     setUploading: (v) => setState(() => _uploadingCourses = v),
@@ -284,16 +298,17 @@ class _PortalUploadsScreenState extends State<PortalUploadsScreen> {
             const SizedBox(height: AppSpacing.md),
             _UploadCategoryCard(
               title: 'الإرشاد الكامل',
-              subtitle: 'تقرير "كل الكليات" (PDF) - يغطي الجامعة كاملة',
               icon: Icons.groups_outlined,
               color: AppColors.greenDark,
               statusText: _loadingDates ? null : _dateStatusText(_advisingDate),
               busy: _uploadingAdvising,
               actions: [
                 _UploadActionButton(
-                  label: 'رفع ملف جديد',
+                  tooltip: 'رفع تقرير الإرشاد الكامل الجديد',
                   icon: Icons.upload_file_outlined,
                   busy: _uploadingAdvising,
+                  iconOnly: true,
+                  color: AppColors.green,
                   onPressed: () => runUploadAllColleges(
                     context: context,
                     setUploading: (v) => setState(() => _uploadingAdvising = v),
@@ -316,7 +331,6 @@ class _PortalUploadsScreenState extends State<PortalUploadsScreen> {
 
 class _UploadCategoryCard extends StatelessWidget {
   final String title;
-  final String subtitle;
   final IconData icon;
   final Color color;
   final String? statusText;
@@ -325,7 +339,6 @@ class _UploadCategoryCard extends StatelessWidget {
 
   const _UploadCategoryCard({
     required this.title,
-    required this.subtitle,
     required this.icon,
     required this.color,
     required this.statusText,
@@ -345,6 +358,9 @@ class _UploadCategoryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // أيقونات الإجراءات بنفس صف العنوان مباشرة - بلا صفّ منفصل أسفلها
+          // (سليمان صراحةً 2026-08-25: "بحيث تكون الصفحة بدون تمرير")، بنفس
+          // أسلوب أسطر بطاقة "حالات الحذف والإضافة".
           Row(
             children: [
               Container(
@@ -359,18 +375,98 @@ class _UploadCategoryCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(title, style: AppTextStyles.h3()),
-                    Text(subtitle, style: AppTextStyles.caption(color: Colors.black54)),
                   ],
                 ),
               ),
+              const SizedBox(width: AppSpacing.sm),
+              ...actions,
             ],
           ),
           if (statusText != null) ...[
             const SizedBox(height: AppSpacing.sm),
             Text(statusText!, style: AppTextStyles.caption(color: Colors.black45)),
           ],
-          const SizedBox(height: AppSpacing.md),
-          Wrap(spacing: AppSpacing.sm, runSpacing: AppSpacing.sm, children: actions),
+        ],
+      ),
+    );
+  }
+}
+
+/// مرحلة واحدة من دورة الحذف/الإضافة (أساسي/مرشد/منسّق قسم/منسّق كلية) -
+/// عنوان + أيقونات إجراءاتها + سطر شرح خفيف اللون يوضّح وظيفتها بلا حاجة
+/// لتمرير الماوس فوق كل أيقونة على حدة (الجوال لا يملك "hover" أصلاً).
+class _CycleStage {
+  final String label;
+  final String caption;
+  final List<Widget> actions;
+
+  const _CycleStage({required this.label, required this.caption, required this.actions});
+}
+
+/// بطاقة "حالات الحذف والإضافة" - سطر مستقل واضح لكل مرحلة بدل صفّ أيقونات
+/// متلاصقة بلا تمييز (سليمان صراحةً 2026-08-25: "شكلها غير واضح... كل سطر
+/// إجراء... يستغل المساحة البيضاء أسفل الصورة... بلا تمرير للأسفل").
+class _CycleStagesCard extends StatelessWidget {
+  final List<_CycleStage> stages;
+
+  const _CycleStagesCard({required this.stages});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(color: AppColors.green, borderRadius: BorderRadius.circular(AppRadius.sm)),
+                child: const Icon(Icons.fact_check_outlined, color: Colors.white, size: 20),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('حالات الحذف والإضافة', style: AppTextStyles.h3()),
+                    Text('الملف الأساسي (Microsoft Forms)', style: AppTextStyles.caption(color: Colors.black54)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          for (var i = 0; i < stages.length; i++) ...[
+            Padding(
+              padding: EdgeInsets.only(top: i == 0 ? AppSpacing.md : AppSpacing.sm),
+              child: Divider(height: 1, color: Colors.grey.shade200),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: AppSpacing.sm),
+              child: Row(
+                children: [
+                  Text(
+                    stages[i].label,
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: Colors.black87),
+                  ),
+                  const Spacer(),
+                  ...stages[i].actions,
+                ],
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              stages[i].caption,
+              style: TextStyle(fontSize: 10.5, color: Colors.grey.shade500),
+            ),
+          ],
         ],
       ),
     );

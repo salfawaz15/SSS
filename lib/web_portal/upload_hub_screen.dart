@@ -112,8 +112,8 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     setState(() => _loadingDates = true);
     try {
       final results = await Future.wait([
-        CourseScheduleRepository.currentExportDate(Shatr.male),
-        CourseScheduleRepository.currentExportDate(Shatr.female),
+        CourseScheduleRepository.currentUploadedAt(Shatr.male),
+        CourseScheduleRepository.currentUploadedAt(Shatr.female),
         AdvisingReportRepository.currentUploadDate(Shatr.male, kind: AdvisingReportKind.allColleges),
         AdvisingReportRepository.currentUploadDate(Shatr.female, kind: AdvisingReportKind.allColleges),
         AdvisingReportRepository.currentUploadDate(Shatr.male, kind: AdvisingReportKind.health),
