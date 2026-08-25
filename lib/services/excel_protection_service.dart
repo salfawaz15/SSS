@@ -207,6 +207,12 @@ class ExcelProtectionService {
       XmlAttribute(XmlName('sheet'), '1'),
       XmlAttribute(XmlName('objects'), '1'),
       XmlAttribute(XmlName('scenarios'), '1'),
+      // بلا هذين تُمنع تلقائيًا (القيمة الافتراضية "محمي" حسب مواصفة OOXML
+      // لو غابا) - فلا يقدر أي عضو على توسيع عمود ليقرأ محتوى طويلاً حتى لو
+      // كانت خلاياه نفسها مقفلة أصلاً (سليمان لاحظ هذا فعليًا 2026-08-25:
+      // النص يظهر مبتورًا ولا يمكن تكبير العمود لقراءته).
+      XmlAttribute(XmlName('formatColumns'), '0'),
+      XmlAttribute(XmlName('formatRows'), '0'),
       XmlAttribute(XmlName('password'), _hashPassword(protectionPassword)),
     ]);
 

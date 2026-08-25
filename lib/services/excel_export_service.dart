@@ -77,7 +77,7 @@ class ExcelExportService {
     10,
     10,
     16,
-    18,
+    42,
     12,
     22,
     16,

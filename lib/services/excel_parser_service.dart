@@ -413,10 +413,16 @@ class ExcelParserService {
   static final RegExp _trailingSectionPattern = RegExp(r'^(.*?)[\s\-–—]+(\d{2,6})\s*$');
   static final RegExp _trailingNumberPattern = RegExp(r'(\d{2,6})\s*$');
   static final RegExp _courseCodeNamePattern = RegExp(r'^(\d+)\s*[-–—]\s*(.+)$');
-  static final RegExp _currentSectionKeywordPattern =
-      RegExp(r'(?:الحالي(?:ة)?|الشعبةالحالية)\s*[:\-]?\s*(\d{2,6})');
-  static final RegExp _requestedSectionKeywordPattern =
-      RegExp(r'(?:المطلوب(?:ة)?|الشعبةالمطلوبة)\s*[:\-]?\s*(\d{2,6})');
+
+  // صيغة التعديل الفعلية الأشيع: "<مقرر> - من الشعبة <رقم> إلى الشعبة <رقم>"
+  // - يلتقط العبارة كاملة (لا الرقمين فقط) ليُحذَفا معًا من نص المقرر.
+  static final RegExp _fromToSectionPattern =
+      RegExp(r'[-–—]?\s*من\s*الشعبة\s*(\d{2,6})\s*إلى\s*الشعبة\s*(\d{2,6})');
+  // احتياطي لصيغ منفصلة: "الشعبة الحالية: رقم" / "الشعبة المطلوبة: رقم"
+  static final RegExp _currentSectionPhrasePattern =
+      RegExp(r'(?:الشعبة\s*)?الحالي(?:ة)?\s*[:\-]?\s*(\d{2,6})');
+  static final RegExp _requestedSectionPhrasePattern =
+      RegExp(r'(?:الشعبة\s*)?المطلوب(?:ة)?\s*[:\-]?\s*(\d{2,6})');
 
   static Map<String, String> _parseCourseAndSection(String raw) {
     final text = raw.trim();
@@ -442,36 +448,46 @@ class ExcelParserService {
   }
 
   /// يحلّل نص "التعديل الأول/الثاني - المقرر والشعبة الحالية والمطلوبة"،
-  /// يبحث عن رقمي الشعبة الحالية والمطلوبة بمرافقة كلماتهما الدالة، والباقي
-  /// بعد حذفهما هو نص المقرر (رمز + اسم).
+  /// يبحث عن رقمي الشعبة الحالية والمطلوبة، ويحذف **العبارة كاملة** (لا الرقم
+  /// وحده) من نص المقرر - وإلا تبقى كلمات مثل "من الشعبة"/"إلى الشعبة" عالقة
+  /// بعمود المقرر (خلل فعلي لاحظه سليمان بملف حقيقي 2026-08-25).
   static Map<String, String> _parseSectionChange(String raw) {
     final text = raw.trim();
     if (text.isEmpty) {
       return const {'code': '', 'name': '', 'currentSection': '', 'requestedSection': ''};
     }
 
-    final compact = _normalize(text);
-    final currentMatch = _currentSectionKeywordPattern.firstMatch(compact);
-    final requestedMatch = _requestedSectionKeywordPattern.firstMatch(compact);
-
     var courseText = text;
-    if (currentMatch != null || requestedMatch != null) {
-      // نحذف من النص الأصلي كل رقم شعبة التقطناه (بمطابقة الرقم نفسه) حتى لا
-      // يبقى ضمن اسم المقرر المُستخرَج.
+    var currentSection = '';
+    var requestedSection = '';
+
+    // الصيغة الفعلية الأشيع: "<مقرر> - من الشعبة <رقم> إلى الشعبة <رقم>"
+    final fromToMatch = _fromToSectionPattern.firstMatch(courseText);
+    if (fromToMatch != null) {
+      currentSection = fromToMatch.group(1) ?? '';
+      requestedSection = fromToMatch.group(2) ?? '';
+      courseText = courseText.replaceRange(fromToMatch.start, fromToMatch.end, ' ');
+    } else {
+      // احتياطي: صيغة "الشعبة الحالية: رقم" / "الشعبة المطلوبة: رقم" منفصلتين
+      final currentMatch = _currentSectionPhrasePattern.firstMatch(courseText);
       if (currentMatch != null) {
-        courseText = courseText.replaceAll(currentMatch.group(1)!, '');
+        currentSection = currentMatch.group(1) ?? '';
+        courseText = courseText.replaceRange(currentMatch.start, currentMatch.end, ' ');
       }
+      final requestedMatch = _requestedSectionPhrasePattern.firstMatch(courseText);
       if (requestedMatch != null) {
-        courseText = courseText.replaceAll(requestedMatch.group(1)!, '');
+        requestedSection = requestedMatch.group(1) ?? '';
+        courseText = courseText.replaceRange(requestedMatch.start, requestedMatch.end, ' ');
       }
     }
 
+    courseText = courseText.replaceAll(RegExp(r'\s+'), ' ').trim();
     final parsed = _parseCourseAndSection(courseText.replaceAll(RegExp(r'[:\-–—]+$'), '').trim());
     return {
       'code': parsed['code'] ?? '',
       'name': parsed['name'] ?? '',
-      'currentSection': currentMatch?.group(1) ?? '',
-      'requestedSection': requestedMatch?.group(1) ?? '',
+      'currentSection': currentSection,
+      'requestedSection': requestedSection,
     };
   }
 
