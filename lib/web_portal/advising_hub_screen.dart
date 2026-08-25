@@ -201,13 +201,23 @@ class _AdvisingHubScreenState extends State<AdvisingHubScreen> {
   Widget _buildMetricsGrid(BuildContext context) {
     // floor لا round - سليمان 2026-08-22: "8739 من أصل 8742" (99.97%) كانت
     // تظهر 100% بالتقريب العادي رغم وجود 3 حالات فعليًا غير مكتملة، وهذا
-    // مضلِّل. floor يضمن ألا تظهر 100% إلا عند الاكتمال الحقيقي التام.
-    final coveragePct = _totalActiveStudents == 0 ? 100 : ((_correctlyAssigned / _totalActiveStudents) * 100).floor();
+    // مضلِّل. floor يضمن ألا تظهر 100% إلا عند الاكتمال الحقيقي التام. يُحسَب
+    // الآن لمنزلة عشرية واحدة لا رقمًا صحيحًا (سليمان 2026-08-26): بأعداد
+    // كبيرة (آلاف الطلبة) فرق بسيط كـ6 طلاب بلا مرشد كان يُسقِط النسبة من
+    // "99.9%" إلى "99%" بالتقريب الصحيح - فرق ضخم بصريًا لمشكلة صغيرة فعليًا.
+    String coverageLabel(int correct, int total) {
+      if (total == 0) return '100';
+      final pct = (correct / total * 100 * 10).floor() / 10;
+      return pct == pct.roundToDouble() ? pct.toStringAsFixed(0) : pct.toStringAsFixed(1);
+    }
+
+    final coveragePctLabel = coverageLabel(_correctlyAssigned, _totalActiveStudents);
+    final isFullCoverage = _totalActiveStudents > 0 && _correctlyAssigned == _totalActiveStudents;
     final needsCorrection = _wrongDeptCount + _withoutAdvisorCount;
     final needsCorrectionMale = _needsCorrectionMale;
     final needsCorrectionFemale = _needsCorrectionFemale;
-    final coveragePctMale = _totalActiveMale == 0 ? 100 : ((_correctMale / _totalActiveMale) * 100).floor();
-    final coveragePctFemale = _totalActiveFemale == 0 ? 100 : ((_correctFemale / _totalActiveFemale) * 100).floor();
+    final coveragePctMaleLabel = coverageLabel(_correctMale, _totalActiveMale);
+    final coveragePctFemaleLabel = coverageLabel(_correctFemale, _totalActiveFemale);
 
     // تفصيل صغير (طلاب - طالبات) تحت كل رقم كبير بالشبكة - بطلب سليمان
     // صراحةً 2026-08-24، يُطبَّق على كل البطاقات لا "إجمالي الطلبة" فقط.
@@ -248,11 +258,11 @@ class _AdvisingHubScreenState extends State<AdvisingHubScreen> {
       ),
       (
         label: 'نسبة التغطية الإرشادية',
-        value: _loadingStats ? '...' : '$coveragePct%',
-        breakdown: _loadingStats ? null : 'طلاب $coveragePctMale% - طالبات $coveragePctFemale%',
+        value: _loadingStats ? '...' : '$coveragePctLabel%',
+        breakdown: _loadingStats ? null : 'طلاب $coveragePctMaleLabel% - طالبات $coveragePctFemaleLabel%',
         note: '$_correctlyAssigned من أصل $_totalActiveStudents',
         icon: Icons.donut_large_outlined,
-        color: (_loadingStats || coveragePct >= 100) ? DashTokens.success : DashTokens.gold600,
+        color: (_loadingStats || isFullCoverage) ? DashTokens.success : DashTokens.gold600,
       ),
     ];
 
