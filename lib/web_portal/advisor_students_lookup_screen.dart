@@ -315,6 +315,24 @@ class _AdvisorStudentsLookupScreenState extends State<AdvisorStudentsLookupScree
 
   static String _gpaText(AdvisingCaseRecord s) => s.gpa != null ? s.gpa!.toStringAsFixed(2) : '—';
   static String _rangeText(AdvisingCaseRecord s) => gpaStatusOf(s.gpa).label;
+  static String _previousRangeText(AdvisingCaseRecord s) => gpaStatusOf(s.previousGpa).label;
+
+  /// ألوان النطاق من الأحمر (ضعيف) إلى الأخضر الداكن (ممتاز) - بنفس الشريط
+  /// اللوني المعتمَد بالمنظومة الخارجية للمرشد (بطلب سليمان صراحةً 2026-08-26،
+  /// أرسل لقطة مرجعية من تلك المنظومة).
+  static Color _rangeColor(GpaStatus status) => switch (status) {
+        GpaStatus.excellent => const Color(0xFF1B5E20),
+        GpaStatus.veryGood => const Color(0xFF7CB342),
+        GpaStatus.good => const Color(0xFFFBC02D),
+        GpaStatus.pass => const Color(0xFFFB8C00),
+        GpaStatus.weak => const Color(0xFFE53935),
+        GpaStatus.unknown => Colors.grey,
+      };
+
+  static Widget _rangeBadge(double? gpa) {
+    final status = gpaStatusOf(gpa);
+    return DashBadgeCell(label: status.label, color: _rangeColor(status));
+  }
 
   /// نسخة مرتَّبة من طلاب المرشد وفق العمود المختار بالضغط على رأس عمود
   /// (`_sortKey`) - ترتيب افتراضي (بلا اختيار) يبقى تصاعديًا حسب المعدل كما
@@ -333,6 +351,12 @@ class _AdvisorStudentsLookupScreenState extends State<AdvisorStudentsLookupScree
           if (ga == null && gb == null) return 0;
           if (ga == null || gb == null) return ga == null ? 1 : -1;
           return ga.compareTo(gb);
+        case 'previousRange':
+          final pa = a.previousGpa;
+          final pb = b.previousGpa;
+          if (pa == null && pb == null) return 0;
+          if (pa == null || pb == null) return pa == null ? 1 : -1;
+          return pa.compareTo(pb);
         case 'completedHours':
           final ca = a.completedHours;
           final cb = b.completedHours;
@@ -365,13 +389,14 @@ class _AdvisorStudentsLookupScreenState extends State<AdvisorStudentsLookupScree
     // صراحةً (2026-08-26)، بدل `DataTable` القياسي السابق.
     final title = '${group.name} - ${group.shatr}${group.advisorId.isNotEmpty ? ' (رقم المرشد: ${group.advisorId})' : ''}';
     final students = _sortedStudents(group);
-    final headers = ['الرقم الجامعي', 'اسم الطالب', 'المعدل', 'النطاق', 'الساعات المجتازة', 'الساعات المتبقية'];
+    final headers = ['الرقم الجامعي', 'اسم الطالب', 'المعدل', 'النطاق السابق', 'النطاق الحالي', 'الساعات المجتازة', 'الساعات المتبقية'];
     final rows = [
       for (final s in students)
         [
           s.studentId,
           s.studentName,
           _gpaText(s),
+          _previousRangeText(s),
           _rangeText(s),
           s.completedHours?.toString() ?? '—',
           s.remainingHours?.toString() ?? '—',
@@ -379,11 +404,12 @@ class _AdvisorStudentsLookupScreenState extends State<AdvisorStudentsLookupScree
     ];
     final columns = <DashTableColumn>[
       const DashTableColumn(key: 'studentId', label: 'الرقم الجامعي', flex: 14, sortable: true),
-      const DashTableColumn(key: 'studentName', label: 'اسم الطالب', flex: 26, sortable: true, align: TextAlign.right),
-      const DashTableColumn(key: 'gpa', label: 'المعدل', flex: 10, sortable: true),
-      const DashTableColumn(key: 'range', label: 'النطاق', flex: 12, sortable: true),
-      const DashTableColumn(key: 'completedHours', label: 'الساعات المجتازة', flex: 14, sortable: true),
-      const DashTableColumn(key: 'remainingHours', label: 'الساعات المتبقية', flex: 14, sortable: true),
+      const DashTableColumn(key: 'studentName', label: 'اسم الطالب', flex: 24, sortable: true, align: TextAlign.right),
+      const DashTableColumn(key: 'gpa', label: 'المعدل', flex: 9, sortable: true),
+      const DashTableColumn(key: 'previousRange', label: 'النطاق السابق', flex: 12, sortable: true),
+      const DashTableColumn(key: 'range', label: 'النطاق الحالي', flex: 12, sortable: true),
+      const DashTableColumn(key: 'completedHours', label: 'الساعات المجتازة', flex: 13, sortable: true),
+      const DashTableColumn(key: 'remainingHours', label: 'الساعات المتبقية', flex: 13, sortable: true),
     ];
 
     Widget cell(BuildContext context, int i, String key) {
@@ -395,8 +421,10 @@ class _AdvisorStudentsLookupScreenState extends State<AdvisorStudentsLookupScree
           return Text(s.studentName, textAlign: TextAlign.right, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600));
         case 'gpa':
           return Text(_gpaText(s), style: const TextStyle(fontSize: 12.5));
+        case 'previousRange':
+          return _rangeBadge(s.previousGpa);
         case 'range':
-          return Text(_rangeText(s), style: const TextStyle(fontSize: 12.5));
+          return _rangeBadge(s.gpa);
         case 'completedHours':
           return Text(s.completedHours?.toString() ?? '—', style: const TextStyle(fontSize: 12.5));
         case 'remainingHours':
