@@ -91,7 +91,7 @@ class ExcelExportService {
     16,
     16,
     16,
-    22,
+    42,
     16,
     24,
     28,
@@ -100,6 +100,21 @@ class ExcelExportService {
     16,
     24,
   ];
+
+  /// فهارس أعمدة موحَّدة القيمة عبر كل صفوف ملف مرشد واحد (كل ملف يخص مرشدًا
+  /// بقسم/شطر واحد أصلاً عبر AdvisorZipService) - تكرارها بكل صف لا يفيد،
+  /// تُخفى بملف المرشد تحديدًا (سليمان صراحةً 2026-08-25)، بخلاف الرقم
+  /// الجامعي/اسم الطالب المختلفَين فعليًا بكل صف.
+  static const int shatrColumnIndex = 2;
+  static const int departmentColumnIndex = 3;
+  static const int advisorNameColumnIndex = 4;
+
+  /// فهرس عمود "رقم الجوال" - يُخفى بملف المرشد (سليمان صراحةً 2026-08-25:
+  /// التواصل مع الطالب يكون عبر القنوات الرسمية فقط، لا هاتفيًا مباشرة).
+  static const int phoneColumnIndex = 5;
+
+  /// فهرس عمود "رمز المقرر" - اسم المقرر وحده كافٍ عمليًا للمرشد.
+  static const int courseCodeColumnIndex = 10;
 
   /// فهرس عمود "حالة الإنجاز من قبل المرشد الأكاديمي" (صفر-فهرسة)
   static const int advisorStatusColumnIndex = 16;
@@ -140,17 +155,22 @@ class ExcelExportService {
     bottomBorder: _thinGrayBorder,
   );
 
-  static CellStyle _rowStyle({required bool alternate}) => CellStyle(
+  static CellStyle _rowStyle({required bool alternate, bool wrapText = false}) => CellStyle(
     backgroundColorHex: alternate
         ? ExcelColor.fromHexString('FFEFF5F2')
         : ExcelColor.white,
     horizontalAlign: HorizontalAlign.Center,
     verticalAlign: VerticalAlign.Center,
+    textWrapping: wrapText ? TextWrapping.WrapText : null,
     leftBorder: _thinGrayBorder,
     rightBorder: _thinGrayBorder,
     topBorder: _thinGrayBorder,
     bottomBorder: _thinGrayBorder,
   );
+
+  /// فهرس عمود "سبب الطلب" (صفر-فهرسة) - قد يحوي عدة أسباب مفصولة بـ";"
+  /// فيطول النص، يُفعَّل التفاف السطر له تحديدًا بدل قصّه بصريًا.
+  static const int _reasonColumnIndex = 15;
 
   /// نص شريط التعليمات الموجز أعلى ملف المرشد - يشرح خياري القائمة المنسدلة
   /// بكلمات بسيطة بدل ترك المرشد يخمّن معناها.
@@ -304,13 +324,14 @@ class ExcelExportService {
     sheet.appendRow(values.map((v) => TextCellValue(v.toString())).toList());
     final rowIndex = dataRowIndex + headerRowIndex + 1; // بعد صف(وف) العناوين/التعليمات
     final style = _rowStyle(alternate: dataRowIndex.isEven);
+    final reasonStyle = _rowStyle(alternate: dataRowIndex.isEven, wrapText: true);
     for (var c = 0; c < values.length; c++) {
       sheet
               .cell(
                 CellIndex.indexByColumnRow(columnIndex: c, rowIndex: rowIndex),
               )
               .cellStyle =
-          style;
+          c == _reasonColumnIndex ? reasonStyle : style;
     }
   }
 }

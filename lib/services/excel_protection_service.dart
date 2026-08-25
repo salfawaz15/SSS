@@ -61,6 +61,10 @@ class ExcelProtectionService {
     // للنماذج التي يعبّئها مسؤول موثوق (رئيس قسم/أمين/منسّق) لا يحتاج قيدًا
     // صارمًا، بعكس نماذج أخرى في الموقع تتطلب حماية فعلية.
     bool addProtection = true,
+    // أعمدة تُخفى بصريًا عن المستخدم (لا تُحذَف) - تبقى قيمها بالملف فعليًا
+    // لأغراض أخرى (كالمطابقة عند إعادة القراءة) لكن لا داعي لعرضها له لو لم
+    // يكن هو من يعبّئها (مثال: أعمدة منسّق القسم/الكلية بملف المرشد).
+    List<int> hiddenColumnIndexes = const [],
   }) {
     final archive = ZipDecoder().decodeBytes(xlsxBytes);
 
@@ -91,6 +95,9 @@ class ExcelProtectionService {
       _addSheetProtection(sheetXml);
     }
     _addDropdowns(sheetXml, dropdowns, dataRowCount, headerRowCount);
+    if (hiddenColumnIndexes.isNotEmpty) {
+      _hideColumns(sheetXml, hiddenColumnIndexes);
+    }
 
     // إزالة "شبح الرسم" الفارغ - حزمة `excel` تُصدر دومًا (لكل ملف تولّده،
     // حتى بلا أي صورة/رسم فعلي): xl/drawings/drawing1.xml فارغ +
@@ -197,6 +204,30 @@ class ExcelProtectionService {
         }
       }
     }
+  }
+
+  /// يُخفي أعمدة بصريًا (`<cols><col .../></cols>`) - يجب أن يسبق `<sheetData>`
+  /// مباشرة حسب ترتيب مخطط OOXML الرسمي، وإلا يعتبر إكسل الملف تالفًا.
+  static void _hideColumns(XmlDocument sheetXml, List<int> columnIndexes) {
+    final worksheet = sheetXml.rootElement;
+    final sheetData = worksheet.findElements('sheetData').first;
+
+    final colElements = columnIndexes.map((index) {
+      final colNumber = index + 1; // 1-فهرسة بمخطط OOXML بخلاف صفر-فهرسة الخلايا
+      return XmlElement(XmlName('col'), [
+        XmlAttribute(XmlName('min'), colNumber.toString()),
+        XmlAttribute(XmlName('max'), colNumber.toString()),
+        XmlAttribute(XmlName('width'), '9'),
+        XmlAttribute(XmlName('hidden'), '1'),
+        XmlAttribute(XmlName('customWidth'), '1'),
+      ]);
+    }).toList();
+
+    final colsElement = XmlElement(XmlName('cols'), [], colElements);
+    sheetData.parent!.children.insert(
+      sheetData.parent!.children.indexOf(sheetData),
+      colsElement,
+    );
   }
 
   static void _addSheetProtection(XmlDocument sheetXml) {

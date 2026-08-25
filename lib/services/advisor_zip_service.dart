@@ -155,6 +155,24 @@ class AdvisorZipService {
           ExcelExportService.advisorNotesColumnIndex,
           ExcelExportService.advisorOtherReasonColumnIndex,
         ],
+        // تبسيط الملف قدر الإمكان (سليمان صراحةً 2026-08-25): يُخفى كل ما لا
+        // يحتاجه المرشد فعليًا أو لا يجوز أن يظهر له - تبقى القيم موجودة
+        // بالملف فعليًا (لازمة عند إعادة القراءة/الدمج) لكن مخفيّة عنه بصريًا.
+        // الشطر/القسم/اسم المرشد: موحَّدة عبر كل صفوف ملفه، تكرارها لا يفيد.
+        // رقم الجوال: التواصل مع الطالب عبر القنوات الرسمية فقط، لا هاتفيًا.
+        // رمز المقرر: اسم المقرر وحده كافٍ عمليًا.
+        // منسّق القسم/الكلية: لا يملؤهما المرشد أصلاً.
+        hiddenColumnIndexes: [
+          ExcelExportService.shatrColumnIndex,
+          ExcelExportService.departmentColumnIndex,
+          ExcelExportService.advisorNameColumnIndex,
+          ExcelExportService.phoneColumnIndex,
+          ExcelExportService.courseCodeColumnIndex,
+          ExcelExportService.coordinatorStatusColumnIndex,
+          ExcelExportService.coordinatorNotesColumnIndex,
+          ExcelExportService.collegeStatusColumnIndex,
+          ExcelExportService.collegeNotesColumnIndex,
+        ],
         dataRowCount: dataRowCount,
         headerRowCount: 2,
       );
