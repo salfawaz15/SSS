@@ -1204,34 +1204,21 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     );
   }
 
-  /// اختيار الشطر قبل رفع "بيانات الطلبة الأكاديمية" - الملفان منفصلان
-  /// أصلاً (لا عمود جنس يفرزهما كملف "طلبة ذوي الإعاقة")، فزر الرفع الواحد
-  /// (بنفس هوية بقية أشرطة هذه الصفحة) يسأل أولًا عن الشطر بدل زرَّين
-  /// منفصلين - بطلب سليمان صراحةً (2026-08-26): "أرغب في أن يكون التصميم
-  /// مثل" بقية المربعات (شريط + زر رفع واحد + إحصائيتان).
-  Future<void> _pickAndUploadAcademicData() async {
-    final shatr = await showDialog<Shatr>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('تحديد الشطر'),
-        content: const Text('ملف "بيانات الطلبة الأكاديمية" منفصل لكل شطر - حدّد الشطر الذي تريد رفع ملفه.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, Shatr.male), child: const Text('شطر الطلاب')),
-          TextButton(onPressed: () => Navigator.pop(context, Shatr.female), child: const Text('شطر الطالبات')),
-        ],
-      ),
-    );
-    if (shatr == null || !mounted) return;
-    await runUploadAcademicData(
-      context: context,
-      shatr: shatr,
-      setUploading: (v) => setState(() => shatr == Shatr.male ? _uploadingAcademicMale = v : _uploadingAcademicFemale = v),
-      onSuccess: () async {
-        await _loadDates();
-        if (mounted) _showSuccessSnackBar('تم رفع الملف بنجاح');
-      },
-    );
-  }
+  /// رفع "بيانات الطلبة الأكاديمية" - اختيار متعدد كالمعتاد (كالإرشاد/
+  /// المقررات وغيرهما)، يُكتشَف شطر كل ملف تلقائيًا من اسمه (انظر
+  /// [runUploadAcademicData]) - بطلب سليمان صراحةً (2026-08-26): "المفترض ما
+  /// تظهر يسمح بارفاق اكثر من ملف كالعاده".
+  Future<void> _pickAndUploadAcademicData() => runUploadAcademicData(
+        context: context,
+        setUploading: (v) => setState(() {
+          _uploadingAcademicMale = v;
+          _uploadingAcademicFemale = v;
+        }),
+        onSuccess: () async {
+          await _loadDates();
+          if (mounted) _showSuccessSnackBar('تم رفع الملفات بنجاح');
+        },
+      );
 
   /// مربع "بيانات الطلبة الأكاديمية" (المعدل/الساعات) - نفس هوية "منسوبي
   /// الكلية"/"المقررات الدراسية" حرفيًا (بطلب سليمان صراحةً 2026-08-26).

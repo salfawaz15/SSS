@@ -334,13 +334,16 @@ Future<void> runUploadHealth({
 
 // ==================== بيانات الطلبة الأكاديمية (المعدل/الساعات) ====================
 
-/// رفع ملف "بيانات الطلبة الأكاديمية" (قوائم اكسل 481 - طلاب/طالبات - منتظم)
-/// لشطر واحد محدَّد - الملف منفصل أصلاً بين الشطرين (لا عمود جنس يفرزهما كملف
-/// "طلبة ذوي الإعاقة"), فيُرفع كل شطر بزر مستقل. ينقل النسخة الحالية لـ
-/// "basePrevious" أولًا (مصدر "النطاق السابق" للرفعة القادمة) قبل استبدالها.
+/// رفع ملف/ملفي "بيانات الطلبة الأكاديمية" (قوائم اكسل 481 - طلاب/طالبات -
+/// منتظم) دفعة واحدة (اختيار متعدد كالمعتاد بكل أزرار الرفع بالموقع) - الملف
+/// منفصل أصلاً بين الشطرين (لا عمود جنس يفرزهما كملف "طلبة ذوي الإعاقة")،
+/// فيُكتشَف شطر كل ملف تلقائيًا من اسمه ("طلاب"/"طالبات" - بنفس منطق
+/// [_shatrLabelFromFreeText] أعلاه). ملف اسمه لا يوضّح الشطر يُسأَل عنه صراحةً
+/// (نفس أسلوب "طلبة ذوي الإعاقة" [ShatrRequiredException]). ينقل النسخة
+/// الحالية لكل شطر لـ"basePrevious" أولًا (مصدر "النطاق السابق" للرفعة
+/// القادمة) قبل استبدالها.
 Future<void> runUploadAcademicData({
   required BuildContext context,
-  required Shatr shatr,
   required ValueChanged<bool> setUploading,
   required VoidCallback onSuccess,
 }) async {
@@ -348,34 +351,68 @@ Future<void> runUploadAcademicData({
     type: FileType.custom,
     allowedExtensions: const ['xlsx'],
     withData: true,
+    allowMultiple: true,
   );
-  if (result == null || result.files.single.bytes == null) return;
-  final Uint8List bytes = result.files.single.bytes!;
+  if (result == null || result.files.isEmpty) return;
 
   setUploading(true);
   try {
-    showUploadProcessingDialog(context, 'جاري معالجة الملف...');
-    List<AdvisingCaseRecord> records;
-    try {
-      records = AcademicDataExcelParserService.parse(bytes, shatr);
-    } finally {
-      hideUploadProcessingDialog(context);
+    final byShatr = <Shatr, List<AdvisingCaseRecord>>{};
+    final fileCounts = <Shatr, int>{};
+    final failedItems = <({String fileName, String error})>[];
+
+    for (final file in result.files) {
+      final bytes = file.bytes;
+      if (bytes == null) {
+        failedItems.add((fileName: file.name, error: 'تعذّرت قراءة محتوى الملف.'));
+        continue;
+      }
+      final shatrLabel = _shatrLabelFromFreeText(file.name);
+      Shatr? shatr = shatrLabel == Shatr.male.label ? Shatr.male : (shatrLabel == Shatr.female.label ? Shatr.female : null);
+      if (shatr == null) {
+        if (!context.mounted) return;
+        shatr = await showDialog<Shatr>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('تحديد الشطر'),
+            content: Text('لم يتّضح الشطر من اسم الملف "${file.name}" - حدّده يدويًا.'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context, Shatr.male), child: const Text('شطر الطلاب')),
+              TextButton(onPressed: () => Navigator.pop(context, Shatr.female), child: const Text('شطر الطالبات')),
+            ],
+          ),
+        );
+        if (shatr == null) continue; // تجاهل هذا الملف تحديدًا لو أُلغي التحديد، بلا إلغاء بقية الملفات.
+      }
+      try {
+        final records = AcademicDataExcelParserService.parse(bytes, shatr);
+        byShatr.putIfAbsent(shatr, () => []).addAll(records);
+        fileCounts[shatr] = (fileCounts[shatr] ?? 0) + 1;
+      } catch (e) {
+        failedItems.add((fileName: file.name, error: '$e'));
+      }
     }
 
     if (!context.mounted) return;
+    if (byShatr.isEmpty) {
+      showUploadErrorDialog(
+        context,
+        'تعذّر معالجة الملفات',
+        failedItems.isEmpty ? 'لم يُختَر أي ملف صالح.' : failedItems.map((f) => '${f.fileName}: ${f.error}').join('\n'),
+      );
+      return;
+    }
+
+    final summary = byShatr.entries.map((e) => '${e.key.label}: ${e.value.length} سجل (${fileCounts[e.key]} ملف)').join('\n');
+    final failuresNote = failedItems.isEmpty ? '' : '\n\nملفات تعذّرت معالجتها:\n${failedItems.map((f) => '${f.fileName}: ${f.error}').join('\n')}';
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('تأكيد اعتماد ملف "بيانات الطلبة الأكاديمية" (${shatr.label})'),
+        title: const Text('تأكيد اعتماد "بيانات الطلبة الأكاديمية"'),
         content: SizedBox(
           width: 480,
           child: SingleChildScrollView(
-            child: Text(
-              records.isEmpty
-                  ? 'الملف لا يحتوي أي بيانات صالحة. هل تريد المتابعة؟'
-                  : 'تم استخراج ${records.length} سجل طالب/ة (معدل تراكمي + ساعات).\n\n'
-                      'سيستبدل هذا آخر نسخة معتمدة لهذا الشطر (وتُحفظ النسخة الحالية كـ"النطاق السابق"). هل تريد الاعتماد؟',
-            ),
+            child: Text('$summary\n\nسيستبدل هذا آخر نسخة معتمدة لكل شطر ظهر بالملفات (وتُحفظ النسخة الحالية كـ"النطاق السابق"). هل تريد الاعتماد؟$failuresNote'),
           ),
         ),
         actions: [
@@ -386,13 +423,17 @@ Future<void> runUploadAcademicData({
     );
     if (confirmed != true) return;
 
-    await AdvisingReportRepository.promoteBaseToPrevious(shatr);
-    await AdvisingReportRepository.save(shatr, records, kind: AdvisingReportKind.base);
+    var totalCount = 0;
+    for (final entry in byShatr.entries) {
+      await AdvisingReportRepository.promoteBaseToPrevious(entry.key);
+      await AdvisingReportRepository.save(entry.key, entry.value, kind: AdvisingReportKind.base);
+      totalCount += entry.value.length;
+    }
 
     onSuccess();
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('تم اعتماد ملف "بيانات الطلبة الأكاديمية" (${shatr.label}) بنجاح (${records.length} سجل).')),
+      SnackBar(content: Text('تم اعتماد ملفات "بيانات الطلبة الأكاديمية" بنجاح ($totalCount سجل).')),
     );
   } catch (e) {
     if (!context.mounted) return;
