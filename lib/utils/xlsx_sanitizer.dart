@@ -15,6 +15,12 @@ import 'package:archive/archive.dart';
 ///    الجدول يُقرأ فارغًا).
 /// 3. خلايا فارغة موسومة زورًا `t="s"` بلا عنصر `<v>` بداخلها
 ///    (`Bad state: No element`).
+/// 4. عنصر `<numFmts>` يحوي `numFmtId` أقل من 164 (خاص بملفات اختبارية
+///    تُولَّد عبر SheetJS بدون خيارات معيّنة، لا ملفات Forms الحقيقية) -
+///    حزمة `excel` تفترض بصرامة أن كل تنسيق مخصَّص يبدأ من المعرّف 164،
+///    فترمي `Exception: custom numFmtId starts at 164 but found a value
+///    of ...`. الحل الموثَّق: حذف عنصر `<numFmts>` بالكامل من `styles.xml`
+///    (تُهمَل تنسيقات الأرقام المخصَّصة، لا قيم الخلايا نفسها).
 ///
 /// يُطبَّق دائمًا وبأمان (بلا تأثير لو الملف سليم أصلاً - كل الاستبدالات
 /// idempotent) قبل أي محاولة قراءة بأي مكان يستقبل ملف xlsx مرفوعًا، ويعيد
@@ -51,6 +57,17 @@ Uint8List sanitizeXlsxBytes(Uint8List bytes) {
             RegExp(r'(<c\b[^>]*?)\s+t="s"([^>]*?)/>'),
             (m) => '${m[1]}${m[2]}/>',
           );
+        }
+        if (name == 'xl/styles.xml') {
+          final numFmtsMatch = RegExp(r'<numFmts[^>]*>(.*?)</numFmts>', dotAll: true).firstMatch(fixed);
+          if (numFmtsMatch != null) {
+            final hasInvalidId = RegExp(r'numFmtId="(\d+)"').allMatches(numFmtsMatch.group(1)!).any(
+                  (m) => (int.tryParse(m.group(1)!) ?? 164) < 164,
+                );
+            if (hasInvalidId) {
+              fixed = fixed.replaceRange(numFmtsMatch.start, numFmtsMatch.end, '');
+            }
+          }
         }
         if (fixed != text) {
           changed = true;
