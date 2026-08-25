@@ -286,6 +286,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       studentsWithoutAdvisor: [...c.studentsWithoutAdvisor]
         ..sort((x, y) => cmp(x.shatr, x.studentName, y.shatr, y.studentName)),
       dismissedStudents: c.dismissedStudents,
+      newStudents: [...c.newStudents]..sort((x, y) => cmp(x.shatr, x.studentName, y.shatr, y.studentName)),
     );
   }
 

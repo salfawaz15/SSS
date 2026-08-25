@@ -14,10 +14,25 @@ class AdvisingCaseExcelService {
     verticalAlign: VerticalAlign.Center,
   );
 
+  static final _groupHeaderStyle = CellStyle(
+    bold: true,
+    fontColorHex: ExcelColor.white,
+    backgroundColorHex: ExcelColor.fromHexString('FF2E6F52'),
+    horizontalAlign: HorizontalAlign.Right,
+    verticalAlign: VerticalAlign.Center,
+  );
+
+  /// [groupColumnIndex] اختياري: فهرس عمود (مثال: "المرشد") تُجمَّع صفوفه في
+  /// كتل متتالية (بترتيب أول ظهور لكل قيمة، بلا إعادة فرز) - قبل كل كتلة يُدرَج
+  /// صف عنوان ممتد (merge) بلون مميّز يحمل اسم القيمة وعدد صفوفها، بنفس أسلوب
+  /// تقارير المنظومة الجامعية الأصلية (سليمان صراحةً 2026-08-25: التصدير
+  /// المسطَّح الحالي "تنظيم غير احترافي" مقارنة بتقرير المنظومة الذي يُظهر كل
+  /// مرشد ككتلة مستقلة بعنوان واضح). null (الافتراضي) يُبقي السلوك القديم.
   static Uint8List build({
     required String title,
     required List<String> headers,
     required List<List<String>> rows,
+    int? groupColumnIndex,
   }) {
     final workbook = Excel.createExcel();
     final sheetName = title.length > 31 ? title.substring(0, 31) : title;
@@ -32,8 +47,31 @@ class AdvisingCaseExcelService {
       sheet.cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: 0)).cellStyle = _headerStyle;
     }
 
-    for (var r = 0; r < rows.length; r++) {
-      sheet.appendRow(rows[r].map((v) => TextCellValue(v)).toList());
+    if (groupColumnIndex == null || groupColumnIndex < 0 || groupColumnIndex >= headers.length) {
+      for (final row in rows) {
+        sheet.appendRow(row.map((v) => TextCellValue(v)).toList());
+      }
+      return Uint8List.fromList(workbook.encode()!);
+    }
+
+    final groups = <String, List<List<String>>>{};
+    for (final row in rows) {
+      final key = groupColumnIndex < row.length ? row[groupColumnIndex] : '';
+      (groups[key] ??= []).add(row);
+    }
+
+    final groupColumnName = headers[groupColumnIndex];
+    for (final entry in groups.entries) {
+      final rowIndex = sheet.maxRows;
+      sheet.appendRow([TextCellValue('$groupColumnName: ${entry.key.isEmpty ? "بلا قيمة" : entry.key}  -  العدد: ${entry.value.length}')]);
+      sheet.merge(
+        CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: rowIndex),
+        CellIndex.indexByColumnRow(columnIndex: headers.length - 1, rowIndex: rowIndex),
+      );
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: rowIndex)).cellStyle = _groupHeaderStyle;
+      for (final row in entry.value) {
+        sheet.appendRow(row.map((v) => TextCellValue(v)).toList());
+      }
     }
 
     return Uint8List.fromList(workbook.encode()!);
