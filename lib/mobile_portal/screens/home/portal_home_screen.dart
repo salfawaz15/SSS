@@ -222,7 +222,11 @@ class _StatGrid extends StatelessWidget {
         crossAxisCount: 2,
         mainAxisSpacing: AppSpacing.sm,
         crossAxisSpacing: AppSpacing.sm,
-        childAspectRatio: 1.5,
+        // 1.5 كانت تُنتج بطاقات طويلة جدًا مقارنة بمحتواها الفعلي (أيقونة +
+        // رقم + تسمية بارتفاع ~100) - فراغ داخلي كبير غير مستغَل يبدو "غير
+        // احترافي" (سليمان صراحةً 2026-08-26، لقطة فعلية). 2.8 يقارب ارتفاع
+        // المحتوى الحقيقي.
+        childAspectRatio: 2.8,
       ),
       itemBuilder: (context, i) {
         final c = cards[i];

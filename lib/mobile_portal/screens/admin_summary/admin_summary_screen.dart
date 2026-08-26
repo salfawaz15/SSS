@@ -103,7 +103,7 @@ class _AdvisingTabState extends State<_AdvisingTab> {
                 crossAxisCount: 2,
                 mainAxisSpacing: AppSpacing.sm,
                 crossAxisSpacing: AppSpacing.sm,
-                childAspectRatio: 1.5,
+                childAspectRatio: 2.8,
                 children: [
                   MobileKpiCard(
                     label: 'طلبة على غير مرشدهم',
