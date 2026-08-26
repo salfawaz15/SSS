@@ -1111,7 +1111,12 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
                 // معروف في DropdownMenu لا يُعالَج تلقائيًا بتغيير initialSelection.
                 key: ValueKey('instructor-$_facultyInstructor'),
                 label: const Text('عضو هيئة التدريس (اكتب للبحث)'),
-                enabled: _facultyDept != null && _facultyShatr != null && _facultyViewMode == null,
+                // لم يعد اختيار الشطر/القسم شرطًا لتفعيل البحث (بطلب سليمان
+                // صراحةً 2026-08-26: "اريد ان ابحث عن اي عضو اذا كان الخيار
+                // الكل") - `_instructorNamesFor` يتعامل أصلاً بأمان مع فلتر
+                // فارغ (null) فيعرض كل الأعضاء، فلا حاجة لتعطيل الحقل بانتظار
+                // اختيار صريح لهما.
+                enabled: _facultyViewMode == null,
                 enableFilter: true,
                 requestFocusOnTap: true,
                 initialSelection: _facultyInstructor,
@@ -1156,7 +1161,7 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
                     Text(
                       isAllDepts
                           ? 'اختر الشطر ثم "الكل" أو "الشعب غير المسكَّنة" لعرض شعب الكلية'
-                          : 'اختر القسم والشطر واسم العضو لعرض جدوله',
+                          : 'اكتب اسم العضو مباشرة (بحث عن أي عضو بالكلية)، أو حدّد القسم والشطر أولاً لتضييق القائمة',
                       style: TextStyle(color: Colors.grey.shade600, fontSize: 13.5),
                     ),
                   ],
