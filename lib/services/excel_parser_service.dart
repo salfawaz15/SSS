@@ -104,11 +104,20 @@ class ExcelParserService {
     final headers = headerRow.map((c) => (c?.value?.toString() ?? '')).toList();
     final normalizedHeaders = headers.map(_normalize).toList();
 
+    // بعض تنزيلات نموذج Forms (لوحظ فعليًا من تابلت أندرويد عبر Chrome)
+    // تحتفظ بعمودي البريد/الاسم النظاميين بمسمّاهما الإنجليزي الخام "Email"/
+    // "Name" بدل الترجمة العربية "البريد الإلكتروني"/"الاسم" التي يصدّرها
+    // المصدر المعتاد (تنزيل من حاسوب) - كلاهما نفس عمودي Forms النظاميين،
+    // فقط يختلف مسمّى العنوان حسب طريقة/جهاز التنزيل. بلا هذا البديل الإنجليزي
+    // يفشل `emailCol` بصمت (-1) فتُتجاهَل كل الصفوف لاحقًا (email فارغ لكل صف).
     final emailCol = _findColumn(
       normalizedHeaders,
-      (h) => h.contains(_normalize('البريد الإلكتروني')),
+      (h) => h.contains(_normalize('البريد الإلكتروني')) || h == _normalize('Email'),
     );
-    final nameCol = _findColumn(normalizedHeaders, (h) => h == _normalize('الاسم'));
+    final nameCol = _findColumn(
+      normalizedHeaders,
+      (h) => h == _normalize('الاسم') || h == _normalize('Name'),
+    );
     final phoneCol = _findColumn(normalizedHeaders, (h) => h.contains(_normalize('رقم الجوال')));
     final expectedGradCol = _findColumn(
       normalizedHeaders,
