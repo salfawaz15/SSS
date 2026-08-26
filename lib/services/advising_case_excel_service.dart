@@ -28,11 +28,17 @@ class AdvisingCaseExcelService {
   /// تقارير المنظومة الجامعية الأصلية (سليمان صراحةً 2026-08-25: التصدير
   /// المسطَّح الحالي "تنظيم غير احترافي" مقارنة بتقرير المنظومة الذي يُظهر كل
   /// مرشد ككتلة مستقلة بعنوان واضح). null (الافتراضي) يُبقي السلوك القديم.
+  /// [rowCellColors] اختياري: لون خلفية (hex بصيغة `FFRRGGBB`) لخلايا محدَّدة
+  /// من كل صف - `rowCellColors[i]` خريطة (فهرس العمود ← لون) لصف `rows[i]`،
+  /// بديل بصري عن شريط تقدّم حي (غير مدعوم بالخلية بهذه المكتبة) - بطلب
+  /// سليمان صراحةً (2026-08-26) لعمودَي "النطاق" حتى يبقى نفس الإحساس اللوني
+  /// بالملف المصدَّر لا نصًا مجردًا فقط.
   static Uint8List build({
     required String title,
     required List<String> headers,
     required List<List<String>> rows,
     int? groupColumnIndex,
+    List<Map<int, String>>? rowCellColors,
   }) {
     final workbook = Excel.createExcel();
     final sheetName = title.length > 31 ? title.substring(0, 31) : title;
@@ -48,8 +54,19 @@ class AdvisingCaseExcelService {
     }
 
     if (groupColumnIndex == null || groupColumnIndex < 0 || groupColumnIndex >= headers.length) {
-      for (final row in rows) {
-        sheet.appendRow(row.map((v) => TextCellValue(v)).toList());
+      for (var r = 0; r < rows.length; r++) {
+        final rowIndex = sheet.maxRows;
+        sheet.appendRow(rows[r].map((v) => TextCellValue(v)).toList());
+        final colors = rowCellColors != null && r < rowCellColors.length ? rowCellColors[r] : null;
+        if (colors != null) {
+          for (final entry in colors.entries) {
+            sheet.cell(CellIndex.indexByColumnRow(columnIndex: entry.key, rowIndex: rowIndex)).cellStyle = CellStyle(
+              backgroundColorHex: ExcelColor.fromHexString(entry.value),
+              horizontalAlign: HorizontalAlign.Center,
+              verticalAlign: VerticalAlign.Center,
+            );
+          }
+        }
       }
       return Uint8List.fromList(workbook.encode()!);
     }

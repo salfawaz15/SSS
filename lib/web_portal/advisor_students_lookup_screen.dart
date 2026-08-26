@@ -329,9 +329,23 @@ class _AdvisorStudentsLookupScreenState extends State<AdvisorStudentsLookupScree
         GpaStatus.unknown => Colors.grey,
       };
 
-  static Widget _rangeBadge(double? gpa) {
+  /// لون الخلفية بصيغة hex (`FFRRGGBB`) - لتلوين خلية النطاق بملف Excel
+  /// المصدَّر بنفس لون الشريط المعروض بالموقع (لا شريط حي مدعوم بالخلية).
+  static String _rangeColorHex(GpaStatus status) {
+    final c = _rangeColor(status);
+    final r = (c.r * 255).round().toRadixString(16).padLeft(2, '0');
+    final g = (c.g * 255).round().toRadixString(16).padLeft(2, '0');
+    final b = (c.b * 255).round().toRadixString(16).padLeft(2, '0');
+    return 'FF$r$g$b'.toUpperCase();
+  }
+
+  /// شريط النطاق الأفقي المتدرِّج اللون (بديل الشارة النصية) - موضع الامتلاء
+  /// يعكس المعدل على سلّم 0-4 (بطلب سليمان صراحةً 2026-08-26، بعد نقاش تصميم:
+  /// عداد سرعة دائري لكل صف غير عملي بجدول، الشريط الأفقي البديل العملي).
+  static Widget _rangeBar(double? gpa) {
     final status = gpaStatusOf(gpa);
-    return DashBadgeCell(label: status.label, color: _rangeColor(status));
+    if (gpa == null) return const Text('—', style: TextStyle(fontSize: 12.5));
+    return DashProgressCell(value: gpa / 4.0, color: _rangeColor(status), label: gpa.toStringAsFixed(2));
   }
 
   /// نسخة مرتَّبة من طلاب المرشد وفق العمود المختار بالضغط على رأس عمود
@@ -402,6 +416,16 @@ class _AdvisorStudentsLookupScreenState extends State<AdvisorStudentsLookupScree
           s.remainingHours?.toString() ?? '—',
         ],
     ];
+    // تلوين خلفية خليتَي النطاق (فهرس 3/4) بملف الإكسل بنفس لون الشريط
+    // المعروض بالموقع - لا شريط حي مدعوم بالخلية بهذه المكتبة، فاللون بديل
+    // بصري قريب (بطلب سليمان صراحةً 2026-08-26).
+    final rowCellColors = [
+      for (final s in students)
+        {
+          3: _rangeColorHex(gpaStatusOf(s.previousGpa)),
+          4: _rangeColorHex(gpaStatusOf(s.gpa)),
+        },
+    ];
     final columns = <DashTableColumn>[
       const DashTableColumn(key: 'studentId', label: 'الرقم الجامعي', flex: 14, sortable: true),
       const DashTableColumn(key: 'studentName', label: 'اسم الطالب', flex: 24, sortable: true, align: TextAlign.right),
@@ -422,9 +446,9 @@ class _AdvisorStudentsLookupScreenState extends State<AdvisorStudentsLookupScree
         case 'gpa':
           return Text(_gpaText(s), style: const TextStyle(fontSize: 12.5));
         case 'previousRange':
-          return _rangeBadge(s.previousGpa);
+          return _rangeBar(s.previousGpa);
         case 'range':
-          return _rangeBadge(s.gpa);
+          return _rangeBar(s.gpa);
         case 'completedHours':
           return Text(s.completedHours?.toString() ?? '—', style: const TextStyle(fontSize: 12.5));
         case 'remainingHours':
@@ -449,7 +473,7 @@ class _AdvisorStudentsLookupScreenState extends State<AdvisorStudentsLookupScree
               Expanded(child: Text('$title (${group.students.length})', style: AppTextStyles.h3(color: AppColors.greenDark))),
               TextButton.icon(
                 onPressed: () {
-                  final bytes = AdvisingCaseExcelService.build(title: group.name, headers: headers, rows: rows);
+                  final bytes = AdvisingCaseExcelService.build(title: group.name, headers: headers, rows: rows, rowCellColors: rowCellColors);
                   downloadBytes(bytes, '${group.name}.xlsx');
                 },
                 icon: const Icon(Icons.table_chart_outlined, size: 18),
