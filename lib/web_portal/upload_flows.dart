@@ -1239,7 +1239,7 @@ Future<void> runUploadCourses({
           'من إجمالي ${sections.length} سطر بالملف:\n\n'
           '• ${male.ownRecords.length} شعبة لشطر الطلاب (${male.outsideOptions.length} مادة خارج الكلية).\n'
           '• ${female.ownRecords.length} شعبة لشطر الطالبات (${female.outsideOptions.length} مادة خارج الكلية).\n'
-          'سيستبدل هذا آخر نسخة معتمدة للشطرين بالكامل. هل تريد الاعتماد؟',
+          '${male.ownRecords.isEmpty || female.ownRecords.isEmpty ? 'سيستبدل هذا آخر نسخة معتمدة لشطر واحد فقط (الذي يحوي شعبًا بهذا الملف) - الشطر الآخر يبقى كما هو بلا أي تغيير.' : 'سيستبدل هذا آخر نسخة معتمدة للشطرين بالكامل.'} هل تريد الاعتماد؟',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
@@ -1249,12 +1249,20 @@ Future<void> runUploadCourses({
     );
     if (confirmed != true) return;
 
-    await CourseScheduleRepository.saveSchedule(Shatr.male, male.ownRecords);
-    await CourseScheduleRepository.saveSchedule(Shatr.female, female.ownRecords);
-    await OutsideCourseRepository.save(Shatr.male, male.outsideOptions, male.outsideRecords);
-    await OutsideCourseRepository.save(Shatr.female, female.outsideOptions, female.outsideRecords);
-    if (previousMale.isNotEmpty) await CourseScheduleChangeRepository.appendChanges(changesMale);
-    if (previousFemale.isNotEmpty) await CourseScheduleChangeRepository.appendChanges(changesFemale);
+    // لا يُستبدَل شطر لم يحوِ أي شعبة بهذا الملف تحديدًا - الملف قد يكون
+    // خاصًا بشطر واحد فقط (لا يشمل الشطرين معًا كما هو مفترض أصلاً)، فحفظ
+    // قائمة فارغة كان يمحو بصمت آخر نسخة معتمدة للشطر الآخر - لاحظه سليمان
+    // صراحةً (2026-08-26): "اذا تم رفع شطر الطلاب يحذف شطر الطالبات والعكس".
+    if (male.ownRecords.isNotEmpty) {
+      await CourseScheduleRepository.saveSchedule(Shatr.male, male.ownRecords);
+      await OutsideCourseRepository.save(Shatr.male, male.outsideOptions, male.outsideRecords);
+      if (previousMale.isNotEmpty) await CourseScheduleChangeRepository.appendChanges(changesMale);
+    }
+    if (female.ownRecords.isNotEmpty) {
+      await CourseScheduleRepository.saveSchedule(Shatr.female, female.ownRecords);
+      await OutsideCourseRepository.save(Shatr.female, female.outsideOptions, female.outsideRecords);
+      if (previousFemale.isNotEmpty) await CourseScheduleChangeRepository.appendChanges(changesFemale);
+    }
     onSuccess();
     if (!context.mounted) return;
     onMessage('تم رفع الملف بنجاح');

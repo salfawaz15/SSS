@@ -59,7 +59,7 @@ class InstructorSchedulePdfService {
 
     // ترتيب الأعمدة معكوس (RTL): "رمز المقرر" أولًا في القائمة => يظهر
     // أقصى اليمين، مطابقًا لترتيب القراءة الطبيعي.
-    final headers = ['الوقت', 'اليوم', 'الساعات', 'الشعبة', 'النشاط', 'اسم المقرر', 'رمز المقرر'];
+    final headers = ['القاعة', 'الوقت', 'اليوم', 'الساعات', 'الشعبة', 'النشاط', 'اسم المقرر', 'رمز المقرر'];
 
     doc.addPage(
       pw.MultiPage(
@@ -147,13 +147,14 @@ class InstructorSchedulePdfService {
       border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
       defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
       columnWidths: const {
-        0: pw.FlexColumnWidth(1.3),
-        1: pw.FlexColumnWidth(1),
-        2: pw.FlexColumnWidth(0.8),
+        0: pw.FlexColumnWidth(1),
+        1: pw.FlexColumnWidth(1.3),
+        2: pw.FlexColumnWidth(1),
         3: pw.FlexColumnWidth(0.8),
-        4: pw.FlexColumnWidth(0.9),
-        5: pw.FlexColumnWidth(2.2),
-        6: pw.FlexColumnWidth(1.1),
+        4: pw.FlexColumnWidth(0.8),
+        5: pw.FlexColumnWidth(0.9),
+        6: pw.FlexColumnWidth(2.2),
+        7: pw.FlexColumnWidth(1.1),
       },
       children: [
         pw.TableRow(decoration: pw.BoxDecoration(color: _green), children: headers.map(headerCell).toList()),
@@ -161,6 +162,9 @@ class InstructorSchedulePdfService {
           pw.TableRow(
             decoration: pw.BoxDecoration(color: i.isEven ? PdfColors.white : _lightGray.shade(0.3)),
             children: [
+              bodyCell(!tableRows[i].hasPractical
+                  ? pw.Text(tableRows[i].theoryRoomRange, textAlign: pw.TextAlign.center, style: _cellTextStyle)
+                  : _splitCell(tableRows[i].theoryRoomRange, tableRows[i].practicalRoomRange!)),
               bodyCell(!tableRows[i].hasPractical
                   ? pw.Text(tableRows[i].theoryTimeRange, textAlign: pw.TextAlign.center, style: _cellTextStyle)
                   : _splitCell(tableRows[i].theoryTimeRange, tableRows[i].practicalTimeRange!)),
