@@ -872,7 +872,10 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
         mainAxisSize: MainAxisSize.min,
         children: [
           theoryRow,
-          const Padding(padding: EdgeInsets.symmetric(vertical: 3), child: Divider(height: 1)),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 3),
+            child: SizedBox(width: 30, child: Divider(height: 1)),
+          ),
           practicalRow,
         ],
       ),
@@ -1573,66 +1576,7 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
         // المقسومة نظري/عملي، تلوين الصفوف بالتبادل) "جميل جدًا" فبقي بلا
         // تغيير، فقط الإطار الخارجي تُوحِّد مع بقية الموقع.
         DashTableCard(
-          table: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: DataTable(
-              dataRowMinHeight: 44,
-              dataRowMaxHeight: double.infinity,
-              headingRowColor: WidgetStateProperty.all(AppColors.green),
-              headingTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12.5),
-              columns: const [
-                DataColumn(label: Text('رمز المقرر')),
-                DataColumn(label: Text('اسم المقرر')),
-                DataColumn(label: Text('النشاط')),
-                DataColumn(label: Text('الشعبة')),
-                DataColumn(label: Text('الساعات')),
-                DataColumn(label: Text('اليوم')),
-                DataColumn(label: Text('الوقت')),
-                DataColumn(label: Text('القاعة')),
-              ],
-              rows: tableRows.isEmpty
-                  ? [
-                      const DataRow(cells: [
-                        DataCell(Text('لا توجد مقررات مسكَّنة لهذا العضو')),
-                        DataCell(Text('')),
-                        DataCell(Text('')),
-                        DataCell(Text('')),
-                        DataCell(Text('')),
-                        DataCell(Text('')),
-                        DataCell(Text('')),
-                        DataCell(Text('')),
-                      ]),
-                    ]
-                  : [
-                      for (var i = 0; i < tableRows.length; i++)
-                        DataRow(
-                          color: WidgetStateProperty.all(i.isEven ? Colors.white : const Color(0xFFF7F5EF)),
-                          cells: [
-                            DataCell(Text(tableRows[i].courseCode)),
-                            DataCell(Text(tableRows[i].courseName)),
-                            DataCell(!tableRows[i].hasPractical
-                                ? _activityChip('نظري')
-                                : _splitCell(_activityChip('نظري'), _activityChip('عملي'))),
-                            DataCell(!tableRows[i].hasPractical
-                                ? Text(tableRows[i].theorySection)
-                                : _splitCell(Text(tableRows[i].theorySection), Text(tableRows[i].practicalSection!))),
-                            DataCell(!tableRows[i].hasPractical
-                                ? Text('${tableRows[i].theoryHours}')
-                                : _splitCell(Text('${tableRows[i].theoryHours}'), Text('${tableRows[i].practicalHours}'))),
-                            DataCell(!tableRows[i].hasPractical
-                                ? Text(tableRows[i].theoryDayName)
-                                : _splitCell(Text(tableRows[i].theoryDayName), Text(tableRows[i].practicalDayName!))),
-                            DataCell(!tableRows[i].hasPractical
-                                ? Text(tableRows[i].theoryTimeRange)
-                                : _splitCell(Text(tableRows[i].theoryTimeRange), Text(tableRows[i].practicalTimeRange!))),
-                            DataCell(!tableRows[i].hasPractical
-                                ? Text(tableRows[i].theoryRoomRange)
-                                : _splitCell(Text(tableRows[i].theoryRoomRange), Text(tableRows[i].practicalRoomRange!))),
-                          ],
-                        ),
-                    ],
-            ),
-          ),
+          table: _instructorScheduleTable(tableRows),
         ),
         const SizedBox(height: 12),
         Align(
@@ -1649,6 +1593,93 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
           ),
         ),
       ],
+    );
+  }
+
+  /// جدول Table خام بدل DataTable لضمان توسيط عمودي حقيقي لكل خلية: صفوف
+  /// النظري/العملي المدمجة قد تحمل عدة مواعيد مفصولة بسطر جديد (انظر
+  /// `_joinMeetings` بملف instructor_schedule_table.dart) فيتفاوت ارتفاع
+  /// الصف تلقائيًا، وDataTable يُثبِّت محاذاة خلاياه أعلى الصف بلا خيار
+  /// لتغييرها - فتظهر الخلايا القصيرة (رمز/ساعات/قاعة) ملتصقة بأعلى الصف
+  /// الطويل بدل توسطه. `Table.defaultVerticalAlignment: middle` يحل هذا
+  /// جذريًا لأي ارتفاع صف ديناميكي، بخلاف أي رقم ثابت كان سيفشل مع مقرر له
+  /// مواعيد أكثر من المعتاد.
+  Widget _instructorScheduleTable(List<InstructorScheduleRow> tableRows) {
+    const headers = ['رمز المقرر', 'اسم المقرر', 'النشاط', 'الشعبة', 'الساعات', 'اليوم', 'الوقت', 'القاعة'];
+    const flexes = [1, 3, 1, 1, 1, 1, 2, 1];
+    final columnWidths = {for (var i = 0; i < flexes.length; i++) i: FlexColumnWidth(flexes[i].toDouble())};
+
+    Widget cell(Widget child, {EdgeInsets padding = const EdgeInsets.symmetric(horizontal: 12, vertical: 10)}) =>
+        Padding(padding: padding, child: Center(child: child));
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minWidth: constraints.maxWidth),
+            child: SizedBox(
+              width: constraints.maxWidth,
+              child: Table(
+                defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+                columnWidths: columnWidths,
+                children: [
+                  TableRow(
+                    decoration: const BoxDecoration(color: AppColors.green),
+                    children: [
+                      for (final h in headers)
+                        cell(
+                          Text(h,
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12.5)),
+                        ),
+                    ],
+                  ),
+                  if (tableRows.isEmpty)
+                    TableRow(children: [
+                      cell(const Text('لا توجد مقررات مسكَّنة لهذا العضو')),
+                      for (var i = 0; i < 7; i++) cell(const Text('')),
+                    ])
+                  else
+                    for (var i = 0; i < tableRows.length; i++)
+                      TableRow(
+                        decoration: BoxDecoration(
+                          color: i.isEven ? Colors.white : const Color(0xFFF7F5EF),
+                          border: const Border(top: BorderSide(color: Color(0xFFE1E7E3))),
+                        ),
+                        children: [
+                          cell(Text(tableRows[i].courseCode, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                          cell(Text(tableRows[i].courseName, maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false)),
+                          cell(!tableRows[i].hasPractical
+                              ? _activityChip('نظري')
+                              : _splitCell(_activityChip('نظري'), _activityChip('عملي'))),
+                          cell(!tableRows[i].hasPractical
+                              ? Text(tableRows[i].theorySection)
+                              : _splitCell(Text(tableRows[i].theorySection), Text(tableRows[i].practicalSection!))),
+                          cell(!tableRows[i].hasPractical
+                              ? Text('${tableRows[i].theoryHours}')
+                              : _splitCell(Text('${tableRows[i].theoryHours}'), Text('${tableRows[i].practicalHours}'))),
+                          cell(!tableRows[i].hasPractical
+                              ? Text(tableRows[i].theoryDayName, textAlign: TextAlign.center)
+                              : _splitCell(Text(tableRows[i].theoryDayName, textAlign: TextAlign.center),
+                                  Text(tableRows[i].practicalDayName!, textAlign: TextAlign.center))),
+                          cell(!tableRows[i].hasPractical
+                              ? Text(tableRows[i].theoryTimeRange, textAlign: TextAlign.center, softWrap: false)
+                              : _splitCell(
+                                  Text(tableRows[i].theoryTimeRange, textAlign: TextAlign.center, softWrap: false),
+                                  Text(tableRows[i].practicalTimeRange!, textAlign: TextAlign.center, softWrap: false),
+                                )),
+                          cell(!tableRows[i].hasPractical
+                              ? Text(tableRows[i].theoryRoomRange, textAlign: TextAlign.center)
+                              : _splitCell(Text(tableRows[i].theoryRoomRange, textAlign: TextAlign.center),
+                                  Text(tableRows[i].practicalRoomRange!, textAlign: TextAlign.center))),
+                        ],
+                      ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
