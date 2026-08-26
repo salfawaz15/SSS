@@ -1121,37 +1121,56 @@ Future<void> runUploadCourses({
     type: FileType.custom,
     allowedExtensions: ['docx', 'pdf'],
     withData: true,
+    allowMultiple: true,
   );
-  if (result == null || result.files.single.bytes == null) return;
-  final Uint8List bytes = result.files.single.bytes!;
-  final fileName = result.files.single.name.toLowerCase();
-  final isPdf = fileName.endsWith('.pdf');
-  // ملف .docx الحقيقي هو أرشيف ZIP يبدأ دائمًا بالتوقيع "PK"، وملف .pdf
-  // الحقيقي يبدأ دائمًا بالتوقيع "%PDF" - إن لم يطابق أيًا منهما فهو على
-  // الأغلب حُفظ بصيغة أخرى (.doc القديمة مثلًا) أو تالف.
-  final looksValid = isPdf
-      ? (bytes.length >= 4 && bytes[0] == 0x25 && bytes[1] == 0x50 && bytes[2] == 0x44 && bytes[3] == 0x46)
-      : (bytes.length >= 2 && bytes[0] == 0x50 && bytes[1] == 0x4B);
-  if (!looksValid) {
-    if (!context.mounted) return;
-    showUploadErrorDialog(
-      context,
-      isPdf ? 'الملف ليس PDF صالحًا' : 'الملف ليس Word صالحًا',
-      isPdf
-          ? 'الملف المختار لا يبدو ملف PDF حقيقيًا أو أنه تالف - أعد المحاولة بملف PDF أصلي.'
-          : 'الملف المختار لا يبدو ملف Word (.docx) حقيقيًا (قد يكون محفوظًا فعليًا بصيغة .doc القديمة أو تالفًا). '
-              'يمكنك أيضًا رفع ملف PDF مباشرة بلا حاجة للتحويل إلى Word.',
-    );
-    return;
-  }
+  if (result == null || result.files.isEmpty) return;
 
   setUploading(true);
   try {
-    final sections = isPdf
-        ? PdfScheduleParserService.parseSectionsWithShatr(bytes)
-        : DocxScheduleParserService.parseSectionsWithShatr(bytes);
+    // اختيار متعدد (بطلب سليمان صراحةً 2026-08-26: "اجعل اي ملف يرفع يسمح
+    // باضافه عدد كبير") - كل ملف يُقرأ وشُعبه تُدمَج مع بقية الملفات قبل
+    // المتابعة، فيصبح رفع ملفَي طلاب/طالبات منفصلين معًا بضغطة واحدة ممكنًا
+    // بدل الاضطرار لرفعهما بالتتابع.
+    final sections = <ParsedCourseSectionWithShatr>[];
+    final failedFiles = <({String fileName, String error})>[];
+    for (final file in result.files) {
+      final bytes = file.bytes;
+      if (bytes == null) {
+        failedFiles.add((fileName: file.name, error: 'تعذّرت قراءة محتوى الملف.'));
+        continue;
+      }
+      final fileName = file.name.toLowerCase();
+      final isPdf = fileName.endsWith('.pdf');
+      // ملف .docx الحقيقي هو أرشيف ZIP يبدأ دائمًا بالتوقيع "PK"، وملف .pdf
+      // الحقيقي يبدأ دائمًا بالتوقيع "%PDF" - إن لم يطابق أيًا منهما فهو على
+      // الأغلب حُفظ بصيغة أخرى (.doc القديمة مثلًا) أو تالف.
+      final looksValid = isPdf
+          ? (bytes.length >= 4 && bytes[0] == 0x25 && bytes[1] == 0x50 && bytes[2] == 0x44 && bytes[3] == 0x46)
+          : (bytes.length >= 2 && bytes[0] == 0x50 && bytes[1] == 0x4B);
+      if (!looksValid) {
+        failedFiles.add((fileName: file.name, error: isPdf ? 'لا يبدو ملف PDF حقيقيًا أو أنه تالف.' : 'لا يبدو ملف Word (.docx) حقيقيًا (قد يكون بصيغة .doc القديمة).'));
+        continue;
+      }
+      try {
+        final fileSections = isPdf
+            ? PdfScheduleParserService.parseSectionsWithShatr(bytes)
+            : DocxScheduleParserService.parseSectionsWithShatr(bytes);
+        if (fileSections.isEmpty) {
+          failedFiles.add((fileName: file.name, error: 'لم يُعثر على أي شعبة بهذا الملف.'));
+        } else {
+          sections.addAll(fileSections);
+        }
+      } catch (e) {
+        failedFiles.add((fileName: file.name, error: '$e'));
+      }
+    }
+
     if (sections.isEmpty) {
-      throw Exception('لم يتم العثور على أي شعبة في الملف - تأكد من أنه ملف المقررات الدراسية الشامل الصحيح.');
+      throw Exception(
+        failedFiles.isEmpty
+            ? 'لم يتم العثور على أي شعبة بالملفات - تأكد من أنها ملفات المقررات الدراسية الشاملة الصحيحة.'
+            : 'تعذّر استخراج أي شعبة من الملفات المختارة:\n${failedFiles.map((f) => '${f.fileName}: ${f.error}').join('\n')}',
+      );
     }
 
     // موعد أسبوعي ثالث أو أكثر لشعبة واحدة (نظري أو عملي) نادر جدًا فعليًا -
