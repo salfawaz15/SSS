@@ -318,12 +318,9 @@ class CollegeAdvisingClassification {
   /// "بلا مرشد" (خلافًا للسلوك القديم الخاطئ الذي رصده سليمان 2026-08-26: 429
   /// من أصل 432 "بلا مرشد" كانوا فعليًا لهم مرشد صحيح بالرفعة السابقة، وغابوا
   /// عن الرفعة الجديدة فقط - تخرُّج/تغيّر حالة/سهو من الجامعة، لا فقدان مرشد).
+  /// **عدّاد داخلي فقط** بطلب سليمان الصريح (2026-08-26) - لا تبويب مخصَّص له
+  /// بشاشة "متابعة حالات الإرشاد"، ولا يظهر بتبويب "الكل".
   final List<AdvisingCaseRecord> studentsMissingFromCurrentReport;
-
-  /// طالب موجود بملف الإكسل، غائب عن تقرير "كل الكليات" الحالي **والسابق
-  /// معًا** - لم يظهر بأي مصدر موثَّق حتى الآن، فلا يمكن الجزم بحالته؛ يستدعي
-  /// تحققًا يدويًا من المنظومة الجامعية بدل تصنيفه "بلا مرشد" مباشرة.
-  final List<AdvisingCaseRecord> studentsNeedingVerification;
 
   /// الطلبة المستهدفون بالإرشاد = كل طلبة كليتنا المنتظمين − المستجدين. مجموع
   /// [studentsCorrectlyAssigned] + [studentsWithWrongDeptAdvisor] +
@@ -340,7 +337,6 @@ class CollegeAdvisingClassification {
     required this.dismissedStudents,
     required this.newStudents,
     required this.studentsMissingFromCurrentReport,
-    required this.studentsNeedingVerification,
   });
 }
 
@@ -448,7 +444,6 @@ class AdvisingCaseAnalyzer {
     final externalStudents = <ExternalStudentCase>[];
     final withoutAdvisor = <AdvisingCaseRecord>[];
     final missingFromCurrentReport = <AdvisingCaseRecord>[];
-    final needsVerification = <AdvisingCaseRecord>[];
 
     // إزالة تكرار الرقم الجامعي (نفس مبدأ [allCollegeRecords] السابق) - سواء
     // بملف الإكسل (شطرين خامين مدموجين) أو بتقرير "كل الكليات".
@@ -526,9 +521,11 @@ class AdvisingCaseAnalyzer {
             // تخرُّجًا أو تغيّر حالة أو سهوًا من الجامعة، لا فقدان مرشد.
             missingFromCurrentReport.add(r);
           } else {
-            // لم يظهر لا بالحالي ولا بالسابق - لا يمكن الجزم بحالته، يستدعي
-            // تحققًا يدويًا بدل تصنيفه "بلا مرشد" مباشرة.
-            needsVerification.add(r);
+            // لم يظهر لا بالحالي ولا بالسابق - لا يوجد أي مصدر يثبت وجود
+            // مرشد له إطلاقًا، فيُعامَل "بلا مرشد" (بطلب سليمان صراحةً
+            // 2026-08-26: يُدمَج مع الحالة الصريحة أعلاه، بلا تبويب "يحتاج
+            // تحقق" منفصل).
+            withoutAdvisor.add(r);
           }
         }
         continue;
@@ -584,7 +581,6 @@ class AdvisingCaseAnalyzer {
       dismissedStudents: dismissed,
       newStudents: newStudents,
       studentsMissingFromCurrentReport: missingFromCurrentReport,
-      studentsNeedingVerification: needsVerification,
     );
   }
 

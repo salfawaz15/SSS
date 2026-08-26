@@ -296,8 +296,6 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       newStudents: [...c.newStudents]..sort((x, y) => cmp(x.shatr, x.studentName, y.shatr, y.studentName)),
       studentsMissingFromCurrentReport: [...c.studentsMissingFromCurrentReport]
         ..sort((x, y) => cmp(x.shatr, x.studentName, y.shatr, y.studentName)),
-      studentsNeedingVerification: [...c.studentsNeedingVerification]
-        ..sort((x, y) => cmp(x.shatr, x.studentName, y.shatr, y.studentName)),
     );
   }
 
@@ -320,8 +318,6 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       ('إحصائيات الإرشاد', _tabAdvisorStatistics),
       ('حركات الإرشاد', _tabMovements),
       ('الطلبة المستجدون', _tabNewStudents),
-      ('غير ظاهرين في تقرير الإرشاد الحالي', _tabMissingFromCurrentReport),
-      ('يحتاجون تحقق من الإسناد', _tabNeedsVerification),
     ];
     final isSuperAdmin = FirebaseAuth.instance.currentUser?.email == PortalAccounts.superAdminEmail ||
         PortalAccounts.isCurrentSessionSuperAdmin;
@@ -465,8 +461,6 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       _analysis.advisorStatistics.fold<int>(0, (sum, b) => sum + b.totalAdvisors),
       _movementsLog.length,
       _classification.newStudents.length,
-      _classification.studentsMissingFromCurrentReport.length,
-      _classification.studentsNeedingVerification.length,
     ];
     const icons = <IconData>[
       Icons.groups_outlined,
@@ -484,8 +478,6 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       Icons.bar_chart_outlined,
       Icons.history_outlined,
       Icons.fiber_new_outlined,
-      Icons.visibility_off_outlined,
-      Icons.help_outline,
     ];
     final colors = <Color>[
       AppColors.greenDark,
@@ -503,8 +495,6 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       Colors.lime.shade800,
       Colors.blueGrey.shade400,
       Colors.orange.shade700,
-      Colors.grey.shade700,
-      Colors.amber.shade800,
     ];
 
     // 14 بطاقة (لكل التبويبات الأربعة عشر - كانت 10 فقط قبل ذلك) - سليمان لاحظ
@@ -538,7 +528,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
         );
 
     const primaryIndices = [0, 1, 2, 3, 4];
-    const secondaryIndices = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+    const secondaryIndices = [6, 7, 8, 9, 10, 11, 12, 13, 14];
 
     Widget grid({required List<int> indices, required bool compact, required int Function(double width) columnsFor}) {
       return LayoutBuilder(
@@ -767,16 +757,6 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
         rows.add([s.studentName, s.studentId, s.department, s.shatr, '—', 'بلا مرشد', _gpaCell(s), _rangeCell(s), _completedHoursCell(s), _remainingHoursCell(s)]);
       }
     }
-    for (final s in _classification.studentsMissingFromCurrentReport) {
-      if (_deptMatches(s.department) && _advisorMatches(s.advisorNameRaw) && _matchesSearch(s.studentName, s.studentId)) {
-        rows.add([s.studentName, s.studentId, s.department, s.shatr, '—', 'غير ظاهر بالتقرير الحالي', _gpaCell(s), _rangeCell(s), _completedHoursCell(s), _remainingHoursCell(s)]);
-      }
-    }
-    for (final s in _classification.studentsNeedingVerification) {
-      if (_deptMatches(s.department) && _advisorMatches(s.advisorNameRaw) && _matchesSearch(s.studentName, s.studentId)) {
-        rows.add([s.studentName, s.studentId, s.department, s.shatr, '—', 'يحتاج تحقق إسناد', _gpaCell(s), _rangeCell(s), _completedHoursCell(s), _remainingHoursCell(s)]);
-      }
-    }
     for (final c in _classification.studentsWithWrongDeptAdvisor) {
       if (_deptMatches(c.student.department) &&
           _advisorMatches(c.student.advisorNameRaw) &&
@@ -862,33 +842,6 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
         .toList();
     return _buildPanel(
       title: 'طلاب بلا مرشد',
-      headers: const ['الاسم', 'الرقم الجامعي', 'القسم', 'الشطر'],
-      rows: [for (final s in list) [s.studentName, s.studentId, s.department, s.shatr]],
-    );
-  }
-
-  /// طالب موجود بملف الإكسل لكن غائب عن تقرير "كل الكليات" الحالي فقط - ظهر
-  /// بالرفعة السابقة، فلا يُصنَّف "بلا مرشد" (انظر توثيق
-  /// [CollegeAdvisingClassification.studentsMissingFromCurrentReport]).
-  Widget _tabMissingFromCurrentReport() {
-    final list = _classification.studentsMissingFromCurrentReport
-        .where((s) => _deptMatches(s.department) && _advisorMatches(s.advisorNameRaw) && _matchesSearch(s.studentName, s.studentId))
-        .toList();
-    return _buildPanel(
-      title: 'طلاب غير ظاهرين في تقرير الإرشاد الحالي',
-      headers: const ['الاسم', 'الرقم الجامعي', 'القسم', 'الشطر'],
-      rows: [for (final s in list) [s.studentName, s.studentId, s.department, s.shatr]],
-    );
-  }
-
-  /// طالب غائب عن التقرير الحالي والسابق معًا - يستدعي تحققًا يدويًا (انظر
-  /// توثيق [CollegeAdvisingClassification.studentsNeedingVerification]).
-  Widget _tabNeedsVerification() {
-    final list = _classification.studentsNeedingVerification
-        .where((s) => _deptMatches(s.department) && _advisorMatches(s.advisorNameRaw) && _matchesSearch(s.studentName, s.studentId))
-        .toList();
-    return _buildPanel(
-      title: 'طلاب يحتاجون تحقق من الإسناد',
       headers: const ['الاسم', 'الرقم الجامعي', 'القسم', 'الشطر'],
       rows: [for (final s in list) [s.studentName, s.studentId, s.department, s.shatr]],
     );
