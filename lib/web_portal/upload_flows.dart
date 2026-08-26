@@ -183,12 +183,23 @@ Future<void> runUploadAllColleges({
     );
     if (confirmed != true) return;
 
+    var totalOld = 0;
+    var totalNew = 0;
+
     Future<void> saveShatr(Shatr shatr, List<AdvisingCaseRecord> shatrRecords) async {
       final previouslyStored = await AdvisingReportRepository.load(shatr, kind: AdvisingReportKind.allColleges);
       final movements = AdvisingCaseAnalyzer.detectAdvisorMovements(previous: previouslyStored, current: shatrRecords);
 
+      totalOld += await AdvisingReportRepository.currentRecordsCount(shatr, kind: AdvisingReportKind.allColleges);
+      totalNew += shatrRecords.length;
+
       await AdvisingReportRepository.promoteAllCollegesToPrevious(shatr);
-      await AdvisingReportRepository.save(shatr, shatrRecords, kind: AdvisingReportKind.allColleges);
+      await AdvisingReportRepository.save(
+        shatr,
+        shatrRecords,
+        kind: AdvisingReportKind.allColleges,
+        sourceFileName: result.files.single.name,
+      );
 
       if (movements.isNotEmpty) {
         await AdvisorMovementRepository.appendMovements([
@@ -216,7 +227,7 @@ Future<void> runUploadAllColleges({
     onSuccess();
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('تم اعتماد ملف "كل الكليات" بنجاح (${records.length} سجل).')),
+      SnackBar(content: Text('تم اعتماد ملف "كل الكليات" بنجاح - حُذف $totalOld سجلًا قديمًا وأُضيف $totalNew سجلًا جديدًا.')),
     );
   } catch (e) {
     if (!context.mounted) return;
@@ -309,20 +320,27 @@ Future<void> runUploadHealth({
     );
     if (confirmed != true) return;
 
+    final oldMaleCount = await AdvisingReportRepository.currentRecordsCount(Shatr.male, kind: AdvisingReportKind.health);
+    final oldFemaleCount = await AdvisingReportRepository.currentRecordsCount(Shatr.female, kind: AdvisingReportKind.health);
+
     if (records.isEmpty) {
-      await AdvisingReportRepository.save(Shatr.male, const [], kind: AdvisingReportKind.health);
-      await AdvisingReportRepository.save(Shatr.female, const [], kind: AdvisingReportKind.health);
+      await AdvisingReportRepository.save(Shatr.male, const [], kind: AdvisingReportKind.health, sourceFileName: result.files.single.name);
+      await AdvisingReportRepository.save(Shatr.female, const [], kind: AdvisingReportKind.health, sourceFileName: result.files.single.name);
     } else {
-      if (male.isNotEmpty) await AdvisingReportRepository.save(Shatr.male, male, kind: AdvisingReportKind.health);
+      if (male.isNotEmpty) {
+        await AdvisingReportRepository.save(Shatr.male, male, kind: AdvisingReportKind.health, sourceFileName: result.files.single.name);
+      }
       if (female.isNotEmpty) {
-        await AdvisingReportRepository.save(Shatr.female, female, kind: AdvisingReportKind.health);
+        await AdvisingReportRepository.save(Shatr.female, female, kind: AdvisingReportKind.health, sourceFileName: result.files.single.name);
       }
     }
+    final totalOld = oldMaleCount + oldFemaleCount;
+    final totalNew = records.length;
 
     onSuccess();
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('تم اعتماد ملف "طلبة ذوي الإعاقة" بنجاح (${records.length} سجل).')),
+      SnackBar(content: Text('تم اعتماد ملف "طلبة ذوي الإعاقة" بنجاح - حُذف $totalOld سجلًا قديمًا وأُضيف $totalNew سجلًا جديدًا.')),
     );
   } catch (e) {
     if (!context.mounted) return;
@@ -359,6 +377,7 @@ Future<void> runUploadAcademicData({
   try {
     final byShatr = <Shatr, List<AdvisingCaseRecord>>{};
     final fileCounts = <Shatr, int>{};
+    final fileNamesByShatr = <Shatr, String>{};
     final failedItems = <({String fileName, String error})>[];
 
     for (final file in result.files) {
@@ -388,6 +407,7 @@ Future<void> runUploadAcademicData({
         final records = AcademicDataExcelParserService.parse(bytes, shatr);
         byShatr.putIfAbsent(shatr, () => []).addAll(records);
         fileCounts[shatr] = (fileCounts[shatr] ?? 0) + 1;
+        fileNamesByShatr[shatr] = file.name;
       } catch (e) {
         failedItems.add((fileName: file.name, error: '$e'));
       }
@@ -424,16 +444,23 @@ Future<void> runUploadAcademicData({
     if (confirmed != true) return;
 
     var totalCount = 0;
+    var totalOld = 0;
     for (final entry in byShatr.entries) {
+      totalOld += await AdvisingReportRepository.currentRecordsCount(entry.key, kind: AdvisingReportKind.base);
       await AdvisingReportRepository.promoteBaseToPrevious(entry.key);
-      await AdvisingReportRepository.save(entry.key, entry.value, kind: AdvisingReportKind.base);
+      await AdvisingReportRepository.save(
+        entry.key,
+        entry.value,
+        kind: AdvisingReportKind.base,
+        sourceFileName: fileNamesByShatr[entry.key],
+      );
       totalCount += entry.value.length;
     }
 
     onSuccess();
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('تم اعتماد ملفات "بيانات الطلبة الأكاديمية" بنجاح ($totalCount سجل).')),
+      SnackBar(content: Text('تم اعتماد ملفات "بيانات الطلبة الأكاديمية" بنجاح - حُذف $totalOld سجلًا قديمًا وأُضيف $totalCount سجلًا جديدًا.')),
     );
   } catch (e) {
     if (!context.mounted) return;

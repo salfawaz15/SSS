@@ -313,6 +313,18 @@ class CollegeAdvisingClassification {
   /// [studentsCorrectlyAssigned] مثلاً).
   final List<AdvisingCaseRecord> newStudents;
 
+  /// طالب موجود بملف الإكسل، غائب كليًا عن تقرير "كل الكليات" **الحالي**، لكن
+  /// كان موجودًا بالرفعة **السابقة** منه (له مرشد فيها أو لا) - لا يُصنَّف
+  /// "بلا مرشد" (خلافًا للسلوك القديم الخاطئ الذي رصده سليمان 2026-08-26: 429
+  /// من أصل 432 "بلا مرشد" كانوا فعليًا لهم مرشد صحيح بالرفعة السابقة، وغابوا
+  /// عن الرفعة الجديدة فقط - تخرُّج/تغيّر حالة/سهو من الجامعة، لا فقدان مرشد).
+  final List<AdvisingCaseRecord> studentsMissingFromCurrentReport;
+
+  /// طالب موجود بملف الإكسل، غائب عن تقرير "كل الكليات" الحالي **والسابق
+  /// معًا** - لم يظهر بأي مصدر موثَّق حتى الآن، فلا يمكن الجزم بحالته؛ يستدعي
+  /// تحققًا يدويًا من المنظومة الجامعية بدل تصنيفه "بلا مرشد" مباشرة.
+  final List<AdvisingCaseRecord> studentsNeedingVerification;
+
   /// الطلبة المستهدفون بالإرشاد = كل طلبة كليتنا المنتظمين − المستجدين. مجموع
   /// [studentsCorrectlyAssigned] + [studentsWithWrongDeptAdvisor] +
   /// [studentsWithoutAdvisor] بالضبط (لا يشمل حالات "خارج الكلية" لأنها أصلاً
@@ -327,6 +339,8 @@ class CollegeAdvisingClassification {
     required this.studentsWithoutAdvisor,
     required this.dismissedStudents,
     required this.newStudents,
+    required this.studentsMissingFromCurrentReport,
+    required this.studentsNeedingVerification,
   });
 }
 
@@ -425,6 +439,7 @@ class AdvisingCaseAnalyzer {
   static CollegeAdvisingClassification classifyAllColleges({
     required List<AdvisingCaseRecord> academicRecords,
     required List<AdvisingCaseRecord> allCollegeRecords,
+    required List<AdvisingCaseRecord> allCollegeRecordsPrevious,
     required Map<String, CollegeRosterMember> facultyByNameKey,
   }) {
     final correctlyAssigned = <AdvisingCaseRecord>[];
@@ -432,6 +447,8 @@ class AdvisingCaseAnalyzer {
     final externalAdvisors = <ExternalAdvisorCase>[];
     final externalStudents = <ExternalStudentCase>[];
     final withoutAdvisor = <AdvisingCaseRecord>[];
+    final missingFromCurrentReport = <AdvisingCaseRecord>[];
+    final needsVerification = <AdvisingCaseRecord>[];
 
     // إزالة تكرار الرقم الجامعي (نفس مبدأ [allCollegeRecords] السابق) - سواء
     // بملف الإكسل (شطرين خامين مدموجين) أو بتقرير "كل الكليات".
@@ -446,7 +463,9 @@ class AdvisingCaseAnalyzer {
 
     final dedupedAcademic = dedupe(academicRecords);
     final dedupedAllColleges = dedupe(allCollegeRecords);
+    final dedupedAllCollegesPrevious = dedupe(allCollegeRecordsPrevious);
     final advisorById = {for (final r in dedupedAllColleges) r.studentId: r};
+    final previousById = {for (final r in dedupedAllCollegesPrevious) r.studentId: r};
 
     // الطلاب المفصولون أكاديميًا يُستبعَدون كليًا (عمود "الوضع في الفصل"
     // بملف الإكسل - عادةً الملف مفلتَر أصلاً لـ"منتظم" فلا يظهر أي مفصول، لكن
@@ -496,7 +515,22 @@ class AdvisingCaseAnalyzer {
           : academic;
 
       if (!r.hasAdvisor) {
-        if (studentInOurCollege) withoutAdvisor.add(r);
+        if (studentInOurCollege) {
+          if (advisorRecord != null) {
+            // ظهر بالتقرير الحالي فعليًا وحقل مرشده فارغ فيه - "بلا مرشد"
+            // حقيقي مؤكَّد من المصدر الرسمي الحالي.
+            withoutAdvisor.add(r);
+          } else if (previousById.containsKey(academic.studentId)) {
+            // غائب عن التقرير الحالي كليًا، لكنه ظهر بالرفعة السابقة (كان له
+            // مرشد فيها أو لا) - لا يُصنَّف "بلا مرشد"، فغيابه قد يعني
+            // تخرُّجًا أو تغيّر حالة أو سهوًا من الجامعة، لا فقدان مرشد.
+            missingFromCurrentReport.add(r);
+          } else {
+            // لم يظهر لا بالحالي ولا بالسابق - لا يمكن الجزم بحالته، يستدعي
+            // تحققًا يدويًا بدل تصنيفه "بلا مرشد" مباشرة.
+            needsVerification.add(r);
+          }
+        }
         continue;
       }
 
@@ -549,6 +583,8 @@ class AdvisingCaseAnalyzer {
       studentsWithoutAdvisor: withoutAdvisor,
       dismissedStudents: dismissed,
       newStudents: newStudents,
+      studentsMissingFromCurrentReport: missingFromCurrentReport,
+      studentsNeedingVerification: needsVerification,
     );
   }
 

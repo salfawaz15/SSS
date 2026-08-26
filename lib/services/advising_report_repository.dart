@@ -74,7 +74,12 @@ class AdvisingReportRepository {
     }
   }
 
-  static Future<void> save(Shatr shatr, List<AdvisingCaseRecord> records, {AdvisingReportKind kind = AdvisingReportKind.base}) async {
+  static Future<void> save(
+    Shatr shatr,
+    List<AdvisingCaseRecord> records, {
+    AdvisingReportKind kind = AdvisingReportKind.base,
+    String? sourceFileName,
+  }) async {
     final docRef = _col(kind).doc(shatr.docId);
     final chunksRef = docRef.collection('chunks');
     final oldChunks = await chunksRef.get();
@@ -98,6 +103,7 @@ class AdvisingReportRepository {
     final docData = {
       'uploadedAt': FieldValue.serverTimestamp(),
       'studentsCount': records.length,
+      if (sourceFileName != null) 'sourceFileName': sourceFileName,
     };
     await _writeWithDiagnostics('مستند ${kind.name}/${shatr.docId} الرئيسي', docData, () => docRef.set(docData));
 
@@ -149,6 +155,14 @@ class AdvisingReportRepository {
     return ts?.toDate();
   }
 
+  /// اسم الملف المصدر المخزَّن مع آخر رفعة معتمدة - null إن لم يُسجَّل اسم
+  /// ملف لهذه الرفعة (بيانات قديمة قبل إضافة هذا الحقل، أو رفعة بلا اسم ملف
+  /// واحد واضح).
+  static Future<String?> currentSourceFileName(Shatr shatr, {AdvisingReportKind kind = AdvisingReportKind.base}) async {
+    final doc = await _col(kind).doc(shatr.docId).get();
+    return doc.data()?['sourceFileName'] as String?;
+  }
+
   /// عدد السجلات المخزَّنة حاليًا (من حقل `studentsCount` بمستند [save]
   /// الرئيسي) - بلا تحميل كل القطع (`chunks`)، لعرض عداد سريع بواجهات الرفع.
   static Future<int> currentRecordsCount(Shatr shatr, {AdvisingReportKind kind = AdvisingReportKind.base}) async {
@@ -180,7 +194,8 @@ class AdvisingReportRepository {
   static Future<void> promoteBaseToPrevious(Shatr shatr) async {
     final current = await load(shatr, kind: AdvisingReportKind.base);
     if (current.isEmpty) return;
-    await save(shatr, current, kind: AdvisingReportKind.basePrevious);
+    final sourceFileName = await currentSourceFileName(shatr, kind: AdvisingReportKind.base);
+    await save(shatr, current, kind: AdvisingReportKind.basePrevious, sourceFileName: sourceFileName);
   }
 
   /// نفس مبدأ [promoteBaseToPrevious] لكن لتقرير "كل الكليات" - يُستدعى قبل
@@ -190,6 +205,7 @@ class AdvisingReportRepository {
   static Future<void> promoteAllCollegesToPrevious(Shatr shatr) async {
     final current = await load(shatr, kind: AdvisingReportKind.allColleges);
     if (current.isEmpty) return;
-    await save(shatr, current, kind: AdvisingReportKind.allCollegesPrevious);
+    final sourceFileName = await currentSourceFileName(shatr, kind: AdvisingReportKind.allColleges);
+    await save(shatr, current, kind: AdvisingReportKind.allCollegesPrevious, sourceFileName: sourceFileName);
   }
 }
