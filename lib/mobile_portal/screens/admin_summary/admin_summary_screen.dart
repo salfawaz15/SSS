@@ -15,6 +15,13 @@ import '../../widgets/mobile_workflow_summary_card.dart';
 import '../../widgets/portal_app_bar_logo.dart';
 import 'admin_summary_data_controller.dart';
 
+/// حد أقصى لعرض المحتوى على الشاشات العريضة (تابلت) - بلا هذا الحد كانت
+/// بطاقات `MobileKpiCard`/`MobileWorkflowSummaryCard` (نسب عرض/ارتفاع ثابتة)
+/// تتمدد بعرض هائل مع محتوى صغير بداخلها فراغًا كبيرًا غير مستغَل يبدو "غير
+/// احترافي" (سليمان صراحةً 2026-08-26، لقطة فعلية من جهاز تابلت). على الجوال
+/// العادي هذا الحد لا يُفعَّل إطلاقًا (العرض دائمًا أقل منه).
+Widget _capWideScreen(Widget child) => Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 640), child: child));
+
 /// لوحة إدارة مختصرة بتبويبين فرعيين - بطلب سليمان صراحةً (2026-08-23):
 /// لوحة الإدارة بالموقع تنقسم فعليًا لقسمين (الحذف والإضافة/الإرشاد)،
 /// فتبويب "لوحة الإدارة" الجوّالي يحاكي نفس التقسيم بمفتاح تبديل علوي بدل
@@ -75,7 +82,7 @@ class _AdvisingTabState extends State<_AdvisingTab> {
   Widget build(BuildContext context) {
     return RefreshIndicator(
       onRefresh: _reload,
-      child: ListView(
+      child: _capWideScreen(ListView(
         padding: const EdgeInsets.all(AppSpacing.lg),
         children: [
           Text('مؤشرات رئيسية لحالات الإرشاد', style: AppTextStyles.h3()),
@@ -160,7 +167,7 @@ class _AdvisingTabState extends State<_AdvisingTab> {
           ),
           const SizedBox(height: AppSpacing.xl),
         ],
-      ),
+      )),
     );
   }
 }
@@ -252,7 +259,7 @@ class _DeleteAddTabState extends State<_DeleteAddTab> {
 
           return RefreshIndicator(
             onRefresh: () async => setState(() {}),
-            child: ListView(
+            child: _capWideScreen(ListView(
               padding: const EdgeInsets.all(AppSpacing.lg),
               children: [
                 // أهم جزء بقسم "الحذف والإضافة" حسب سليمان صراحةً (2026-08-23):
@@ -354,7 +361,7 @@ class _DeleteAddTabState extends State<_DeleteAddTab> {
                 _WorkflowSection(roleProgress: data.roleProgress),
                 const SizedBox(height: AppSpacing.xl),
               ],
-            ),
+            )),
           );
         },
       );

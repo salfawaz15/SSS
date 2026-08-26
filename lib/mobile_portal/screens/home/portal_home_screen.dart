@@ -48,15 +48,26 @@ class _PortalHomeScreenState extends State<PortalHomeScreen> {
             return SingleChildScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(AppSpacing.lg),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight - AppSpacing.lg * 2),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _buildAdvisingSection(),
-                    _buildDeleteAddSection(),
-                  ],
+              child: Center(
+                // حد أقصى لعرض المحتوى على الشاشات العريضة (تابلت) - بلا هذا
+                // الحد كانت بطاقات `_StatGrid` (نسبة عرض/ارتفاع ثابتة) تتمدد
+                // بعرض هائل مع محتوى صغير بداخلها فراغًا كبيرًا غير مستغَل
+                // يبدو "غير احترافي" (سليمان صراحةً 2026-08-26، لقطة فعلية من
+                // جهاز تابلت). على الجوال العادي هذا الحد لا يُفعَّل إطلاقًا
+                // (العرض دائمًا أقل منه).
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 640),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(minHeight: constraints.maxHeight - AppSpacing.lg * 2),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildAdvisingSection(),
+                        _buildDeleteAddSection(),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             );
