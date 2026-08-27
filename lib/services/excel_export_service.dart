@@ -190,7 +190,7 @@ class ExcelExportService {
       '"سبب آخر" واكتب التفصيل في العمود الأخير "يرجى كتابة السبب الآخر". '
       '3) رُتبت الطلبات بحسب أولوية التخرّج وعدد الساعات المتبقية - يبدأ المرشد بمعالجة '
       'الطلبة المتوقع تخرجهم (صفوف وردية، 30 ساعة متبقية فأقل)، ثم القريبين من التخرج '
-      '(صفوف كهرمانية، 31 أو 32 ساعة)، ثم بقية الطلبة، مع الالتزام بالترتيب الظاهر '
+      '(صفوف صفراء، 31 أو 32 ساعة)، ثم بقية الطلبة، مع الالتزام بالترتيب الظاهر '
       'بالملف ومعالجة جميع طلبات الطالب قبل الانتقال للطالب التالي.';
 
   /// يحمّل خريطة (رقم جامعي ← الساعات المتبقية/المعدل) من "بيانات الطلبة
@@ -244,7 +244,10 @@ class ExcelExportService {
         CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0),
         CellIndex.indexByColumnRow(columnIndex: _headers.length - 1, rowIndex: 0),
       );
-      sheet.setRowHeight(0, 30);
+      // ارتفاع أكبر (كان 30) - النص أصبح أطول بعد إضافة شرح فئتَي أولوية
+      // التخرّج، وكان يظهر مقصوصًا/متلاصقًا بلا مساحة كافية للالتفاف بوضوح
+      // (سليمان صراحةً 2026-08-27، بلقطة شاشة فعلية للملف المُصدَّر).
+      sheet.setRowHeight(0, 90);
       sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0)).cellStyle = CellStyle(
         bold: true,
         fontColorHex: ExcelColor.fromHexString('FF154B36'),
@@ -282,7 +285,7 @@ class ExcelExportService {
       final hoursSortKey = remainingHours ?? unknownHoursSortKey;
       // تصنيف قرب التخرّج - بطلب سليمان صراحةً (2026-08-27): 30 ساعة متبقية
       // فأقل = "متوقع تخرجه" (تمييز وردي فاتح)، 31 أو 32 ساعة = "قريب من
-      // التخرج" (تمييز كهرماني فاتح)، 33 فأكثر = الحالة المعتادة (بلا تمييز،
+      // التخرج" (تمييز أصفر فاتح)، 33 فأكثر = الحالة المعتادة (بلا تمييز،
       // القيمة الأصلية المُبلَّغ عنها ذاتيًا بالطلب).
       final GraduationTier tier;
       final String expectedGraduateLabel;
@@ -415,7 +418,7 @@ class ExcelExportService {
     // العادي (سليمان صراحةً 2026-08-27)، فيبقى واضحًا بصريًا أينما وقع الصف.
     final tierColorHex = switch (tier) {
       GraduationTier.expected => 'FFF9D4DE', // وردي فاتح - متوقع تخرجه
-      GraduationTier.near => 'FFFCEBC7', // كهرماني فاتح - قريب من التخرج
+      GraduationTier.near => 'FFFCEBC7', // أصفر فاتح - قريب من التخرج
       GraduationTier.normal => null,
     };
     final style = _rowStyle(alternate: dataRowIndex.isEven, backgroundColorHex: tierColorHex);
