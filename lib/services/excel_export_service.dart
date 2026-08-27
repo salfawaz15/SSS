@@ -63,7 +63,7 @@ class ExcelExportService {
     'القسم',
     'المرشد الأكاديمي',
     'رقم الجوال',
-    'خريج متوقع',
+    'تصنيف أولوية التخرج',
     'ذوي إعاقة',
     actionTypeHeader,
     courseNameHeader,
@@ -435,14 +435,20 @@ class ExcelExportService {
   /// لعمودَي الساعات المتبقية/المعدل (بدل نص، ليصح الفرز الرقمي لاحقًا لو
   /// فرزه المرشد يدويًا)، وإلا نص عادي كالسابق. قيمة null (ساعات/معدل غير
   /// معروفة) تُكتَب كنص "—" بدل رقم صفري مضلِّل.
-  static CellValue _cellValueFor(int columnIndex, dynamic value) {
+  static CellValue? _cellValueFor(int columnIndex, dynamic value) {
     if (columnIndex == remainingHoursColumnIndex) {
       return value == null ? TextCellValue('—') : IntCellValue(value as int);
     }
     if (columnIndex == gpaColumnIndex) {
       return value == null ? TextCellValue('—') : DoubleCellValue(value as double);
     }
-    return TextCellValue(value.toString());
+    // خلية فارغة فعليًا (لا قيمة إطلاقًا) بدل نص فارغ - سليمان صراحةً
+    // (2026-08-27): نص فارغ يبدو فارغًا بصريًا لكنه يبقى "مستخدَمًا" تقنيًا
+    // (قد تعتبره أدوات فحص خارجية خلية بها بيانات)، بينما الفراغ الحقيقي
+    // ضروري ليصح اكتشاف حالات لم يعالجها المرشد بعد. مهم خصوصًا لأعمدة حالة/
+    // ملاحظات المرشد ومنسق القسم/الكلية.
+    final text = value.toString();
+    return text.isEmpty ? null : TextCellValue(text);
   }
 
   static void _appendStyledRow(

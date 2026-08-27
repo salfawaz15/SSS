@@ -95,6 +95,7 @@ class ExcelProtectionService {
       _addSheetProtection(sheetXml);
     }
     _addDropdowns(sheetXml, dropdowns, dataRowCount, headerRowCount);
+    _freezeHeaderRows(sheetXml, headerRowCount);
     if (hiddenColumnIndexes.isNotEmpty) {
       _hideColumns(sheetXml, hiddenColumnIndexes);
     }
@@ -228,6 +229,31 @@ class ExcelProtectionService {
       sheetData.parent!.children.indexOf(sheetData),
       colsElement,
     );
+  }
+
+  /// يثبّت أول [headerRowCount] صف (شريط التعليمات + صف عناوين الأعمدة عادةً)
+  /// حتى تبقى ظاهرة أثناء التمرير لأسفل - مكتبة `excel` لا تدعم هذا مباشرة،
+  /// فيُضاف عنصر `<pane>` يدويًا داخل `<sheetView>` الموجودة أصلاً (سليمان
+  /// صراحةً 2026-08-27). لا شيء يُثبَّت لو [headerRowCount] صفر أو أقل.
+  static void _freezeHeaderRows(XmlDocument sheetXml, int headerRowCount) {
+    if (headerRowCount <= 0) return;
+    final worksheet = sheetXml.rootElement;
+    final sheetViews = worksheet.findElements('sheetViews').firstOrNull;
+    final sheetView = sheetViews?.findElements('sheetView').firstOrNull;
+    if (sheetView == null) return; // حزمة excel تُصدرها دومًا فعليًا، لكن نتحقق احتياطًا
+
+    final topLeftCell = 'A${headerRowCount + 1}';
+    sheetView.children.add(XmlElement(XmlName('pane'), [
+      XmlAttribute(XmlName('ySplit'), headerRowCount.toString()),
+      XmlAttribute(XmlName('topLeftCell'), topLeftCell),
+      XmlAttribute(XmlName('activePane'), 'bottomLeft'),
+      XmlAttribute(XmlName('state'), 'frozen'),
+    ]));
+    sheetView.children.add(XmlElement(XmlName('selection'), [
+      XmlAttribute(XmlName('pane'), 'bottomLeft'),
+      XmlAttribute(XmlName('activeCell'), topLeftCell),
+      XmlAttribute(XmlName('sqref'), topLeftCell),
+    ]));
   }
 
   static void _addSheetProtection(XmlDocument sheetXml) {
