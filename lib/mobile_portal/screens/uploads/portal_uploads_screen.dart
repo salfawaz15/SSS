@@ -489,10 +489,9 @@ class _UploadActionButton extends StatelessWidget {
     required this.icon,
     required this.busy,
     required this.onPressed,
-    this.primary = true,
     this.iconOnly = false,
     this.color,
-  }) : assert(iconOnly ? tooltip != null : label != null);
+  }) : primary = true, assert(iconOnly ? tooltip != null : label != null);
 
   @override
   Widget build(BuildContext context) {

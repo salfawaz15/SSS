@@ -5,6 +5,7 @@ import 'package:excel/excel.dart';
 import '../data/academic_department_names.dart';
 import '../models/college_roster_member.dart';
 import '../models/unit_committee_member.dart';
+import '../utils/xlsx_sanitizer.dart';
 
 /// يقرأ ملف بيانات منسوبي الكلية المعتمد من عمادة الكلية (ورقات "منسوبو
 /// الكلية"، "الإداريين"، و"المبتعثون") بالاعتماد على أسماء الأعمدة لا
@@ -47,7 +48,7 @@ class CollegeRosterParserService {
   static String _normalizeDepartment(String raw) => normalizeDepartmentName(raw);
 
   static List<CollegeRosterMember> parse(Uint8List bytes) {
-    final excel = Excel.decodeBytes(bytes);
+    final excel = Excel.decodeBytes(sanitizeXlsxBytes(bytes));
     final members = <CollegeRosterMember>[];
 
     final facultySheet = excel.tables['منسوبو الكلية'];
@@ -158,7 +159,7 @@ class CollegeRosterParserService {
   /// معنا" وقسم "أعضاء الوحدة" في الموقع العام. قائمة فارغة إن لم توجد
   /// الورقة (ملف بالقالب القديم لم يُضَف له بعد) - لا يكسر رفع باقي البيانات.
   static List<UnitCommitteeMember> parseUnitCommittee(Uint8List bytes) {
-    final excel = Excel.decodeBytes(bytes);
+    final excel = Excel.decodeBytes(sanitizeXlsxBytes(bytes));
     final members = <UnitCommitteeMember>[];
 
     final sheet = excel.tables['تشكيل الوحدة'];

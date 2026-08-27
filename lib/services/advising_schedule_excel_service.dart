@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:excel/excel.dart' as xls;
 
 import '../models/advising_schedule.dart';
+import '../utils/xlsx_sanitizer.dart';
 import 'excel_protection_service.dart';
 
 /// يبني ويقرأ نموذج Excel بسيط لتوزيع فترات الإرشاد - ملف واحد يصلح لأي
@@ -195,7 +196,7 @@ class AdvisingScheduleExcelService {
   /// يقرأ نموذجًا مُعبَّأً: الشطر/القسم من أعلى النموذج (قيمة واحدة تنطبق
   /// على الملف كله)، ثم صف لكل عضو وحتى 3 فترات (عمود لكل يوم) لهذا العضو.
   static ({String department, String shatr, List<AdvisingScheduleSlot> slots}) parseTemplate(Uint8List bytes) {
-    final excel = xls.Excel.decodeBytes(bytes);
+    final excel = xls.Excel.decodeBytes(sanitizeXlsxBytes(bytes));
     final sheet = excel.tables[_mainSheetName] ?? excel.tables[excel.tables.keys.first]!;
 
     String cellAt(List<xls.Data?> row, int c) => c < row.length ? (row[c]?.value?.toString() ?? '').trim() : '';

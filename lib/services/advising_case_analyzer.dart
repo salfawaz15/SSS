@@ -462,11 +462,13 @@ class AdvisingCaseAnalyzer {
     final advisorById = {for (final r in dedupedAllColleges) r.studentId: r};
     final previousById = {for (final r in dedupedAllCollegesPrevious) r.studentId: r};
 
-    // الطلاب المفصولون أكاديميًا يُستبعَدون كليًا (عمود "الوضع في الفصل"
-    // بملف الإكسل - عادةً الملف مفلتَر أصلاً لـ"منتظم" فلا يظهر أي مفصول، لكن
-    // يبقى الفحص احتياطيًا).
-    final dismissed = dedupedAcademic.where((r) => r.isAcademicallyDismissed).toList();
-    final activeAcademicAll = dedupedAcademic.where((r) => !r.isAcademicallyDismissed).toList();
+    // أي طالب حالته ليست "منتظم" (مفصول أكاديميًا أو منقطع عن الدراسة) -
+    // من عمود "الوضع في الفصل" بملف بيانات الطلبة، أو مستنتَجة من اسم أحد
+    // الملفات الستة عند الرفع (انظر upload_flows.dart) - يُستبعَد كليًا من
+    // كل حسابات وقوائم الإرشاد حتى تُصحَّح حالته (بطلب سليمان صراحةً
+    // 2026-08-27).
+    final dismissed = dedupedAcademic.where((r) => !r.isRegularlyEnrolled).toList();
+    final activeAcademicAll = dedupedAcademic.where((r) => r.isRegularlyEnrolled).toList();
 
     // الطلبة المستجدون (رقمهم يبدأ برمز سنة القبول الحالية) يُستبعَدون هنا
     // **قبل** فحص المرشد (بطلب سليمان صراحةً 2026-08-26، نقطة 9: "يجب ألا
@@ -721,6 +723,7 @@ class AdvisingCaseAnalyzer {
         gpa: a.gpa,
         planHours: a.planHours,
         remainingHours: a.remainingHours,
+        enrollmentStatus: a.enrollmentStatus,
         previousGpa: p?.gpa,
       );
     }).toList();
@@ -796,10 +799,11 @@ class AdvisingCaseAnalyzer {
     CollegeRosterMember? advisorOf(AdvisingCaseRecord s) =>
         facultyByNameKey[_key(displayName(s.advisorNameRaw))];
 
-    // الطلاب المفصولون أكاديميًا يُستبعَدون كليًا من كل التحليل أدناه (بلا
-    // مرشد/خطأ قسم/توازن توزيع/نطاق معدل...) ويُعرَضون في قائمتهم الخاصة فقط.
-    final dismissed = students.where((s) => s.isAcademicallyDismissed).toList();
-    final activeStudents = students.where((s) => !s.isAcademicallyDismissed).toList();
+    // أي طالب غير منتظم (مفصول أكاديميًا أو منقطع عن الدراسة) يُستبعَد كليًا
+    // من كل التحليل أدناه (بلا مرشد/خطأ قسم/توازن توزيع/نطاق معدل...)
+    // ويُعرَض في قائمته الخاصة فقط، حتى تُصحَّح حالته.
+    final dismissed = students.where((s) => !s.isRegularlyEnrolled).toList();
+    final activeStudents = students.where((s) => s.isRegularlyEnrolled).toList();
 
     final correctlyAssigned = <AdvisingCaseRecord>[];
     final withoutAdvisor = <UnassignedStudent>[];

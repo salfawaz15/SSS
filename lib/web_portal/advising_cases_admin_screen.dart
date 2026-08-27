@@ -292,7 +292,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
         ..sort((x, y) => cmp(x.shatr, x.studentName, y.shatr, y.studentName)),
       studentsWithoutAdvisor: [...c.studentsWithoutAdvisor]
         ..sort((x, y) => cmp(x.shatr, x.studentName, y.shatr, y.studentName)),
-      dismissedStudents: c.dismissedStudents,
+      dismissedStudents: [...c.dismissedStudents]..sort((x, y) => cmp(x.shatr, x.studentName, y.shatr, y.studentName)),
       newStudents: [...c.newStudents]..sort((x, y) => cmp(x.shatr, x.studentName, y.shatr, y.studentName)),
       studentsMissingFromCurrentReport: [...c.studentsMissingFromCurrentReport]
         ..sort((x, y) => cmp(x.shatr, x.studentName, y.shatr, y.studentName)),
@@ -318,6 +318,8 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       ('إحصائيات الإرشاد', _tabAdvisorStatistics),
       ('حركات الإرشاد', _tabMovements),
       ('الطلبة المستجدون', _tabNewStudents),
+      ('مفصولون أكاديميًا', _tabAcademicallyDismissed),
+      ('منقطعون عن الدراسة', _tabWithdrawn),
     ];
     final isSuperAdmin = FirebaseAuth.instance.currentUser?.email == PortalAccounts.superAdminEmail ||
         PortalAccounts.isCurrentSessionSuperAdmin;
@@ -461,6 +463,8 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       _analysis.advisorStatistics.fold<int>(0, (sum, b) => sum + b.totalAdvisors),
       _movementsLog.length,
       _classification.newStudents.length,
+      _dismissedFiltered.length,
+      _withdrawnFiltered.length,
     ];
     const icons = <IconData>[
       Icons.groups_outlined,
@@ -478,6 +482,8 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       Icons.bar_chart_outlined,
       Icons.history_outlined,
       Icons.fiber_new_outlined,
+      Icons.block_outlined,
+      Icons.pause_circle_outline,
     ];
     final colors = <Color>[
       AppColors.greenDark,
@@ -495,6 +501,8 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       Colors.lime.shade800,
       Colors.blueGrey.shade400,
       Colors.orange.shade700,
+      Colors.red.shade700,
+      Colors.deepOrange.shade400,
     ];
 
     // 14 بطاقة (لكل التبويبات الأربعة عشر - كانت 10 فقط قبل ذلك) - سليمان لاحظ
@@ -528,7 +536,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
         );
 
     const primaryIndices = [0, 1, 2, 3, 4];
-    const secondaryIndices = [6, 7, 8, 9, 10, 11, 12, 13, 14];
+    const secondaryIndices = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
 
     Widget grid({required List<int> indices, required bool compact, required int Function(double width) columnsFor}) {
       return LayoutBuilder(
@@ -862,6 +870,51 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       rows: [
         for (final s in list) [s.studentName, s.studentId, s.department, s.shatr, displayName(s.advisorNameRaw).ifEmptyDash()],
       ],
+    );
+  }
+
+  /// طلبة غير منتظمين (مفصولون أكاديميًا أو منقطعون عن الدراسة) - مستبعَدون
+  /// كليًا من كل تصنيفات الإرشاد أعلاه (بلا مرشد/على غير مرشدهم/توازن
+  /// توزيع...) حتى تُصحَّح حالتهم، بطلب سليمان صراحةً (2026-08-27). بطاقتان/
+  /// تبويبان منفصلان لكل سبب (لا بطاقة واحدة مدموجة) - بطلب سليمان صراحةً
+  /// (نفس اليوم)، مع تطبيق كل فلاتر الشريط العلوي (شطر/قسم/مرشد/بحث) عليهما
+  /// كبقية التبويبات ("الفلتر هو الأساس في إظهار أي نتيجة بالصفحة").
+  /// `advisorNameRaw` لهؤلاء الطلبة فارغ دومًا (مصدرهم "بيانات الطلبة
+  /// الأكاديمية" فقط، لا تقرير الربط بمرشد) - فلتر "المرشد" يُصفّرهما عمليًا
+  /// عند اختيار مرشد محدَّد، وهذا صحيح فعليًا لا خللًا.
+  List<AdvisingCaseRecord> get _dismissedFiltered => _classification.dismissedStudents
+      .where((s) => s.isAcademicallyDismissed)
+      .where((s) =>
+          _deptMatches(s.department) &&
+          _advisorMatches(s.advisorNameRaw) &&
+          _matchesSearch(s.studentName, s.studentId, advisorName: s.advisorNameRaw))
+      .toList();
+
+  List<AdvisingCaseRecord> get _withdrawnFiltered => _classification.dismissedStudents
+      .where((s) => s.enrollmentStatus.contains('منقطع'))
+      .where((s) =>
+          _deptMatches(s.department) &&
+          _advisorMatches(s.advisorNameRaw) &&
+          _matchesSearch(s.studentName, s.studentId, advisorName: s.advisorNameRaw))
+      .toList();
+
+  Widget _tabAcademicallyDismissed() {
+    final list = _dismissedFiltered;
+    return _buildPanel(
+      title: 'مفصولون أكاديميًا',
+      headers: const ['الاسم', 'الرقم الجامعي', 'القسم', 'الشطر'],
+      rows: [for (final s in list) [s.studentName, s.studentId, s.department, s.shatr]],
+      emptyMessage: 'لا يوجد طلبة مفصولون أكاديميًا',
+    );
+  }
+
+  Widget _tabWithdrawn() {
+    final list = _withdrawnFiltered;
+    return _buildPanel(
+      title: 'منقطعون عن الدراسة',
+      headers: const ['الاسم', 'الرقم الجامعي', 'القسم', 'الشطر'],
+      rows: [for (final s in list) [s.studentName, s.studentId, s.department, s.shatr]],
+      emptyMessage: 'لا يوجد طلبة منقطعون عن الدراسة',
     );
   }
 

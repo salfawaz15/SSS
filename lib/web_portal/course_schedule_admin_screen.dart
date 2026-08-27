@@ -1653,8 +1653,11 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
                               ? _activityChip('نظري')
                               : _splitCell(_activityChip('نظري'), _activityChip('عملي'))),
                           cell(!tableRows[i].hasPractical
-                              ? Text(tableRows[i].theorySection)
-                              : _splitCell(Text(tableRows[i].theorySection), Text(tableRows[i].practicalSection!))),
+                              ? Text(tableRows[i].theorySection, maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false)
+                              : _splitCell(
+                                  Text(tableRows[i].theorySection, maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false),
+                                  Text(tableRows[i].practicalSection!, maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false),
+                                )),
                           cell(!tableRows[i].hasPractical
                               ? Text('${tableRows[i].theoryHours}')
                               : _splitCell(Text('${tableRows[i].theoryHours}'), Text('${tableRows[i].practicalHours}'))),
@@ -1669,9 +1672,11 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
                                   Text(tableRows[i].practicalTimeRange!, textAlign: TextAlign.center, softWrap: false),
                                 )),
                           cell(!tableRows[i].hasPractical
-                              ? Text(tableRows[i].theoryRoomRange, textAlign: TextAlign.center)
-                              : _splitCell(Text(tableRows[i].theoryRoomRange, textAlign: TextAlign.center),
-                                  Text(tableRows[i].practicalRoomRange!, textAlign: TextAlign.center))),
+                              ? Text(tableRows[i].theoryRoomRange, textAlign: TextAlign.center, softWrap: false)
+                              : _splitCell(
+                                  Text(tableRows[i].theoryRoomRange, textAlign: TextAlign.center, softWrap: false),
+                                  Text(tableRows[i].practicalRoomRange!, textAlign: TextAlign.center, softWrap: false),
+                                )),
                         ],
                       ),
                 ],

@@ -12,6 +12,7 @@ import '../utils/name_display.dart';
 import 'admin_nav.dart';
 import 'course_schedule_admin_screen.dart';
 import 'portal_header.dart';
+import 'student_data_stats_screen.dart';
 
 /// صفحة وسيطة تجمع "تسكين المقررات الدراسية" و"الجدول الدراسي" بضغطة واحدة
 /// من الشريط العلوي - حصرية لحساب المدير العام (نفس تقييد وصولهما الأصلي
@@ -422,6 +423,15 @@ class _AcademicServicesHubScreenState extends State<AcademicServicesHubScreen> {
         accent: DashTokens.gold600,
         onTap: () => Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => const CourseScheduleAdminScreen(initialTabIndex: 1, singleTab: true)),
+        ),
+      ),
+      (
+        icon: Icons.groups_2_outlined,
+        title: 'بيانات الطلبة الأكاديمية',
+        subtitle: 'كشف بيانات الطلبة الكامل - فلتر شطر/قسم/مرشد/حالة، وتصدير Excel/PDF',
+        accent: DashTokens.green900,
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const StudentDataStatsScreen()),
         ),
       ),
     ];

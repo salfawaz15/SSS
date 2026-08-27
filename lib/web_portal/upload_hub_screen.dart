@@ -76,6 +76,9 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   DateTime? _academicFemaleDate;
   int _academicMaleCount = 0;
   int _academicFemaleCount = 0;
+  int _academicRegularCount = 0;
+  int _academicDismissedCount = 0;
+  int _academicWithdrawnCount = 0;
   DateTime? _scheduleLatestDate;
   int _scheduleUploadedCount = 0;
   bool _loadingDates = true;
@@ -128,6 +131,8 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
         AdvisingReportRepository.currentUploadDate(Shatr.female, kind: AdvisingReportKind.base),
         AdvisingReportRepository.currentRecordsCount(Shatr.male, kind: AdvisingReportKind.base),
         AdvisingReportRepository.currentRecordsCount(Shatr.female, kind: AdvisingReportKind.base),
+        AdvisingReportRepository.currentStatusCounts(Shatr.male, kind: AdvisingReportKind.base),
+        AdvisingReportRepository.currentStatusCounts(Shatr.female, kind: AdvisingReportKind.base),
         AdvisingScheduleRepository.latestUploadDate(),
         AdvisingScheduleRepository.uploadedCount(),
         CourseScheduleRepository.loadSchedule(Shatr.male),
@@ -136,7 +141,9 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
         CollegeRosterRepository.load(),
       ]);
       if (!mounted) return;
-      final roster = results[15] as List<CollegeRosterMember>;
+      final roster = results[17] as List<CollegeRosterMember>;
+      final statusMale = results[10] as ({int regular, int dismissed, int withdrawn});
+      final statusFemale = results[11] as ({int regular, int dismissed, int withdrawn});
       setState(() {
         _maleExportDate = results[0] as DateTime?;
         _femaleExportDate = results[1] as DateTime?;
@@ -148,11 +155,20 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
         _academicFemaleDate = results[7] as DateTime?;
         _academicMaleCount = results[8] as int;
         _academicFemaleCount = results[9] as int;
-        _scheduleLatestDate = results[10] as DateTime?;
-        _scheduleUploadedCount = results[11] as int;
-        _maleCourseCount = (results[12] as List<CourseSectionRecord>).length;
-        _femaleCourseCount = (results[13] as List<CourseSectionRecord>).length;
-        _rosterLastSavedAt = results[14] as DateTime?;
+        // العدّادات الثلاثة بجانب زر "بيانات الطلبة الأكاديمية" - بطلب سليمان
+        // صراحةً (2026-08-27) بعد اعتماد رفع الملفات الستة CSV، حتى يرى
+        // توزيع الحالات فور الرفع بلا فتح شاشة الإحصائيات المنفصلة. تُقرأ من
+        // حقول محسوبة وقت الرفع (`currentStatusCounts`) لا بتحميل كل السجلات
+        // هنا - كان تحميل آلاف السجلات بكل زيارة لهذه الصفحة يُجمِّدها فعليًا
+        // (سليمان 2026-08-27: "تعليق كبير جدًا... تظهر صفحة في الانتظار").
+        _academicRegularCount = statusMale.regular + statusFemale.regular;
+        _academicDismissedCount = statusMale.dismissed + statusFemale.dismissed;
+        _academicWithdrawnCount = statusMale.withdrawn + statusFemale.withdrawn;
+        _scheduleLatestDate = results[12] as DateTime?;
+        _scheduleUploadedCount = results[13] as int;
+        _maleCourseCount = (results[14] as List<CourseSectionRecord>).length;
+        _femaleCourseCount = (results[15] as List<CourseSectionRecord>).length;
+        _rosterLastSavedAt = results[16] as DateTime?;
         _rosterFacultyCount = roster.where((m) => m.type == CollegeMemberType.faculty).length;
         _rosterAdminCount = roster.where((m) => m.type == CollegeMemberType.admin).length;
       });
@@ -1205,9 +1221,11 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   }
 
   /// رفع "بيانات الطلبة الأكاديمية" - اختيار متعدد كالمعتاد (كالإرشاد/
-  /// المقررات وغيرهما)، يُكتشَف شطر كل ملف تلقائيًا من اسمه (انظر
-  /// [runUploadAcademicData]) - بطلب سليمان صراحةً (2026-08-26): "المفترض ما
-  /// تظهر يسمح بارفاق اكثر من ملف كالعاده".
+  /// المقررات وغيرهما)، يدعم الملفات الستة CSV دفعة واحدة (منتظم/مفصول
+  /// أكاديمي/منقطع عن الدراسة × طلاب/طالبات) بجانب صيغة xlsx القديمة، يُكتشَف
+  /// شطر كل ملف وحالته تلقائيًا من اسمه (انظر [runUploadAcademicData]) -
+  /// بطلب سليمان صراحةً (2026-08-26): "المفترض ما تظهر يسمح بارفاق اكثر من
+  /// ملف كالعاده".
   Future<void> _pickAndUploadAcademicData() => runUploadAcademicData(
         context: context,
         setUploading: (v) => setState(() {
@@ -1236,8 +1254,8 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
             icon: Icons.school_outlined,
             title: 'بيانات الطلبة الأكاديمية',
             subtitleIcon: Icons.info_outline,
-            subtitle: academicDate != null ? 'آخر رفع: ${dateFmt.format(academicDate)}' : 'بيانات الطلبة والتخصص والشطر والحالة الأكاديمية',
-            button: _bannerButton(uploading: uploading, label: 'رفع الملف', onPressed: _pickAndUploadAcademicData),
+            subtitle: academicDate != null ? 'آخر رفع: ${dateFmt.format(academicDate)}' : 'بيانات الطلبة والتخصص والشطر والحالة الأكاديمية (منتظم/مفصول/منقطع)',
+            button: _bannerButton(uploading: uploading, label: 'رفع الملفات', onPressed: _pickAndUploadAcademicData),
             verticalPadding: 12,
           ),
           const SizedBox(height: 10),
@@ -1246,6 +1264,16 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
               Expanded(child: _courseCountStat(label: 'طلبة شطر الطلاب', count: _academicMaleCount, emoji: '👨‍🎓')),
               const SizedBox(width: 10),
               Expanded(child: _courseCountStat(label: 'طلبة شطر الطالبات', count: _academicFemaleCount, emoji: '👩‍🎓')),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(child: _courseCountStat(label: 'منتظم', count: _academicRegularCount, emoji: '✅')),
+              const SizedBox(width: 10),
+              Expanded(child: _courseCountStat(label: 'مفصول أكاديميًا', count: _academicDismissedCount, emoji: '⛔')),
+              const SizedBox(width: 10),
+              Expanded(child: _courseCountStat(label: 'منقطع عن الدراسة', count: _academicWithdrawnCount, emoji: '⏸️')),
             ],
           ),
           if (academicDate != null)

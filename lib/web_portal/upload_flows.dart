@@ -13,9 +13,11 @@ import '../models/advising_case_record.dart';
 import '../models/advising_schedule.dart';
 import '../models/college_roster_member.dart';
 import '../models/course_section_record.dart';
+import '../services/academic_data_csv_parser_service.dart';
 import '../services/academic_data_excel_parser_service.dart';
 import '../services/advising_case_analyzer.dart';
 import '../services/advising_report_parser_service.dart';
+import '../services/advising_report_csv_parser_service.dart';
 import '../services/advising_report_pdf_parser_service.dart';
 import '../services/advising_report_repository.dart';
 import '../services/advising_schedule_excel_service.dart';
@@ -31,6 +33,7 @@ import '../services/course_schedule_change_repository.dart';
 import '../services/course_schedule_diff_service.dart';
 import '../services/course_schedule_repository.dart';
 import '../services/docx_schedule_parser_service.dart';
+import '../services/csv_schedule_parser_service.dart';
 import '../services/pdf_schedule_parser_service.dart';
 import '../services/escalation_file_service.dart';
 import '../services/excel_parser_service.dart';
@@ -63,6 +66,15 @@ String? _shatrLabelFromFreeText(String raw) {
   return null;
 }
 
+/// كـ[_shatrLabelFromFreeText] لكن يُرجِع [Shatr] نفسه (لا تسميته النصية) -
+/// يُستخدَم لملف CSV لجدول الحويّة حيث لا يذكر المحتوى الشطر صراحةً (خلافًا
+/// لـPDF/docx)، فيُستدَلّ عليه من اسم الملف وحده ("دراسي طلاب"/"دراسي طالبات").
+Shatr? _shatrFromFileName(String fileName) {
+  if (fileName.contains('طالبات')) return Shatr.female;
+  if (fileName.contains('طلاب')) return Shatr.male;
+  return null;
+}
+
 Future<void> runUploadAllColleges({
   required BuildContext context,
   required ValueChanged<bool> setUploading,
@@ -70,11 +82,12 @@ Future<void> runUploadAllColleges({
 }) async {
   final result = await FilePicker.platform.pickFiles(
     type: FileType.custom,
-    allowedExtensions: const ['pdf'],
+    allowedExtensions: const ['pdf', 'csv'],
     withData: true,
   );
   if (result == null || result.files.single.bytes == null) return;
   final Uint8List bytes = result.files.single.bytes!;
+  final isCsv = result.files.single.name.toLowerCase().endsWith('.csv');
 
   setUploading(true);
   try {
@@ -95,26 +108,41 @@ Future<void> runUploadAllColleges({
     };
     final knownAdvisorNameKeys = {for (final m in roster) normalizeAdvisorNameForMatch(m.name)};
 
-    final AdvisingReportPdfParseResult r;
+    final List<AdvisingCaseRecord> records;
+    final List<String> unresolvedShatrRows;
+    final Map<String, int> exclusionCounts;
     try {
-      r = await AdvisingReportPdfParserService.parseInBackground(
-        bytes,
-        advisorShatrByName: advisorShatrByName,
-        knownAdvisorNameKeys: knownAdvisorNameKeys,
-      );
+      if (isCsv) {
+        final r = await AdvisingReportCsvParserService.parseInBackground(
+          bytes,
+          advisorShatrByName: advisorShatrByName,
+          knownAdvisorNameKeys: knownAdvisorNameKeys,
+        );
+        records = r.records;
+        unresolvedShatrRows = r.unresolvedShatrRows;
+        exclusionCounts = r.exclusionCounts;
+      } else {
+        final r = await AdvisingReportPdfParserService.parseInBackground(
+          bytes,
+          advisorShatrByName: advisorShatrByName,
+          knownAdvisorNameKeys: knownAdvisorNameKeys,
+        );
+        records = r.records;
+        unresolvedShatrRows = r.unresolvedShatrRows;
+        exclusionCounts = r.exclusionCounts;
+      }
     } finally {
       hideUploadProcessingDialog(context);
     }
-    final records = r.records;
     final male = records.where((r) => r.shatr == Shatr.male.label).toList();
     final female = records.where((r) => r.shatr == Shatr.female.label).toList();
 
-    if (r.unresolvedShatrRows.isNotEmpty) {
+    if (unresolvedShatrRows.isNotEmpty) {
       if (!context.mounted) return;
       await showDialog<void>(
         context: context,
         builder: (context) => AlertDialog(
-          title: Text('${r.unresolvedShatrRows.length} حالة بمرشد من خارج كليتنا (تعذّر تحديد شطره)'),
+          title: Text('${unresolvedShatrRows.length} حالة بمرشد من خارج كليتنا (تعذّر تحديد شطره)'),
           content: SizedBox(
             width: 480,
             child: SingleChildScrollView(
@@ -122,7 +150,7 @@ Future<void> runUploadAllColleges({
                 'الحالات التالية مرشدها من خارج ملف منسوبي كليتنا (أو بلا اسم مرشد أصلًا) فتعذّر '
                 'تحديد شطرها - ستظهر مؤقتًا تحت كلا الشطرين معًا حتى يُتاح مصدر أفضل لتحديد شطر '
                 'مرشدي الكليات الأخرى:\n\n'
-                '${r.unresolvedShatrRows.join('\n')}',
+                '${unresolvedShatrRows.join('\n')}',
               ),
             ),
           ),
@@ -133,9 +161,9 @@ Future<void> runUploadAllColleges({
       );
     }
 
-    if (r.exclusionCounts.isNotEmpty) {
+    if (exclusionCounts.isNotEmpty) {
       if (!context.mounted) return;
-      final totalExcluded = r.exclusionCounts.values.fold<int>(0, (a, b) => a + b);
+      final totalExcluded = exclusionCounts.values.fold<int>(0, (a, b) => a + b);
       await showDialog<void>(
         context: context,
         builder: (context) => AlertDialog(
@@ -146,7 +174,7 @@ Future<void> runUploadAllColleges({
               child: Text(
                 'الصفوف التالية استُبعدت من إجمالي بيانات الملف الخام ولم تُدرَج ضمن '
                 '${records.length} سجلًا المعتمَدة:\n\n'
-                '${r.exclusionCounts.entries.map((e) => '${e.key}: ${e.value}').join('\n')}',
+                '${exclusionCounts.entries.map((e) => '${e.key}: ${e.value}').join('\n')}',
               ),
             ),
           ),
@@ -352,14 +380,30 @@ Future<void> runUploadHealth({
 
 // ==================== بيانات الطلبة الأكاديمية (المعدل/الساعات) ====================
 
-/// رفع ملف/ملفي "بيانات الطلبة الأكاديمية" (قوائم اكسل 481 - طلاب/طالبات -
-/// منتظم) دفعة واحدة (اختيار متعدد كالمعتاد بكل أزرار الرفع بالموقع) - الملف
-/// منفصل أصلاً بين الشطرين (لا عمود جنس يفرزهما كملف "طلبة ذوي الإعاقة")،
-/// فيُكتشَف شطر كل ملف تلقائيًا من اسمه ("طلاب"/"طالبات" - بنفس منطق
-/// [_shatrLabelFromFreeText] أعلاه). ملف اسمه لا يوضّح الشطر يُسأَل عنه صراحةً
-/// (نفس أسلوب "طلبة ذوي الإعاقة" [ShatrRequiredException]). ينقل النسخة
-/// الحالية لكل شطر لـ"basePrevious" أولًا (مصدر "النطاق السابق" للرفعة
-/// القادمة) قبل استبدالها.
+/// اسم الملف لا يحدّد حالة القيد (منتظم/مفصول أكاديميًا/منقطع عن الدراسة) -
+/// نفس أسلوب [_shatrLabelFromFreeText] لكن للحالة، تُستخدَم فقط لملفات CSV
+/// الستة (عمود "الوضع في الفصل" بها فارغ دومًا فعليًا، بخلاف ملف الإكسل
+/// القديم الذي يقرأ الحالة من عموده مباشرة).
+String? _enrollmentStatusFromFreeText(String raw) {
+  if (raw.contains('مفصول')) return 'مفصول أكاديميًا';
+  if (raw.contains('منقطع')) return 'منقطع عن الدراسة';
+  if (raw.contains('منتظم')) return 'منتظم';
+  return null;
+}
+
+/// رفع ملفات "بيانات الطلبة الأكاديمية" دفعة واحدة (اختيار متعدد كالمعتاد بكل
+/// أزرار الرفع بالموقع) - يدعم صيغتين معًا: **CSV** (الصيغة الحالية،
+/// الملفات الستة المُنزَّلة من المنظومة الداخلية: منتظم/مفصول أكاديمي/منقطع
+/// عن الدراسة × طلاب/طالبات - ترميز Windows-1256) و**xlsx** (الصيغة القديمة،
+/// لا تزال مدعومة للتوافق). كل ملف منفصل أصلاً بين الشطرين (لا عمود جنس
+/// يفرزهما كملف "طلبة ذوي الإعاقة")، فيُكتشَف شطر كل ملف تلقائيًا من اسمه
+/// ("طلاب"/"طالبات" - [_shatrLabelFromFreeText] أعلاه)، وحالة القيد لملفات
+/// CSV تُكتشَف كذلك من اسم الملف ([_enrollmentStatusFromFreeText] - عمود
+/// الملف نفسه فارغ دومًا). ملف اسمه لا يوضّح الشطر يُسأَل عنه صراحةً (نفس
+/// أسلوب "طلبة ذوي الإعاقة" [ShatrRequiredException])؛ ملف CSV اسمه لا
+/// يوضّح الحالة يُرفَض بخطأ واضح (الحالات الثلاث معروفة ومحدودة، لا داعي
+/// لحوار يدوي). ينقل النسخة الحالية لكل شطر لـ"basePrevious" أولًا (مصدر
+/// "النطاق السابق" للرفعة القادمة) قبل استبدالها.
 Future<void> runUploadAcademicData({
   required BuildContext context,
   required ValueChanged<bool> setUploading,
@@ -367,7 +411,7 @@ Future<void> runUploadAcademicData({
 }) async {
   final result = await FilePicker.platform.pickFiles(
     type: FileType.custom,
-    allowedExtensions: const ['xlsx'],
+    allowedExtensions: const ['csv', 'xlsx'],
     withData: true,
     allowMultiple: true,
   );
@@ -385,6 +429,15 @@ Future<void> runUploadAcademicData({
       if (bytes == null) {
         failedItems.add((fileName: file.name, error: 'تعذّرت قراءة محتوى الملف.'));
         continue;
+      }
+      final isCsv = file.name.toLowerCase().endsWith('.csv');
+      String? enrollmentStatus;
+      if (isCsv) {
+        enrollmentStatus = _enrollmentStatusFromFreeText(file.name);
+        if (enrollmentStatus == null) {
+          failedItems.add((fileName: file.name, error: 'لم تتّضح حالة القيد (منتظم/مفصول أكاديمي/منقطع) من اسم الملف.'));
+          continue;
+        }
       }
       final shatrLabel = _shatrLabelFromFreeText(file.name);
       Shatr? shatr = shatrLabel == Shatr.male.label ? Shatr.male : (shatrLabel == Shatr.female.label ? Shatr.female : null);
@@ -404,10 +457,12 @@ Future<void> runUploadAcademicData({
         if (shatr == null) continue; // تجاهل هذا الملف تحديدًا لو أُلغي التحديد، بلا إلغاء بقية الملفات.
       }
       try {
-        final records = AcademicDataExcelParserService.parse(bytes, shatr);
+        final records = isCsv
+            ? AcademicDataCsvParserService.parse(bytes, shatr, enrollmentStatus!)
+            : AcademicDataExcelParserService.parse(bytes, shatr);
         byShatr.putIfAbsent(shatr, () => []).addAll(records);
         fileCounts[shatr] = (fileCounts[shatr] ?? 0) + 1;
-        fileNamesByShatr[shatr] = file.name;
+        fileNamesByShatr[shatr] = fileNamesByShatr.containsKey(shatr) ? '${fileNamesByShatr[shatr]}, ${file.name}' : file.name;
       } catch (e) {
         failedItems.add((fileName: file.name, error: '$e'));
       }
@@ -1146,7 +1201,7 @@ Future<void> runUploadCourses({
 }) async {
   final result = await FilePicker.platform.pickFiles(
     type: FileType.custom,
-    allowedExtensions: ['docx', 'pdf'],
+    allowedExtensions: ['docx', 'pdf', 'csv'],
     withData: true,
     allowMultiple: true,
   );
@@ -1168,20 +1223,29 @@ Future<void> runUploadCourses({
       }
       final fileName = file.name.toLowerCase();
       final isPdf = fileName.endsWith('.pdf');
+      final isCsv = fileName.endsWith('.csv');
       // ملف .docx الحقيقي هو أرشيف ZIP يبدأ دائمًا بالتوقيع "PK"، وملف .pdf
       // الحقيقي يبدأ دائمًا بالتوقيع "%PDF" - إن لم يطابق أيًا منهما فهو على
-      // الأغلب حُفظ بصيغة أخرى (.doc القديمة مثلًا) أو تالف.
-      final looksValid = isPdf
-          ? (bytes.length >= 4 && bytes[0] == 0x25 && bytes[1] == 0x50 && bytes[2] == 0x44 && bytes[3] == 0x46)
-          : (bytes.length >= 2 && bytes[0] == 0x50 && bytes[1] == 0x4B);
+      // الأغلب حُفظ بصيغة أخرى (.doc القديمة مثلًا) أو تالف. ملف .csv نص خام
+      // (Windows-1256) فلا توقيع بايتات ثابتًا للتحقق منه.
+      final looksValid = isCsv
+          ? true
+          : isPdf
+              ? (bytes.length >= 4 && bytes[0] == 0x25 && bytes[1] == 0x50 && bytes[2] == 0x44 && bytes[3] == 0x46)
+              : (bytes.length >= 2 && bytes[0] == 0x50 && bytes[1] == 0x4B);
       if (!looksValid) {
         failedFiles.add((fileName: file.name, error: isPdf ? 'لا يبدو ملف PDF حقيقيًا أو أنه تالف.' : 'لا يبدو ملف Word (.docx) حقيقيًا (قد يكون بصيغة .doc القديمة).'));
         continue;
       }
       try {
-        final fileSections = isPdf
-            ? PdfScheduleParserService.parseSectionsWithShatr(bytes)
-            : DocxScheduleParserService.parseSectionsWithShatr(bytes);
+        // ملف CSV لا يذكر الشطر بمحتواه (خلافًا لحقل "المقر" بـPDF/docx) لأن
+        // المنظومة تُصدِّر ملفًا منفصلًا لكل شطر أصلًا - يُستدَلّ عليه من اسم
+        // الملف نفسه ("دراسي طلاب"/"دراسي طالبات").
+        final fileSections = isCsv
+            ? CsvScheduleParserService.parseSectionsWithShatr(bytes, shatr: _shatrFromFileName(file.name))
+            : isPdf
+                ? PdfScheduleParserService.parseSectionsWithShatr(bytes)
+                : DocxScheduleParserService.parseSectionsWithShatr(bytes);
         if (fileSections.isEmpty) {
           failedFiles.add((fileName: file.name, error: 'لم يُعثر على أي شعبة بهذا الملف.'));
         } else {

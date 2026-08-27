@@ -54,6 +54,12 @@ class AdvisingCaseRecord {
   bool get hasAdvisor => advisorNameRaw.trim().isNotEmpty;
   bool get hasHealthCondition => healthCondition.trim().isNotEmpty;
 
+  /// منتظم فعليًا (أو حالته غير معروفة بعد - بيانات قديمة/رفعة لم تحدّد
+  /// الحالة) - خلاف ذلك (مفصول أكاديميًا أو منقطع عن الدراسة) يُستبعَد
+  /// كليًا من كل حسابات وقوائم الإرشاد حتى تُصحَّح حالته (بطلب سليمان
+  /// صراحةً 2026-08-27).
+  bool get isRegularlyEnrolled => enrollmentStatus.isEmpty || enrollmentStatus.contains('منتظم');
+
   /// الساعات المجتازة = ساعات الخطة − الساعات المتبقية. null إن لم تتوفر
   /// بيانات الساعات لهذا الطالب بعد.
   int? get completedHours => (planHours != null && remainingHours != null) ? planHours! - remainingHours! : null;
@@ -70,6 +76,7 @@ class AdvisingCaseRecord {
     String? advisorDepartment,
     double? gpa,
     String? healthCondition,
+    String? enrollmentStatus,
     double? previousGpa,
     int? planHours,
     int? remainingHours,
@@ -84,7 +91,7 @@ class AdvisingCaseRecord {
         advisorDepartment: advisorDepartment ?? this.advisorDepartment,
         gpa: gpa ?? this.gpa,
         healthCondition: healthCondition ?? this.healthCondition,
-        enrollmentStatus: enrollmentStatus,
+        enrollmentStatus: enrollmentStatus ?? this.enrollmentStatus,
         previousGpa: previousGpa ?? this.previousGpa,
         planHours: planHours ?? this.planHours,
         remainingHours: remainingHours ?? this.remainingHours,

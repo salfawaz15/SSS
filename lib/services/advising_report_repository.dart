@@ -100,10 +100,23 @@ class AdvisingReportRepository {
       }
     }
 
+    // توزيع الحالات الثلاث (منتظم/مفصول أكاديميًا/منقطع عن الدراسة) يُحسَب
+    // ويُخزَّن هنا وقت الرفع - لا عند كل زيارة لصفحة "رفع وتنزيل الملفات" -
+    // بعد أن كان تحميل كل السجلات (`load`) هناك فقط لحساب هذا التوزيع يُجمِّد
+    // الصفحة فعليًا مع آلاف السجلات (سليمان 2026-08-27: "تعليق كبير جدًا").
+    // حقل عام غير مرتبط بنوع تقرير محدَّد - قيمته صفر/فارغ لأنواع التقارير
+    // الأخرى التي لا تحمل enrollmentStatus أصلًا، بلا أي ضرر.
+    final regularCount = records.where((r) => r.enrollmentStatus.isEmpty || r.enrollmentStatus == 'منتظم').length;
+    final dismissedCount = records.where((r) => r.enrollmentStatus.contains('مفصول')).length;
+    final withdrawnCount = records.where((r) => r.enrollmentStatus.contains('منقطع')).length;
+
     final docData = {
       'uploadedAt': FieldValue.serverTimestamp(),
       'studentsCount': records.length,
-      if (sourceFileName != null) 'sourceFileName': sourceFileName,
+      'regularCount': regularCount,
+      'dismissedCount': dismissedCount,
+      'withdrawnCount': withdrawnCount,
+      'sourceFileName': ?sourceFileName,
     };
     await _writeWithDiagnostics('مستند ${kind.name}/${shatr.docId} الرئيسي', docData, () => docRef.set(docData));
 
@@ -168,6 +181,22 @@ class AdvisingReportRepository {
   static Future<int> currentRecordsCount(Shatr shatr, {AdvisingReportKind kind = AdvisingReportKind.base}) async {
     final doc = await _col(kind).doc(shatr.docId).get();
     return (doc.data()?['studentsCount'] as num?)?.toInt() ?? 0;
+  }
+
+  /// توزيع الحالات الثلاث (منتظم/مفصول أكاديميًا/منقطع عن الدراسة) - من
+  /// حقول محسوبة وقت [save] مباشرةً، بلا تحميل كل القطع (`chunks`) - نفس
+  /// مبدأ [currentRecordsCount] تمامًا. صفر لكل قيمة إن لم تُرفع بيانات بعد.
+  static Future<({int regular, int dismissed, int withdrawn})> currentStatusCounts(
+    Shatr shatr, {
+    AdvisingReportKind kind = AdvisingReportKind.base,
+  }) async {
+    final doc = await _col(kind).doc(shatr.docId).get();
+    final data = doc.data();
+    return (
+      regular: (data?['regularCount'] as num?)?.toInt() ?? 0,
+      dismissed: (data?['dismissedCount'] as num?)?.toInt() ?? 0,
+      withdrawn: (data?['withdrawnCount'] as num?)?.toInt() ?? 0,
+    );
   }
 
   /// تفريغ كامل لتقرير معيّن لشطر واحد - لتسهيل إعادة الاختبار. حذف فردي

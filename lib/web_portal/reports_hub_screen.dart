@@ -18,6 +18,7 @@ import 'portal_accounts.dart';
 import 'portal_header.dart';
 import 'portal_operations_guide_page.dart';
 import 'public_landing_screen.dart';
+import 'student_data_stats_screen.dart';
 import 'viewer_reports_screen.dart';
 
 /// تصنيف رئيسي لكل بند في "تقارير" - يحدّد الشارة اللونية ويُستخدم كفلتر
@@ -88,6 +89,7 @@ const List<String> _kAllSubtypes = [
   'نصاب تدريسي',
   'حالات خاصة',
   'بيانات منسوبين',
+  'بيانات الطلبة',
   'دليل تشغيلي',
   'نموذج ورقي',
 ];
@@ -222,6 +224,15 @@ class _ReportsHubScreenState extends State<ReportsHubScreen> {
           subtype: 'تقرير إرشاد',
           icon: Icons.schedule_outlined,
           onOpen: (c) => _openScreen(c, const AdvisingScheduleAdminScreen()),
+        ),
+        _ReportEntry(
+          title: 'إحصائيات بيانات الطلبة',
+          description: 'كل طلبة الكلية بكل حالاتهم (منتظم/مفصول أكاديميًا/منقطع عن الدراسة)، فلتر حسب القسم والشطر والحالة',
+          category: ReportHubCategory.report,
+          subtype: 'بيانات الطلبة',
+          icon: Icons.groups_2_outlined,
+          keywords: const ['بيانات الطلبة الأكاديمية', 'مفصول', 'منقطع', 'إحصائيات'],
+          onOpen: (c) => _openScreen(c, const StudentDataStatsScreen()),
         ),
       ]);
     }
