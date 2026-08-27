@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -254,6 +255,29 @@ class AdvisingSchedulePdfService {
     return doc.save();
   }
 
+  /// يبني ملفًا مضغوطًا (ZIP) منظَّمًا لإدارة الكلية: مجلد لكل شطر (طلاب/
+  /// طالبات)، وداخله مجلد فرعي لكل قسم يحوي ملف PDF واحد فقط يجمع كل أيام
+  /// ذلك القسم - بنفس تصميم/مقاس [build] تمامًا (لا تصميم مختلف) - حتى يسهل
+  /// على إدارة الكلية تعميم ملف قسم واحد بعينه على مرشديه دون البحث بين كل
+  /// الأقسام (طلب سليمان صراحةً 2026-08-27).
+  static Future<Uint8List> buildDepartmentFolderZip({
+    required Map<(String, String), List<AdvisingScheduleSlot>> byDeptShatr,
+  }) async {
+    final archive = Archive();
+    for (final entry in byDeptShatr.entries) {
+      final (department, shatr) = entry.key;
+      final slots = entry.value;
+      if (slots.isEmpty) continue;
+      final pdfBytes = await build(department: department, shatr: shatr, slots: slots);
+      final path = '$shatr/${_sanitizeFileName(department)}.pdf';
+      archive.addFile(ArchiveFile(path, pdfBytes.length, pdfBytes));
+    }
+    final zipBytes = ZipEncoder().encode(archive) ?? <int>[];
+    return Uint8List.fromList(zipBytes);
+  }
+
+  static String _sanitizeFileName(String name) => name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_').trim();
+
   /// نسخة "بطاقات" منفصلة لوضع شاشات العرض: كل بطاقة = يوم × قسم × شطر ×
   /// **فترة واحدة فقط** في ملف PDF مستقل تمامًا (طلب سليمان صراحةً
   /// 2026-08-24: "كل فترة في صفحة مستقلة" - لا فترتان بنفس البطاقة بأي
@@ -265,7 +289,7 @@ class AdvisingSchedulePdfService {
   /// (تحقَّق فعليًا من ملفات اختبار حقيقية). تعيد نفس ترتيب البطاقات
   /// المستخدَم فعليًا بـ[buildAll] (اليوم أولًا، ثم الشطر، ثم القسم، ثم
   /// الفترة).
-  static Future<List<({String label, Uint8List pdfBytes})>> buildSignageCards({
+  static Future<List<({String label, String department, String shatr, Uint8List pdfBytes})>> buildSignageCards({
     required Map<(String, String), List<AdvisingScheduleSlot>> byDeptShatr,
   }) async {
     final regular = await _regularFont();
@@ -278,7 +302,7 @@ class AdvisingSchedulePdfService {
         for (final d in AdvisingScheduleExcelService.departmentOptions) (d, s),
     ];
 
-    final cards = <({String label, Uint8List pdfBytes})>[];
+    final cards = <({String label, String department, String shatr, Uint8List pdfBytes})>[];
 
     for (final day in AdvisingScheduleExcelService.dayColumnLabels) {
       for (final (department, shatr) in pairs) {
@@ -317,6 +341,8 @@ class AdvisingSchedulePdfService {
           cards.add((
             label:
                 '$day - ${department.replaceFirst(RegExp(r'^قسم\s+'), '')} - $shatr - ${AdvisingScheduleExcelService.periodDisplayLabel(slot.periodLabel)}',
+            department: department,
+            shatr: shatr,
             pdfBytes: await doc.save(),
           ));
         }

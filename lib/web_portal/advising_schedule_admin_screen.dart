@@ -355,6 +355,14 @@ class _AdvisingScheduleAdminScreenState extends State<AdvisingScheduleAdminScree
         final zipBytes = await AdvisingScheduleSignageImageService.buildZip(byDeptShatr: all);
         await downloadBytes(zipBytes, 'شاشات_العرض_$fileTag.zip');
       }),
+      // نفس صور شاشات العرض لكن مجمَّعة بمجلد شطر ← مجلد قسم بدل ملف مسطَّح -
+      // طلب سليمان صراحةً (2026-08-27): يريد شاشة قسم واحد تحوي فتراته فقط
+      // بلا اختلاط بصور بقية الأقسام.
+      onSignageImagesByDepartmentZip: () => _runPdfAction(() async {
+        final all = _isFiltered ? _filteredData : await _loadFilteredData();
+        final zipBytes = await AdvisingScheduleSignageImageService.buildZipByDepartment(byDeptShatr: all);
+        await downloadBytes(zipBytes, 'شاشات_العرض_حسب_القسم_$fileTag.zip');
+      }),
       // يجلب بيانات طازجة دومًا (لا يعتمد على `_filteredData` المخزَّنة) - قد
       // تكون هذه فارغة/قديمة إن ضُغط الزر فور تبديل الفلتر قبل اكتمال
       // التحميل - دليل فعلي من سليمان (2026-08-25): ملف ZIP خرج فارغًا رغم
@@ -363,6 +371,14 @@ class _AdvisingScheduleAdminScreenState extends State<AdvisingScheduleAdminScree
         final all = await _loadFilteredData();
         final zipBytes = await AdvisingSchedulePptxService.buildZip(byDeptShatr: all);
         await downloadBytes(zipBytes, 'عروض_فترات_الإرشاد_الأكاديمي.zip');
+      }),
+      // مطلوب من إدارة الكلية صراحةً (سليمان 2026-08-27): ملف مضغوط منظَّم
+      // بمجلد لكل شطر ثم مجلد فرعي لكل قسم بداخله ملف PDF واحد يجمع كل أيام
+      // ذلك القسم فقط - ليسهل تعميم ملف قسم بعينه على مرشديه.
+      onDepartmentFoldersZip: () => _runPdfAction(() async {
+        final all = _isFiltered ? _filteredData : await _loadFilteredData();
+        final zipBytes = await AdvisingSchedulePdfService.buildDepartmentFolderZip(byDeptShatr: all);
+        await downloadBytes(zipBytes, 'ملفات_الأقسام_$fileTag.zip');
       }),
     );
 
@@ -606,7 +622,9 @@ class _ReportCard extends StatelessWidget {
   final VoidCallback onOfficialPrint;
   final VoidCallback onSignageView;
   final VoidCallback onSignageImagesZip;
+  final VoidCallback onSignageImagesByDepartmentZip;
   final VoidCallback onPptxZip;
+  final VoidCallback onDepartmentFoldersZip;
 
   const _ReportCard({
     required this.title,
@@ -615,7 +633,9 @@ class _ReportCard extends StatelessWidget {
     required this.onOfficialPrint,
     required this.onSignageView,
     required this.onSignageImagesZip,
+    required this.onSignageImagesByDepartmentZip,
     required this.onPptxZip,
+    required this.onDepartmentFoldersZip,
   });
 
   @override
@@ -646,8 +666,12 @@ class _ReportCard extends StatelessWidget {
               _iconAction(enabled ? onSignageView : null, Icons.tv_outlined, 'عرض PDF - شاشات العرض', AppColors.gold),
               _iconAction(
                   enabled ? onSignageImagesZip : null, Icons.image_outlined, 'تنزيل صور الشرائح (ZIP)', AppColors.gold),
+              _iconAction(enabled ? onSignageImagesByDepartmentZip : null, Icons.folder_copy_outlined,
+                  'تنزيل صور الشرائح حسب القسم (شطر ← قسم)', AppColors.gold),
               _iconAction(enabled ? onPptxZip : null, Icons.slideshow_outlined, 'تنزيل عروض فترات الإرشاد (PowerPoint)',
                   AppColors.gold),
+              _iconAction(enabled ? onDepartmentFoldersZip : null, Icons.folder_zip_outlined,
+                  'تنزيل ملف مضغوط منظّم (شطر ← قسم ← ملف واحد لكل الأيام)', AppColors.green),
             ],
           ),
         ),

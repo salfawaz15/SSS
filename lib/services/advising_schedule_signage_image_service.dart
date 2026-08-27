@@ -50,6 +50,41 @@ class AdvisingScheduleSignageImageService {
     return Uint8List.fromList(zipBytes);
   }
 
+  /// نفس صور [buildZip] حرفيًا (نفس تصميم/دقة بطاقات شاشات العرض)، لكن
+  /// مُنظَّمة داخل الملف المضغوط بمجلد لكل شطر ثم مجلد فرعي لكل قسم - بحيث
+  /// تحتوي شاشة القسم الواحد على فتراته وحده بلا اختلاط مع أي قسم آخر (طلب
+  /// سليمان صراحةً 2026-08-27: "لكل قسم شاشة يريد أن يضع فتراته دون داخل
+  /// مع أي قسم آخر") - بدل الملف المسطَّح الحالي حيث تتجاور صور كل الأقسام
+  /// بلا فواصل مجلدات.
+  static Future<Uint8List> buildZipByDepartment({
+    required Map<(String, String), List<AdvisingScheduleSlot>> byDeptShatr,
+  }) async {
+    final cards = await AdvisingSchedulePdfService.buildSignageCards(byDeptShatr: byDeptShatr);
+
+    final archive = Archive();
+    final usedNames = <String, int>{};
+
+    for (final card in cards) {
+      final rasters = await Printing.raster(card.pdfBytes, dpi: _dpi).toList();
+      if (rasters.isEmpty) continue;
+
+      final folder = '${card.shatr}/${_sanitizeFileName(card.department)}';
+      var safeName = _sanitizeFileName(card.label);
+      final nameKey = '$folder/$safeName';
+      final count = usedNames.update(nameKey, (v) => v + 1, ifAbsent: () => 1);
+      if (count > 1) safeName = '${safeName}_$count';
+
+      for (var pageIndex = 0; pageIndex < rasters.length; pageIndex++) {
+        final pngBytes = await rasters[pageIndex].toPng();
+        final pageName = rasters.length > 1 ? '${safeName}_ص${pageIndex + 1}' : safeName;
+        archive.addFile(ArchiveFile('$folder/$pageName.png', pngBytes.length, pngBytes));
+      }
+    }
+
+    final zipBytes = ZipEncoder().encode(archive) ?? <int>[];
+    return Uint8List.fromList(zipBytes);
+  }
+
   static String _sanitizeFileName(String name) {
     return name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_').trim();
   }
