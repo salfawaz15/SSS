@@ -8,6 +8,7 @@ import '../../widgets/mobile_empty_state.dart';
 import '../../widgets/mobile_error_state.dart';
 import '../../widgets/mobile_loading_state.dart';
 import '../../widgets/portal_app_bar_logo.dart';
+import '../student_lookup/student_lookup_screen.dart';
 
 const _kDepartments = [
   'قسم الإدارة',
@@ -43,7 +44,7 @@ class _CourseSchedulesScreenState extends State<CourseSchedulesScreen> {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         appBar: AppBar(
           leadingWidth: kPortalAppBarLeadingWidth,
@@ -53,6 +54,7 @@ class _CourseSchedulesScreenState extends State<CourseSchedulesScreen> {
             tabs: [
               Tab(text: 'المقررات الدراسية'),
               Tab(text: 'الجدول الدراسي'),
+              Tab(text: 'بيانات الطلبة'),
             ],
           ),
         ),
@@ -70,6 +72,7 @@ class _CourseSchedulesScreenState extends State<CourseSchedulesScreen> {
               children: [
                 _CoursesTab(male: data.male, female: data.female),
                 _InstructorScheduleTab(male: data.male, female: data.female),
+                const StudentLookupTab(),
               ],
             );
           },
