@@ -254,14 +254,16 @@ class ExcelExportService {
 
     if (includeInstructions) {
       sheet.appendRow([TextCellValue(advisorInstructionsText)]);
+      // دمج من العمود A إلى P فقط (لا كل الأعمدة) - يظهر شريط التعليمات كاملاً
+      // بمجرد فتح الملف بلا حاجة للتمرير أفقيًا (سليمان صراحةً 2026-08-27).
       sheet.merge(
         CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0),
-        CellIndex.indexByColumnRow(columnIndex: _headers.length - 1, rowIndex: 0),
+        CellIndex.indexByColumnRow(columnIndex: 15, rowIndex: 0),
       );
-      // ارتفاع أكبر (كان 30) - النص أصبح أطول بعد إضافة شرح فئتَي أولوية
-      // التخرّج، وكان يظهر مقصوصًا/متلاصقًا بلا مساحة كافية للالتفاف بوضوح
-      // (سليمان صراحةً 2026-08-27، بلقطة شاشة فعلية للملف المُصدَّر).
-      sheet.setRowHeight(0, 90);
+      // ارتفاع أكبر (كان 30، ثم 90) - بعد تضييق نطاق الدمج لعمودَي A-P فقط
+      // (بدل كل الأعمدة) يلتف النص لعدد أسطر أكبر بنفس الطول، فيحتاج ارتفاعًا
+      // أكبر ليظهر كاملاً (سليمان صراحةً 2026-08-27، بلقطة شاشة فعلية للملف).
+      sheet.setRowHeight(0, 130);
       sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0)).cellStyle = CellStyle(
         bold: true,
         fontColorHex: ExcelColor.fromHexString('FF154B36'),
