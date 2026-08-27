@@ -10,7 +10,6 @@ class ExcelExportService {
   // المعالَجة العائدة من المرشدين (ProcessedFileParserService) للبحث عن
   // العمود المطلوب بالاسم بدل الفهرس الثابت.
   static const String universityIdHeader = 'الرقم الجامعي';
-  static const String priorityHeader = 'الأولوية';
   static const String remainingHoursHeader = 'الساعات المتبقية';
   static const String gpaHeader = 'المعدل';
   static const String actionTypeHeader = 'نوع الإجراء';
@@ -58,7 +57,6 @@ class ExcelExportService {
   static const List<String> _headers = [
     'اسم الطالب',
     universityIdHeader,
-    priorityHeader,
     remainingHoursHeader,
     gpaHeader,
     'الشطر',
@@ -87,7 +85,6 @@ class ExcelExportService {
   static const List<double> _columnWidths = [
     36,
     14,
-    10,
     14,
     10,
     12,
@@ -117,38 +114,38 @@ class ExcelExportService {
   /// بقسم/شطر واحد أصلاً عبر AdvisorZipService) - تكرارها بكل صف لا يفيد،
   /// تُخفى بملف المرشد تحديدًا (سليمان صراحةً 2026-08-25)، بخلاف الرقم
   /// الجامعي/اسم الطالب المختلفَين فعليًا بكل صف.
-  static const int shatrColumnIndex = 5;
-  static const int departmentColumnIndex = 6;
-  static const int advisorNameColumnIndex = 7;
+  static const int shatrColumnIndex = 4;
+  static const int departmentColumnIndex = 5;
+  static const int advisorNameColumnIndex = 6;
 
   /// فهرس عمود "رقم الجوال" - يُخفى بملف المرشد (سليمان صراحةً 2026-08-25:
   /// التواصل مع الطالب يكون عبر القنوات الرسمية فقط، لا هاتفيًا مباشرة).
-  static const int phoneColumnIndex = 8;
+  static const int phoneColumnIndex = 7;
 
   /// فهرس عمود "رمز المقرر" - اسم المقرر وحده كافٍ عمليًا للمرشد.
-  static const int courseCodeColumnIndex = 13;
+  static const int courseCodeColumnIndex = 12;
 
   /// فهرس عمود "حالة الإنجاز من قبل المرشد الأكاديمي" (صفر-فهرسة)
-  static const int advisorStatusColumnIndex = 19;
+  static const int advisorStatusColumnIndex = 18;
 
   /// فهرس عمود "ملاحظات المرشد الأكاديمي" (قائمة أسباب جاهزة - صفر-فهرسة)
-  static const int advisorNotesColumnIndex = 20;
+  static const int advisorNotesColumnIndex = 19;
 
   /// فهرس عمود "يرجى كتابة السبب الآخر" (نص حر، يُستخدم فقط عند اختيار
   /// "سبب آخر" بعمود الملاحظات - صفر-فهرسة)
-  static const int advisorOtherReasonColumnIndex = 21;
+  static const int advisorOtherReasonColumnIndex = 20;
 
   /// فهرس عمود "حالة الإنجاز من قبل منسق القسم" (صفر-فهرسة)
-  static const int coordinatorStatusColumnIndex = 22;
+  static const int coordinatorStatusColumnIndex = 21;
 
   /// فهرس عمود "ملاحظات منسق القسم" (صفر-فهرسة)
-  static const int coordinatorNotesColumnIndex = 23;
+  static const int coordinatorNotesColumnIndex = 22;
 
   /// فهرس عمود "حالة الإنجاز من قبل منسق الكلية" (صفر-فهرسة)
-  static const int collegeStatusColumnIndex = 24;
+  static const int collegeStatusColumnIndex = 23;
 
   /// فهرس عمود "ملاحظات منسق الكلية" (صفر-فهرسة)
-  static const int collegeNotesColumnIndex = 25;
+  static const int collegeNotesColumnIndex = 24;
 
   static final _thinGrayBorder = Border(
     borderStyle: BorderStyle.Thin,
@@ -167,10 +164,10 @@ class ExcelExportService {
     bottomBorder: _thinGrayBorder,
   );
 
-  static CellStyle _rowStyle({required bool alternate, bool wrapText = false}) => CellStyle(
-    backgroundColorHex: alternate
-        ? ExcelColor.fromHexString('FFEFF5F2')
-        : ExcelColor.white,
+  static CellStyle _rowStyle({required bool alternate, bool wrapText = false, String? backgroundColorHex}) => CellStyle(
+    backgroundColorHex: backgroundColorHex != null
+        ? ExcelColor.fromHexString(backgroundColorHex)
+        : (alternate ? ExcelColor.fromHexString('FFEFF5F2') : ExcelColor.white),
     horizontalAlign: HorizontalAlign.Center,
     verticalAlign: VerticalAlign.Center,
     textWrapping: wrapText ? TextWrapping.WrapText : null,
@@ -182,7 +179,7 @@ class ExcelExportService {
 
   /// فهرس عمود "سبب الطلب" (صفر-فهرسة) - قد يحوي عدة أسباب مفصولة بـ";"
   /// فيطول النص، يُفعَّل التفاف السطر له تحديدًا بدل قصّه بصريًا.
-  static const int _reasonColumnIndex = 18;
+  static const int _reasonColumnIndex = 17;
 
   /// نص شريط التعليمات الموجز أعلى ملف المرشد - يشرح خياري القائمة المنسدلة
   /// بكلمات بسيطة بدل ترك المرشد يخمّن معناها.
@@ -190,7 +187,11 @@ class ExcelExportService {
       'تعليمات: 1) اختر من القائمة المنسدلة في عمود "حالة الإنجاز من قبل المرشد الأكاديمي" '
       'إمّا "تم التنفيذ" أو "لم يتم التنفيذ". 2) إن اخترت "لم يتم التنفيذ" اختر السبب من '
       'القائمة المنسدلة في عمود "ملاحظات المرشد الأكاديمي" - وفقط إن لم ينطبق أي سبب اختر '
-      '"سبب آخر" واكتب التفصيل في العمود الأخير "يرجى كتابة السبب الآخر".';
+      '"سبب آخر" واكتب التفصيل في العمود الأخير "يرجى كتابة السبب الآخر". '
+      '3) رُتبت الطلبات بحسب أولوية التخرّج وعدد الساعات المتبقية - يبدأ المرشد بمعالجة '
+      'الطلبة المتوقع تخرجهم (صفوف وردية، 30 ساعة متبقية فأقل)، ثم القريبين من التخرج '
+      '(صفوف كهرمانية، 31 أو 32 ساعة)، ثم بقية الطلبة، مع الالتزام بالترتيب الظاهر '
+      'بالملف ومعالجة جميع طلبات الطالب قبل الانتقال للطالب التالي.';
 
   /// يحمّل خريطة (رقم جامعي ← الساعات المتبقية/المعدل) من "بيانات الطلبة
   /// الأكاديمية" لكلا الشطرين - تُستخدم لترتيب صفوف ملف المرشد حسب أولوية
@@ -279,17 +280,32 @@ class ExcelExportService {
       final remainingHours = academic?.remainingHours;
       final gpa = academic?.gpa;
       final hoursSortKey = remainingHours ?? unknownHoursSortKey;
+      // تصنيف قرب التخرّج - بطلب سليمان صراحةً (2026-08-27): 30 ساعة متبقية
+      // فأقل = "متوقع تخرجه" (تمييز وردي فاتح)، 31 أو 32 ساعة = "قريب من
+      // التخرج" (تمييز كهرماني فاتح)، 33 فأكثر = الحالة المعتادة (بلا تمييز،
+      // القيمة الأصلية المُبلَّغ عنها ذاتيًا بالطلب).
+      final GraduationTier tier;
+      final String expectedGraduateLabel;
+      if (remainingHours != null && remainingHours <= 30) {
+        tier = GraduationTier.expected;
+        expectedGraduateLabel = 'متوقع تخرجه';
+      } else if (remainingHours != null && remainingHours <= 32) {
+        tier = GraduationTier.near;
+        expectedGraduateLabel = 'قريب من التخرج';
+      } else {
+        tier = GraduationTier.normal;
+        expectedGraduateLabel = (t['expected_graduate'] == true) ? 'نعم' : 'لا';
+      }
       final baseInfo = [
         t['name'] ?? '',
         studentId,
-        0, // عمود "الأولوية" - يُملأ بترقيم تسلسلي فعلي بعد الفرز النهائي أدناه
         remainingHours?.toString() ?? '—',
         gpa != null ? gpa.toStringAsFixed(2) : '—',
         t['shatr'] ?? '',
         t['department'] ?? '',
         t['advisor'] ?? '',
         t['phone'] ?? '',
-        (t['expected_graduate'] == true) ? 'نعم' : 'لا',
+        expectedGraduateLabel,
         (t['has_disability'] == true) ? 'نعم' : 'لا',
       ];
       final actions = (t['actions'] as List?) ?? [];
@@ -299,6 +315,7 @@ class ExcelExportService {
           hoursSortKey: hoursSortKey,
           studentId: studentId,
           actionPriority: 99,
+          tier: tier,
           values: [
             ...baseInfo,
             '',
@@ -362,6 +379,7 @@ class ExcelExportService {
           hoursSortKey: hoursSortKey,
           studentId: studentId,
           actionPriority: isAdd ? 0 : (isDelete ? 1 : (isChange ? 2 : 98)),
+          tier: tier,
           values: row,
         ));
       }
@@ -375,22 +393,9 @@ class ExcelExportService {
       return a.actionPriority.compareTo(b.actionPriority);
     });
 
-    // ترقيم "الأولوية" تسلسليًا (1، 2، 3...) - رقم واحد لكل طالب لا لكل صف
-    // (كل صفوف طلبات نفس الطالب متتابعة الآن بعد الفرز أعلاه، فيتكرر نفس
-    // الرقم عليها بلا حاجة لتتبّع معقّد لحدود المجموعات).
-    var rank = 0;
-    String? lastStudentId;
-    for (final spec in rowSpecs) {
-      if (spec.studentId != lastStudentId) {
-        rank++;
-        lastStudentId = spec.studentId;
-      }
-      spec.values[2] = rank;
-    }
-
     var dataRowIndex = 0; // صفر-فهرسة بين صفوف البيانات (بدون العناوين/التعليمات)
     for (final spec in rowSpecs) {
-      _appendStyledRow(sheet, spec.values, dataRowIndex, headerRowIndex);
+      _appendStyledRow(sheet, spec.values, dataRowIndex, headerRowIndex, tier: spec.tier);
       dataRowIndex++;
     }
 
@@ -401,12 +406,20 @@ class ExcelExportService {
     Sheet sheet,
     List<dynamic> values,
     int dataRowIndex,
-    int headerRowIndex,
-  ) {
+    int headerRowIndex, {
+    GraduationTier tier = GraduationTier.normal,
+  }) {
     sheet.appendRow(values.map((v) => TextCellValue(v.toString())).toList());
     final rowIndex = dataRowIndex + headerRowIndex + 1; // بعد صف(وف) العناوين/التعليمات
-    final style = _rowStyle(alternate: dataRowIndex.isEven);
-    final reasonStyle = _rowStyle(alternate: dataRowIndex.isEven, wrapText: true);
+    // تمييز قرب التخرّج بلون خلفية عبر كامل الصف - يطغى على التلوين المتناوب
+    // العادي (سليمان صراحةً 2026-08-27)، فيبقى واضحًا بصريًا أينما وقع الصف.
+    final tierColorHex = switch (tier) {
+      GraduationTier.expected => 'FFF9D4DE', // وردي فاتح - متوقع تخرجه
+      GraduationTier.near => 'FFFCEBC7', // كهرماني فاتح - قريب من التخرج
+      GraduationTier.normal => null,
+    };
+    final style = _rowStyle(alternate: dataRowIndex.isEven, backgroundColorHex: tierColorHex);
+    final reasonStyle = _rowStyle(alternate: dataRowIndex.isEven, wrapText: true, backgroundColorHex: tierColorHex);
     for (var c = 0; c < values.length; c++) {
       sheet
               .cell(
@@ -418,19 +431,26 @@ class ExcelExportService {
   }
 }
 
+/// تصنيف قرب التخرّج حسب الساعات المتبقية - انظر توثيق منطق الحساب داخل
+/// [ExcelExportService.buildDepartmentWorkbook].
+enum GraduationTier { expected, near, normal }
+
 /// صف مبنى مؤقتًا قبل الكتابة الفعلية بالشيت - يُرتَّب أولًا حسب
 /// [hoursSortKey] (الساعات المتبقية تصاعديًا، المجهول يُعامَل كأكبر قيمة
 /// فيوضع أخيرًا)، ثم [studentId] كفاصل تعادل، ثم [actionPriority] (0=إضافة،
 /// 1=حذف، 2=تعديل، أكبر=غير مصنَّف/بلا إجراءات) لإبقاء حزمة كل طالب متتابعة.
+/// [tier] يحدّد لون تمييز الصف (قرب التخرّج).
 class _RowSpec {
   final int hoursSortKey;
   final String studentId;
   final int actionPriority;
+  final GraduationTier tier;
   final List<dynamic> values;
   const _RowSpec({
     required this.hoursSortKey,
     required this.studentId,
     required this.actionPriority,
+    required this.tier,
     required this.values,
   });
 }
