@@ -110,6 +110,15 @@ class ExcelExportService {
     24,
   ];
 
+  /// فهرس عمود "الساعات المتبقية" (صفر-فهرسة) - قيمته تُكتَب رقمًا صحيحًا
+  /// فعليًا (`IntCellValue`) لا نصًا، حتى يصح الفرز الرقمي لاحقًا لو فرزه
+  /// المرشد يدويًا داخل إكسل (سليمان صراحةً 2026-08-27).
+  static const int remainingHoursColumnIndex = 2;
+
+  /// فهرس عمود "المعدل" (صفر-فهرسة) - يُكتَب رقمًا عشريًا فعليًا
+  /// (`DoubleCellValue`) لنفس سبب [remainingHoursColumnIndex].
+  static const int gpaColumnIndex = 3;
+
   /// فهارس أعمدة موحَّدة القيمة عبر كل صفوف ملف مرشد واحد (كل ملف يخص مرشدًا
   /// بقسم/شطر واحد أصلاً عبر AdvisorZipService) - تكرارها بكل صف لا يفيد،
   /// تُخفى بملف المرشد تحديدًا (سليمان صراحةً 2026-08-25)، بخلاف الرقم
@@ -158,6 +167,7 @@ class ExcelExportService {
     backgroundColorHex: ExcelColor.fromHexString('FF154B36'),
     horizontalAlign: HorizontalAlign.Center,
     verticalAlign: VerticalAlign.Center,
+    textWrapping: TextWrapping.WrapText,
     leftBorder: _thinGrayBorder,
     rightBorder: _thinGrayBorder,
     topBorder: _thinGrayBorder,
@@ -229,8 +239,12 @@ class ExcelExportService {
   }) async {
     final academicLookup = await _loadAcademicLookup();
     final workbook = Excel.createExcel();
-    final sheetName = workbook.getDefaultSheet()!;
+    final defaultSheetName = workbook.getDefaultSheet()!;
+    // اسم ورقة مهني بدل "Sheet1" الافتراضي (سليمان صراحةً 2026-08-27).
+    const sheetName = 'طلبات المرشد';
+    workbook.rename(defaultSheetName, sheetName);
     final sheet = workbook[sheetName];
+    sheet.isRTL = true;
 
     for (var c = 0; c < _columnWidths.length; c++) {
       sheet.setColumnWidth(c, _columnWidths[c]);
@@ -259,6 +273,10 @@ class ExcelExportService {
     }
 
     sheet.appendRow(_headers.map((h) => TextCellValue(h)).toList());
+    // ارتفاع أكبر من الافتراضي + التفاف نص مُفعَّل بـ_headerStyle - بعض
+    // العناوين الطويلة (مثال: "رقم الشعبة المطلوبة (بعد التعديل)") كانت
+    // تظهر مضغوطة بصف عناوين رفيع بلا التفاف (سليمان صراحةً 2026-08-27).
+    sheet.setRowHeight(headerRowIndex, 45);
     for (var c = 0; c < _headers.length; c++) {
       sheet
               .cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: headerRowIndex))
@@ -302,8 +320,8 @@ class ExcelExportService {
       final baseInfo = [
         t['name'] ?? '',
         studentId,
-        remainingHours?.toString() ?? '—',
-        gpa != null ? gpa.toStringAsFixed(2) : '—',
+        remainingHours, // int? - يُكتَب رقمًا صحيحًا فعليًا لا نصًا، انظر _appendStyledRow
+        gpa, // double? - يُكتَب رقمًا عشريًا فعليًا لا نصًا
         t['shatr'] ?? '',
         t['department'] ?? '',
         t['advisor'] ?? '',
@@ -329,13 +347,13 @@ class ExcelExportService {
             '',
             '',
             '',
-            ' ',
-            ' ',
-            ' ',
-            ' ',
-            ' ',
-            ' ',
-            ' ',
+            '',
+            '',
+            '',
+            '',
+            '',
+            '',
+            '',
           ],
         ));
         continue;
@@ -360,6 +378,11 @@ class ExcelExportService {
         // عبر ExcelParserService الحالي) - نستخدم حقل 'course' الخام كاسم.
         final courseName = action['course_name'] ?? action['course'] ?? '';
         final courseCode = action['course_code'] ?? '';
+        // Microsoft Forms يُخرج إجابات الاختيار المتعدد مفصولة بـ";" مع فاصلة
+        // زائدة بالنهاية (";;;" أحيانًا) - تُزال هنا قبل الكتابة (سليمان
+        // صراحةً 2026-08-27، بلقطة شاشة فعلية للملف).
+        final rawReason = (action['reason_detail'] ?? action['reason'] ?? '').toString();
+        final reason = rawReason.replaceAll(RegExp(r'[;؛\s]+$'), '');
         final row = [
           ...baseInfo,
           actionType,
@@ -369,14 +392,14 @@ class ExcelExportService {
           isDelete ? (action['current_section'] ?? '') : '',
           isChange ? (action['current_section'] ?? '') : '',
           isChange ? (action['required_section'] ?? '') : '',
-          action['reason_detail'] ?? action['reason'] ?? '',
-          advisorStatus.isEmpty ? ' ' : advisorStatus,
-          advisorNotes.isEmpty ? ' ' : advisorNotes,
-          advisorOtherReason.isEmpty ? ' ' : advisorOtherReason,
-          coordinatorStatus.isEmpty ? ' ' : coordinatorStatus,
-          coordinatorNotes.isEmpty ? ' ' : coordinatorNotes,
-          collegeStatus.isEmpty ? ' ' : collegeStatus,
-          collegeNotes.isEmpty ? ' ' : collegeNotes,
+          reason,
+          advisorStatus,
+          advisorNotes,
+          advisorOtherReason,
+          coordinatorStatus,
+          coordinatorNotes,
+          collegeStatus,
+          collegeNotes,
         ];
         rowSpecs.add(_RowSpec(
           hoursSortKey: hoursSortKey,
@@ -405,6 +428,20 @@ class ExcelExportService {
     return Uint8List.fromList(workbook.encode()!);
   }
 
+  /// يحوّل قيمة عمود واحد إلى نوع خلية Excel الصحيح - رقم صحيح/عشري فعلي
+  /// لعمودَي الساعات المتبقية/المعدل (بدل نص، ليصح الفرز الرقمي لاحقًا لو
+  /// فرزه المرشد يدويًا)، وإلا نص عادي كالسابق. قيمة null (ساعات/معدل غير
+  /// معروفة) تُكتَب كنص "—" بدل رقم صفري مضلِّل.
+  static CellValue _cellValueFor(int columnIndex, dynamic value) {
+    if (columnIndex == remainingHoursColumnIndex) {
+      return value == null ? TextCellValue('—') : IntCellValue(value as int);
+    }
+    if (columnIndex == gpaColumnIndex) {
+      return value == null ? TextCellValue('—') : DoubleCellValue(value as double);
+    }
+    return TextCellValue(value.toString());
+  }
+
   static void _appendStyledRow(
     Sheet sheet,
     List<dynamic> values,
@@ -412,7 +449,9 @@ class ExcelExportService {
     int headerRowIndex, {
     GraduationTier tier = GraduationTier.normal,
   }) {
-    sheet.appendRow(values.map((v) => TextCellValue(v.toString())).toList());
+    sheet.appendRow([
+      for (var c = 0; c < values.length; c++) _cellValueFor(c, values[c]),
+    ]);
     final rowIndex = dataRowIndex + headerRowIndex + 1; // بعد صف(وف) العناوين/التعليمات
     // تمييز قرب التخرّج بلون خلفية عبر كامل الصف - يطغى على التلوين المتناوب
     // العادي (سليمان صراحةً 2026-08-27)، فيبقى واضحًا بصريًا أينما وقع الصف.
