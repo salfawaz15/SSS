@@ -253,18 +253,19 @@ class ExcelExportService {
     final headerRowIndex = includeInstructions ? 1 : 0;
 
     if (includeInstructions) {
-      sheet.appendRow([TextCellValue(advisorInstructionsText)]);
-      // دمج من العمود A إلى P فقط (لا كل الأعمدة) - يظهر شريط التعليمات كاملاً
-      // بمجرد فتح الملف بلا حاجة للتمرير أفقيًا (سليمان صراحةً 2026-08-27).
+      // العمود A يُترَك فارغًا عمدًا - نص التعليمات يبدأ من B ليطابق نطاق
+      // الدمج B-O أدناه (سليمان صراحةً 2026-08-27، ضُيِّق من A-P لاحقًا بسبب
+      // ضيق الصفحة).
+      sheet.appendRow([TextCellValue(''), TextCellValue(advisorInstructionsText)]);
       sheet.merge(
-        CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0),
-        CellIndex.indexByColumnRow(columnIndex: 15, rowIndex: 0),
+        CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 0),
+        CellIndex.indexByColumnRow(columnIndex: 14, rowIndex: 0),
       );
-      // ارتفاع أكبر (كان 30، ثم 90) - بعد تضييق نطاق الدمج لعمودَي A-P فقط
-      // (بدل كل الأعمدة) يلتف النص لعدد أسطر أكبر بنفس الطول، فيحتاج ارتفاعًا
-      // أكبر ليظهر كاملاً (سليمان صراحةً 2026-08-27، بلقطة شاشة فعلية للملف).
+      // ارتفاع أكبر (كان 30، ثم 90) - بعد تضييق نطاق الدمج يلتف النص لعدد
+      // أسطر أكبر بنفس الطول، فيحتاج ارتفاعًا أكبر ليظهر كاملاً (سليمان
+      // صراحةً 2026-08-27، بلقطة شاشة فعلية للملف).
       sheet.setRowHeight(0, 130);
-      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0)).cellStyle = CellStyle(
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 0)).cellStyle = CellStyle(
         bold: true,
         fontColorHex: ExcelColor.fromHexString('FF154B36'),
         backgroundColorHex: ExcelColor.fromHexString('FFFCE8B2'),
