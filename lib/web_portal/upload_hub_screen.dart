@@ -288,7 +288,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   Future<void> _downloadStage1(String key, List<Map<String, dynamic>> tickets) async {
     setState(() => _stageKeys.add(key));
     try {
-      final zipBytes = AdvisorZipService.buildZip(tickets, roster: _roster);
+      final zipBytes = await AdvisorZipService.buildZip(tickets, roster: _roster);
       final parts = key.split('|');
       final shatrLabel = parts[0] == ExcelParserService.shatrMale ? 'male' : 'female';
       downloadBytes(zipBytes, '${parts.length > 1 ? parts[1] : 'قسم'}_$shatrLabel.zip');
@@ -312,7 +312,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     final stage2Key = 'stage2|$key';
     setState(() => _stageKeys.add(stage2Key));
     try {
-      final bytes = EscalationFileService.buildStage2File(tickets);
+      final bytes = await EscalationFileService.buildStage2File(tickets);
       final parts = key.split('|');
       final shatrLabel = parts[0] == ExcelParserService.shatrMale ? 'male' : 'female';
       downloadBytes(bytes, '${parts.length > 1 ? parts[1] : 'قسم'}_${shatrLabel}_مرحلة_المنسق.xlsx');
@@ -334,7 +334,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     final key = 'stage3|$shatr';
     setState(() => _stageKeys.add(key));
     try {
-      final bytes = EscalationFileService.buildStage3File(shatrTickets);
+      final bytes = await EscalationFileService.buildStage3File(shatrTickets);
       final shatrLabel = shatr == ExcelParserService.shatrMale ? 'male' : 'female';
       downloadBytes(bytes, 'منسق_الكلية_$shatrLabel.xlsx');
       if (mounted) _showSuccessSnackBar('تم تنزيل ملف منسّق الكلية بنجاح');

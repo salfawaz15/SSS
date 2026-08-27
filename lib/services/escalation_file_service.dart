@@ -9,7 +9,7 @@ import 'excel_protection_service.dart';
 /// ذوي الإعاقة، لأن من يعالجه في هاتين المرحلتين شخص واحد بصلاحيات أعلى.
 class EscalationFileService {
   /// المرحلة 2: كل حالات قسم/شطر واحد (يعالجها منسّق القسم بنفسه).
-  static Uint8List buildStage2File(List<Map<String, dynamic>> departmentTickets) {
+  static Future<Uint8List> buildStage2File(List<Map<String, dynamic>> departmentTickets) {
     return _buildProtectedWorkbook(
       departmentTickets,
       statusColumnIndex: ExcelExportService.coordinatorStatusColumnIndex,
@@ -19,7 +19,7 @@ class EscalationFileService {
 
   /// المرحلة 3: كل حالات شطر كامل (الأقسام الخمسة مدمجة، يعالجها منسّق/ة
   /// الكلية).
-  static Uint8List buildStage3File(List<Map<String, dynamic>> shatrTickets) {
+  static Future<Uint8List> buildStage3File(List<Map<String, dynamic>> shatrTickets) {
     return _buildProtectedWorkbook(
       shatrTickets,
       statusColumnIndex: ExcelExportService.collegeStatusColumnIndex,
@@ -27,12 +27,12 @@ class EscalationFileService {
     );
   }
 
-  static Uint8List _buildProtectedWorkbook(
+  static Future<Uint8List> _buildProtectedWorkbook(
     List<Map<String, dynamic>> tickets, {
     required int statusColumnIndex,
     required int notesColumnIndex,
-  }) {
-    final rawBytes = ExcelExportService.buildDepartmentWorkbook(tickets);
+  }) async {
+    final rawBytes = await ExcelExportService.buildDepartmentWorkbook(tickets);
     final dataRowCount = tickets.fold<int>(0, (sum, t) {
       final actions = (t['actions'] as List?) ?? [];
       return sum + (actions.isEmpty ? 1 : actions.length);

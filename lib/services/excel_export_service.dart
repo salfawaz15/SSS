@@ -2,11 +2,17 @@ import 'dart:typed_data';
 
 import 'package:excel/excel.dart';
 
+import 'advising_report_repository.dart';
+import 'course_schedule_repository.dart' show Shatr;
+
 class ExcelExportService {
   // أسماء عناوين الأعمدة المرجعية - تُستخدم أيضًا عند إعادة قراءة الملفات
   // المعالَجة العائدة من المرشدين (ProcessedFileParserService) للبحث عن
   // العمود المطلوب بالاسم بدل الفهرس الثابت.
   static const String universityIdHeader = 'الرقم الجامعي';
+  static const String priorityHeader = 'الأولوية';
+  static const String remainingHoursHeader = 'الساعات المتبقية';
+  static const String gpaHeader = 'المعدل';
   static const String actionTypeHeader = 'نوع الإجراء';
   static const String courseNameHeader = 'اسم المقرر';
   static const String courseCodeHeader = 'رمز المقرر';
@@ -52,6 +58,9 @@ class ExcelExportService {
   static const List<String> _headers = [
     'اسم الطالب',
     universityIdHeader,
+    priorityHeader,
+    remainingHoursHeader,
+    gpaHeader,
     'الشطر',
     'القسم',
     'المرشد الأكاديمي',
@@ -78,6 +87,9 @@ class ExcelExportService {
   static const List<double> _columnWidths = [
     36,
     14,
+    10,
+    14,
+    10,
     12,
     22,
     20,
@@ -105,38 +117,38 @@ class ExcelExportService {
   /// بقسم/شطر واحد أصلاً عبر AdvisorZipService) - تكرارها بكل صف لا يفيد،
   /// تُخفى بملف المرشد تحديدًا (سليمان صراحةً 2026-08-25)، بخلاف الرقم
   /// الجامعي/اسم الطالب المختلفَين فعليًا بكل صف.
-  static const int shatrColumnIndex = 2;
-  static const int departmentColumnIndex = 3;
-  static const int advisorNameColumnIndex = 4;
+  static const int shatrColumnIndex = 5;
+  static const int departmentColumnIndex = 6;
+  static const int advisorNameColumnIndex = 7;
 
   /// فهرس عمود "رقم الجوال" - يُخفى بملف المرشد (سليمان صراحةً 2026-08-25:
   /// التواصل مع الطالب يكون عبر القنوات الرسمية فقط، لا هاتفيًا مباشرة).
-  static const int phoneColumnIndex = 5;
+  static const int phoneColumnIndex = 8;
 
   /// فهرس عمود "رمز المقرر" - اسم المقرر وحده كافٍ عمليًا للمرشد.
-  static const int courseCodeColumnIndex = 10;
+  static const int courseCodeColumnIndex = 13;
 
   /// فهرس عمود "حالة الإنجاز من قبل المرشد الأكاديمي" (صفر-فهرسة)
-  static const int advisorStatusColumnIndex = 16;
+  static const int advisorStatusColumnIndex = 19;
 
   /// فهرس عمود "ملاحظات المرشد الأكاديمي" (قائمة أسباب جاهزة - صفر-فهرسة)
-  static const int advisorNotesColumnIndex = 17;
+  static const int advisorNotesColumnIndex = 20;
 
   /// فهرس عمود "يرجى كتابة السبب الآخر" (نص حر، يُستخدم فقط عند اختيار
   /// "سبب آخر" بعمود الملاحظات - صفر-فهرسة)
-  static const int advisorOtherReasonColumnIndex = 18;
+  static const int advisorOtherReasonColumnIndex = 21;
 
   /// فهرس عمود "حالة الإنجاز من قبل منسق القسم" (صفر-فهرسة)
-  static const int coordinatorStatusColumnIndex = 19;
+  static const int coordinatorStatusColumnIndex = 22;
 
   /// فهرس عمود "ملاحظات منسق القسم" (صفر-فهرسة)
-  static const int coordinatorNotesColumnIndex = 20;
+  static const int coordinatorNotesColumnIndex = 23;
 
   /// فهرس عمود "حالة الإنجاز من قبل منسق الكلية" (صفر-فهرسة)
-  static const int collegeStatusColumnIndex = 21;
+  static const int collegeStatusColumnIndex = 24;
 
   /// فهرس عمود "ملاحظات منسق الكلية" (صفر-فهرسة)
-  static const int collegeNotesColumnIndex = 22;
+  static const int collegeNotesColumnIndex = 25;
 
   static final _thinGrayBorder = Border(
     borderStyle: BorderStyle.Thin,
@@ -170,7 +182,7 @@ class ExcelExportService {
 
   /// فهرس عمود "سبب الطلب" (صفر-فهرسة) - قد يحوي عدة أسباب مفصولة بـ";"
   /// فيطول النص، يُفعَّل التفاف السطر له تحديدًا بدل قصّه بصريًا.
-  static const int _reasonColumnIndex = 15;
+  static const int _reasonColumnIndex = 18;
 
   /// نص شريط التعليمات الموجز أعلى ملف المرشد - يشرح خياري القائمة المنسدلة
   /// بكلمات بسيطة بدل ترك المرشد يخمّن معناها.
@@ -180,14 +192,41 @@ class ExcelExportService {
       'القائمة المنسدلة في عمود "ملاحظات المرشد الأكاديمي" - وفقط إن لم ينطبق أي سبب اختر '
       '"سبب آخر" واكتب التفصيل في العمود الأخير "يرجى كتابة السبب الآخر".';
 
+  /// يحمّل خريطة (رقم جامعي ← الساعات المتبقية/المعدل) من "بيانات الطلبة
+  /// الأكاديمية" لكلا الشطرين - تُستخدم لترتيب صفوف ملف المرشد حسب أولوية
+  /// التخرّج (سليمان صراحةً 2026-08-27): طالب قليل الساعات المتبقية أولى
+  /// بتسكينه بشعبته المطلوبة قبل أن تمتلئ، لأنه على الأرجح يتخرّج قريبًا.
+  /// لا تُفشِل بناء الملف كاملاً لو تعذّر تحميل بيانات الطلبة الأكاديمية
+  /// (Firestore غير مهيَّأ باختبار، أو خطأ شبكي عابر) - يُكمَل البناء ببيانات
+  /// ساعات/معدل مجهولة للجميع (تنزل تلقائيًا لأسفل قائمة الأولوية) بدل توقّف
+  /// العملية بالكامل.
+  static Future<Map<String, ({int? remainingHours, double? gpa})>> _loadAcademicLookup() async {
+    final lookup = <String, ({int? remainingHours, double? gpa})>{};
+    try {
+      final results = await Future.wait([
+        AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.base),
+        AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.base),
+      ]);
+      for (final list in results) {
+        for (final r in list) {
+          lookup[r.studentId] = (remainingHours: r.remainingHours, gpa: r.gpa);
+        }
+      }
+    } catch (_) {
+      // يُكمَل ببيانات فارغة - انظر توثيق الدالة أعلاه.
+    }
+    return lookup;
+  }
+
   /// يبني ملف Excel حقيقي (.xlsx) لتذاكر قسم واحد ويرجّع بايتاته.
   /// [includeInstructions] يضيف صفًا مدمَجًا أعلى العناوين بشرح موجز لكيفية
   /// استخدام قائمة "حالة الإنجاز" المنسدلة - يُستخدم فقط لملف المرشد نفسه
   /// (لا لملفات أخرى تُبنى بنفس الدالة كالتصعيد/ذوي الإعاقة).
-  static Uint8List buildDepartmentWorkbook(
+  static Future<Uint8List> buildDepartmentWorkbook(
     List<Map<String, dynamic>> tickets, {
     bool includeInstructions = false,
-  }) {
+  }) async {
+    final academicLookup = await _loadAcademicLookup();
     final workbook = Excel.createExcel();
     final sheetName = workbook.getDefaultSheet()!;
     final sheet = workbook[sheetName];
@@ -224,14 +263,28 @@ class ExcelExportService {
     }
 
     // نجمّع كل (تذكرة، إجراء) بصف مستقل أولاً بدل الكتابة المباشرة، لنرتّبها
-    // بعدها حسب نوع الإجراء (إضافة ثم حذف ثم تعديل) - يسهّل على المرشد مسح
-    // الملف بصريًا كتلة كتلة بدل التنقل بين الأنواع الثلاثة بشكل عشوائي بين
-    // الصفوف (أكثر من 100 مرشد أكاديمي، بعضهم غير معتاد على إكسل إطلاقًا).
+    // بعدها بترتيب جديد (سليمان صراحةً 2026-08-27): **الساعات المتبقية
+    // تصاعديًا أولًا** (طالب قليل الساعات = قرب تخرّج = أولوية تسكين بشعبته
+    // قبل امتلائها؛ طالب مجهول الساعات (غير موجود بملف بيانات الطلبة) يوضع
+    // **بأسفل** القائمة - الأولوية للمؤكَّد قرب تخرّجهم لا للمجهولين)، ثم
+    // **الرقم الجامعي تصاعديًا** كفاصل تعادل، مع إبقاء كل طلبات نفس الطالب
+    // متتابعة كحزمة واحدة (إضافة ثم حذف ثم تعديل) بدل تشتتها بين كتل منفصلة
+    // حسب نوع الإجراء كما كان سابقًا - يعدّل المرشد لكل طالب مرة واحدة بدل
+    // البحث عنه في كل كتلة نوع إجراء على حدة.
+    const unknownHoursSortKey = 1 << 30; // أكبر من أي عدد ساعات حقيقي فيوضع أخيرًا
     final rowSpecs = <_RowSpec>[];
     for (final t in tickets) {
+      final studentId = (t['university_id'] ?? '').toString();
+      final academic = academicLookup[studentId];
+      final remainingHours = academic?.remainingHours;
+      final gpa = academic?.gpa;
+      final hoursSortKey = remainingHours ?? unknownHoursSortKey;
       final baseInfo = [
         t['name'] ?? '',
-        t['university_id'] ?? '',
+        studentId,
+        0, // عمود "الأولوية" - يُملأ بترقيم تسلسلي فعلي بعد الفرز النهائي أدناه
+        remainingHours?.toString() ?? '—',
+        gpa != null ? gpa.toStringAsFixed(2) : '—',
         t['shatr'] ?? '',
         t['department'] ?? '',
         t['advisor'] ?? '',
@@ -242,24 +295,29 @@ class ExcelExportService {
       final actions = (t['actions'] as List?) ?? [];
 
       if (actions.isEmpty) {
-        rowSpecs.add(_RowSpec(priority: 99, values: [
-          ...baseInfo,
-          '',
-          '',
-          '',
-          '',
-          '',
-          '',
-          '',
-          '',
-          ' ',
-          ' ',
-          ' ',
-          ' ',
-          ' ',
-          ' ',
-          ' ',
-        ]));
+        rowSpecs.add(_RowSpec(
+          hoursSortKey: hoursSortKey,
+          studentId: studentId,
+          actionPriority: 99,
+          values: [
+            ...baseInfo,
+            '',
+            '',
+            '',
+            '',
+            '',
+            '',
+            '',
+            '',
+            ' ',
+            ' ',
+            ' ',
+            ' ',
+            ' ',
+            ' ',
+            ' ',
+          ],
+        ));
         continue;
       }
 
@@ -300,11 +358,35 @@ class ExcelExportService {
           collegeStatus.isEmpty ? ' ' : collegeStatus,
           collegeNotes.isEmpty ? ' ' : collegeNotes,
         ];
-        rowSpecs.add(_RowSpec(priority: isAdd ? 0 : (isDelete ? 1 : (isChange ? 2 : 98)), values: row));
+        rowSpecs.add(_RowSpec(
+          hoursSortKey: hoursSortKey,
+          studentId: studentId,
+          actionPriority: isAdd ? 0 : (isDelete ? 1 : (isChange ? 2 : 98)),
+          values: row,
+        ));
       }
     }
 
-    rowSpecs.sort((a, b) => a.priority.compareTo(b.priority));
+    rowSpecs.sort((a, b) {
+      final byHours = a.hoursSortKey.compareTo(b.hoursSortKey);
+      if (byHours != 0) return byHours;
+      final byId = a.studentId.compareTo(b.studentId);
+      if (byId != 0) return byId;
+      return a.actionPriority.compareTo(b.actionPriority);
+    });
+
+    // ترقيم "الأولوية" تسلسليًا (1، 2، 3...) - رقم واحد لكل طالب لا لكل صف
+    // (كل صفوف طلبات نفس الطالب متتابعة الآن بعد الفرز أعلاه، فيتكرر نفس
+    // الرقم عليها بلا حاجة لتتبّع معقّد لحدود المجموعات).
+    var rank = 0;
+    String? lastStudentId;
+    for (final spec in rowSpecs) {
+      if (spec.studentId != lastStudentId) {
+        rank++;
+        lastStudentId = spec.studentId;
+      }
+      spec.values[2] = rank;
+    }
 
     var dataRowIndex = 0; // صفر-فهرسة بين صفوف البيانات (بدون العناوين/التعليمات)
     for (final spec in rowSpecs) {
@@ -336,10 +418,19 @@ class ExcelExportService {
   }
 }
 
-/// صف مبنى مؤقتًا قبل الكتابة الفعلية بالشيت - [priority] يحدّد ترتيب
-/// التجميع (0=إضافة، 1=حذف، 2=تعديل، أكبر=غير مصنَّف/بلا إجراءات).
+/// صف مبنى مؤقتًا قبل الكتابة الفعلية بالشيت - يُرتَّب أولًا حسب
+/// [hoursSortKey] (الساعات المتبقية تصاعديًا، المجهول يُعامَل كأكبر قيمة
+/// فيوضع أخيرًا)، ثم [studentId] كفاصل تعادل، ثم [actionPriority] (0=إضافة،
+/// 1=حذف، 2=تعديل، أكبر=غير مصنَّف/بلا إجراءات) لإبقاء حزمة كل طالب متتابعة.
 class _RowSpec {
-  final int priority;
+  final int hoursSortKey;
+  final String studentId;
+  final int actionPriority;
   final List<dynamic> values;
-  const _RowSpec({required this.priority, required this.values});
+  const _RowSpec({
+    required this.hoursSortKey,
+    required this.studentId,
+    required this.actionPriority,
+    required this.values,
+  });
 }

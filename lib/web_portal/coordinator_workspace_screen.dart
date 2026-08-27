@@ -125,7 +125,7 @@ class _CoordinatorBodyState extends State<_CoordinatorBody> {
   Future<void> _downloadDisabilityFile(List<Map<String, dynamic>> tickets) async {
     setState(() => _isDownloadingDisabilityFile = true);
     try {
-      final bytes = DisabilityFileService.buildFile(tickets);
+      final bytes = await DisabilityFileService.buildFile(tickets);
       downloadBytes(bytes, '${widget.department}_ذوي_الإعاقة.xlsx');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -270,7 +270,7 @@ class _CoordinatorBodyState extends State<_CoordinatorBody> {
       // واحد يخلط كل مرشدي القسم. حالات منسّق القسم تُوزَّع تلقائيًا على
       // بقية المرشدين خلال فترة الحذف والإضافة.
       final roster = await AdvisorRosterService.loadAll();
-      final zipBytes = AdvisorZipService.buildZip(tickets, roster: roster);
+      final zipBytes = await AdvisorZipService.buildZip(tickets, roster: roster);
       downloadBytes(zipBytes, '${widget.department}.zip');
       unawaited(StageDownloadService.recordAdvisorDownload(shatr: widget.shatr, department: widget.department));
       if (mounted) {
@@ -294,7 +294,7 @@ class _CoordinatorBodyState extends State<_CoordinatorBody> {
   Future<void> _downloadStage2(List<Map<String, dynamic>> tickets) async {
     setState(() => _isDownloadingStage2 = true);
     try {
-      final bytes = EscalationFileService.buildStage2File(tickets);
+      final bytes = await EscalationFileService.buildStage2File(tickets);
       downloadBytes(bytes, '${widget.department}_مرحلة_المنسق.xlsx');
       unawaited(StageDownloadService.recordCoordinatorDownload(shatr: widget.shatr, department: widget.department));
       if (mounted) {

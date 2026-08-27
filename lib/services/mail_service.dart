@@ -17,7 +17,7 @@ class MailService {
     required String coordinatorEmail,
     String? coordinatorName,
   }) async {
-    final rawXlsxBytes = ExcelExportService.buildDepartmentWorkbook(tickets);
+    final rawXlsxBytes = await ExcelExportService.buildDepartmentWorkbook(tickets);
     final dataRowCount = tickets.fold<int>(0, (sum, t) {
       final actions = (t['actions'] as List?) ?? [];
       return sum + (actions.isEmpty ? 1 : actions.length);

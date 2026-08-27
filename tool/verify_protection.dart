@@ -5,7 +5,7 @@ import 'package:excel/excel.dart' as xls;
 import 'package:archive/archive.dart';
 import 'package:sulaiman/services/advisor_zip_service.dart';
 
-void main() {
+Future<void> main() async {
   final tickets = [
     {
       'name': 'طالب تجريبي 1',
@@ -46,7 +46,7 @@ void main() {
 
   // نفس مسار الإنتاج الفعلي حرفيًا (AdvisorZipService.buildZip) بدل تكرار
   // منطق البناء/الحماية هنا - يضمن أن الاختبار يعكس ما يستلمه المرشد فعليًا
-  final zipBytes = AdvisorZipService.buildZip(tickets);
+  final zipBytes = await AdvisorZipService.buildZip(tickets);
   final zipArchive = ZipDecoder().decodeBytes(zipBytes);
   final xlsxFile = zipArchive.files.firstWhere((f) => f.name.endsWith('.xlsx'));
   final protectedBytes = Uint8List.fromList(xlsxFile.content as List<int>);

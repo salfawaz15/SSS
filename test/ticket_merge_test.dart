@@ -62,7 +62,7 @@ void main() {
     // نبني ملف Excel مُصدَّر فعليًا (كما سيرسله التطبيق)، ثم "نحاكي" تعديل
     // المرشد لعمودي الحالة/الملاحظات مباشرة في القيم المُصدَّرة، ثم نمرره
     // إلى نفس مُحلّل الملفات المعالجة الذي سيستخدمه التطبيق فعليًا.
-    final rawBytes = ExcelExportService.buildDepartmentWorkbook(tickets);
+    final rawBytes = await ExcelExportService.buildDepartmentWorkbook(tickets);
     expect(rawBytes, isNotEmpty);
 
     // نحاكي الصفوف كما لو أُعيدت من المرشد بعد التعبئة (بدل التلاعب بملف
@@ -127,7 +127,7 @@ void main() {
   });
 
   test('ProcessedFileParserService يقرأ الملف المُصدَّر بأسماء الأعمدة بشكل صحيح',
-      () {
+      () async {
     final tickets = [
       {
         'name': 'طالب',
@@ -149,7 +149,7 @@ void main() {
       },
     ];
 
-    final bytes = ExcelExportService.buildDepartmentWorkbook(tickets);
+    final bytes = await ExcelExportService.buildDepartmentWorkbook(tickets);
     final rows = ProcessedFileParserService.parseProcessedRows(bytes);
 
     expect(rows.length, 1);

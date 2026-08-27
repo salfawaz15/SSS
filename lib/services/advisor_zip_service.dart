@@ -138,11 +138,11 @@ class AdvisorZipService {
         : _groupByAdvisorName(tickets);
   }
 
-  static Uint8List buildZip(
+  static Future<Uint8List> buildZip(
     List<Map<String, dynamic>> tickets, {
     List<AdvisorRosterEntry>? roster,
-  }) {
-    final files = buildAdvisorFiles(tickets, roster: roster);
+  }) async {
+    final files = await buildAdvisorFiles(tickets, roster: roster);
     final archive = Archive();
     for (final entry in files.entries) {
       archive.addFile(ArchiveFile(entry.key, entry.value.length, entry.value));
@@ -155,17 +155,17 @@ class AdvisorZipService {
   /// بملف ZIP - يُستخدَم مباشرة عبر [buildZip] (قسم/شطر واحد)، ومتاح هنا
   /// أيضًا لتجميع عدة أقسام/شطرين معًا بمجلدات متداخلة (مثال: تنزيل الكل).
   /// المفتاح هو اسم الملف الآمن ("اسم_المرشد.xlsx") بلا أي مسار مجلد.
-  static Map<String, Uint8List> buildAdvisorFiles(
+  static Future<Map<String, Uint8List>> buildAdvisorFiles(
     List<Map<String, dynamic>> tickets, {
     List<AdvisorRosterEntry>? roster,
-  }) {
+  }) async {
     final byAdvisor = resolveEffectiveGroups(tickets, roster: roster);
 
     final files = <String, Uint8List>{};
 
     for (final entry in byAdvisor.entries) {
       final advisorTickets = entry.value;
-      final rawBytes = ExcelExportService.buildDepartmentWorkbook(advisorTickets, includeInstructions: true);
+      final rawBytes = await ExcelExportService.buildDepartmentWorkbook(advisorTickets, includeInstructions: true);
       final withReasonsSheet = _addReasonsReferenceSheet(rawBytes);
       final dataRowCount = advisorTickets.fold<int>(0, (sum, t) {
         final actions = (t['actions'] as List?) ?? [];

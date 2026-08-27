@@ -94,7 +94,7 @@ class _CollegeCoordinatorBodyState extends State<_CollegeCoordinatorBody> {
   Future<void> _download(List<Map<String, dynamic>> tickets) async {
     setState(() => _isDownloading = true);
     try {
-      final bytes = EscalationFileService.buildStage3File(tickets);
+      final bytes = await EscalationFileService.buildStage3File(tickets);
       downloadBytes(bytes, 'مرحلة_منسق_الكلية_${widget.shatr}.xlsx');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

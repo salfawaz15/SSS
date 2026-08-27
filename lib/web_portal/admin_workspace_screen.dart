@@ -123,7 +123,7 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
       // تلقائيًا على بقية المرشدين خلال فترة الحذف والإضافة. نستخدم القائمة
       // المحمَّلة مسبقًا في initState بدل إعادة جلبها من Firestore عند كل
       // ضغطة - كان هذا الجلب المتكرر يُعلّق الزر لو تأخّرت الشبكة لحظة النقر.
-      final zipBytes = AdvisorZipService.buildZip(tickets, roster: _roster);
+      final zipBytes = await AdvisorZipService.buildZip(tickets, roster: _roster);
 
       final parts = key.split('|');
       final shatrLabel = parts[0] == ExcelParserService.shatrMale ? 'male' : 'female';
@@ -154,7 +154,7 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
     final disabilityKey = 'disability|$key';
     setState(() => _downloadingKeys.add(disabilityKey));
     try {
-      final bytes = DisabilityFileService.buildFile(tickets);
+      final bytes = await DisabilityFileService.buildFile(tickets);
 
       final parts = key.split('|');
       final shatrLabel = parts[0] == ExcelParserService.shatrMale ? 'male' : 'female';
@@ -187,7 +187,7 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
     final stage2Key = 'stage2dl|$key';
     setState(() => _downloadingKeys.add(stage2Key));
     try {
-      final bytes = EscalationFileService.buildStage2File(tickets);
+      final bytes = await EscalationFileService.buildStage2File(tickets);
       final parts = key.split('|');
       final shatrLabel = parts[0] == ExcelParserService.shatrMale ? 'male' : 'female';
       downloadBytes(bytes, '${parts.length > 1 ? parts[1] : 'قسم'}_${shatrLabel}_مرحلة_المنسق.xlsx');

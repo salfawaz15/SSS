@@ -932,7 +932,7 @@ Future<void> runDownloadFormsZip({
       // ملف يُرسَل يدويًا لمنسّق القسم (لا فرز حسب مرشد) - يجب أن يحمل نفس
       // حماية/قائمة "حالة الإنجاز من قبل منسق القسم" المستخدَمة بمسار
       // التصعيد الفعلي (EscalationFileService)، لا نسخة خام بلا حماية.
-      final bytes = EscalationFileService.buildStage2File(entry.value);
+      final bytes = await EscalationFileService.buildStage2File(entry.value);
       final safeName = '${department.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')}_$shatrLabel';
       archive.addFile(ArchiveFile('$safeName.xlsx', bytes.length, bytes));
     }
@@ -978,7 +978,7 @@ Future<void> runDownloadAllAdvisorsZip({
       final shatrFolder = shatr == ExcelParserService.shatrMale ? 'شطر_الطلاب' : 'شطر_الطالبات';
       final departmentFolder = department.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
 
-      final advisorFiles = AdvisorZipService.buildAdvisorFiles(entry.value, roster: roster);
+      final advisorFiles = await AdvisorZipService.buildAdvisorFiles(entry.value, roster: roster);
       for (final fileEntry in advisorFiles.entries) {
         archive.addFile(
           ArchiveFile('$shatrFolder/$departmentFolder/${fileEntry.key}', fileEntry.value.length, fileEntry.value),
@@ -1025,7 +1025,7 @@ Future<void> runDownloadAllStage2Zip({
       final department = parts.length > 1 ? parts[1] : 'قسم';
       final shatrLabel = shatr == ExcelParserService.shatrMale ? 'male' : 'female';
 
-      final bytes = EscalationFileService.buildStage2File(entry.value);
+      final bytes = await EscalationFileService.buildStage2File(entry.value);
       final safeName = '${department.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')}_${shatrLabel}_مرحلة_المنسق';
       archive.addFile(ArchiveFile('$safeName.xlsx', bytes.length, bytes));
     }
@@ -1063,7 +1063,7 @@ Future<void> runDownloadAllStage3Zip({
       final shatrTickets = tickets.where((t) => t['shatr'] == shatr).toList();
       if (shatrTickets.isEmpty) continue;
       final shatrLabel = shatr == ExcelParserService.shatrMale ? 'male' : 'female';
-      final bytes = EscalationFileService.buildStage3File(shatrTickets);
+      final bytes = await EscalationFileService.buildStage3File(shatrTickets);
       archive.addFile(ArchiveFile('منسق_الكلية_$shatrLabel.xlsx', bytes.length, bytes));
     }
 

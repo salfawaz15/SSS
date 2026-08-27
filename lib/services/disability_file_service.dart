@@ -16,9 +16,9 @@ class DisabilityFileService {
     return tickets.where((t) => t['has_disability'] == true).toList();
   }
 
-  static Uint8List buildFile(List<Map<String, dynamic>> tickets) {
+  static Future<Uint8List> buildFile(List<Map<String, dynamic>> tickets) async {
     final disabilityTickets = filterDisabilityTickets(tickets);
-    final rawBytes = ExcelExportService.buildDepartmentWorkbook(disabilityTickets);
+    final rawBytes = await ExcelExportService.buildDepartmentWorkbook(disabilityTickets);
     final dataRowCount = disabilityTickets.fold<int>(0, (sum, t) {
       final actions = (t['actions'] as List?) ?? [];
       return sum + (actions.isEmpty ? 1 : actions.length);
