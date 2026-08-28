@@ -29,11 +29,24 @@ class FirestoreTicketService {
   /// بصمت تام سابقًا فيظهر شريط "تم الرفع بنجاح" رغم عدم كتابة أي شيء فعليًا
   /// بقاعدة البيانات (سليمان رصد حيًّا 2026-08-24: رفع تجريبي بحالة واحدة
   /// بلا رقم جامعي صالح أدّى لتبويب "الحذف والإضافة" فارغ تمامًا بلا أي خطأ).
+  /// تاريخ اليوم بصيغة "yyyy-MM-dd" حسب ساعة جهاز من يرفع الملف - يُكتَب مرة
+  /// واحدة فقط لحظة إدخال التذكرة لأول مرة، ولا يُعاد كتابته لاحقًا (مطابقة
+  /// الحالة لا تلمس هذا الحقل). يُستخدَم فقط لتجميع/فصل صفوف ملفات المرشد/
+  /// المنسّق حسب يوم الورود (سليمان صراحةً 2026-08-28) - لا علاقة له بتوقيت
+  /// إنجاز المعالجة (لا يوجد "تأخّر" محسوب بالنظام، انظر النقاش).
+  static String _todayDateKey() {
+    final now = DateTime.now();
+    final m = now.month.toString().padLeft(2, '0');
+    final d = now.day.toString().padLeft(2, '0');
+    return '${now.year}-$m-$d';
+  }
+
   static Future<int> replaceAllTickets(
     List<Map<String, dynamic>> tickets,
   ) async {
     await clearAll();
 
+    final uploadedDate = _todayDateKey();
     final batch = FirebaseFirestore.instance.batch();
     var skipped = 0;
     for (final t in tickets) {
@@ -42,7 +55,7 @@ class FirestoreTicketService {
         skipped++;
         continue;
       }
-      batch.set(_col.doc(id), t);
+      batch.set(_col.doc(id), {...t, 'uploaded_date': uploadedDate});
     }
     await batch.commit();
     return skipped;
@@ -70,10 +83,11 @@ class FirestoreTicketService {
       return !existingIds.contains(id);
     }).toList();
 
+    final uploadedDate = _todayDateKey();
     final batch = FirebaseFirestore.instance.batch();
     for (final t in newTickets) {
       final id = (t['university_id'] ?? '').toString();
-      batch.set(_col.doc(id), t);
+      batch.set(_col.doc(id), {...t, 'uploaded_date': uploadedDate});
     }
     await batch.commit();
 

@@ -18,14 +18,11 @@ class DisabilityFileService {
 
   static Future<Uint8List> buildFile(List<Map<String, dynamic>> tickets) async {
     final disabilityTickets = filterDisabilityTickets(tickets);
-    final rawBytes = await ExcelExportService.buildDepartmentWorkbook(disabilityTickets);
-    final dataRowCount = disabilityTickets.fold<int>(0, (sum, t) {
-      final actions = (t['actions'] as List?) ?? [];
-      return sum + (actions.isEmpty ? 1 : actions.length);
-    });
+    final workbookResult = await ExcelExportService.buildDepartmentWorkbook(disabilityTickets);
+    final dataRowCount = workbookResult.totalDataRowCount;
 
     return ExcelProtectionService.protect(
-      rawBytes,
+      workbookResult.bytes,
       dropdowns: [
         DropdownColumn(
           columnIndex: ExcelExportService.advisorStatusColumnIndex,

@@ -229,11 +229,27 @@ class ExcelExportService {
     return lookup;
   }
 
-  /// يبني ملف Excel حقيقي (.xlsx) لتذاكر قسم واحد ويرجّع بايتاته.
+  /// ألوان دورية لصفوف عنوان اليوم (فاتحة، تسمح بقراءة نص أسود عليها) -
+  /// تتكرر لو تجاوزت الدورة 3 أيام (سليمان صراحةً 2026-08-28).
+  static const List<String> _dayHeaderColors = ['FFFDEBD3', 'FFD6EAF8', 'FFD5F5E3'];
+
+  static CellStyle _dayTitleStyle(String colorHex) => CellStyle(
+    bold: true,
+    fontSize: 13,
+    backgroundColorHex: ExcelColor.fromHexString(colorHex),
+    horizontalAlign: HorizontalAlign.Right,
+    verticalAlign: VerticalAlign.Center,
+  );
+
+  /// يبني ملف Excel حقيقي (.xlsx) لتذاكر قسم واحد ويرجّع بايتاته مع
+  /// [DepartmentWorkbookResult.totalDataRowCount] (كل الصفوف الفعلية تحت
+  /// العناوين، شاملةً صفوف عنوان اليوم والفواصل الفارغة - لازم لضبط نطاق
+  /// القوائم المنسدلة بشكل صحيح عند حماية الملف لاحقًا، انظر
+  /// [ExcelProtectionService.protect]).
   /// [includeInstructions] يضيف صفًا مدمَجًا أعلى العناوين بشرح موجز لكيفية
   /// استخدام قائمة "حالة الإنجاز" المنسدلة - يُستخدم فقط لملف المرشد نفسه
   /// (لا لملفات أخرى تُبنى بنفس الدالة كالتصعيد/ذوي الإعاقة).
-  static Future<Uint8List> buildDepartmentWorkbook(
+  static Future<DepartmentWorkbookResult> buildDepartmentWorkbook(
     List<Map<String, dynamic>> tickets, {
     bool includeInstructions = false,
   }) async {
@@ -300,6 +316,9 @@ class ExcelExportService {
     final rowSpecs = <_RowSpec>[];
     for (final t in tickets) {
       final studentId = (t['university_id'] ?? '').toString();
+      // فارغ (بلا هذا الحقل - تذاكر أُدخلت قبل 2026-08-28) يُعامَل كأقدم يوم
+      // فيظهر أولًا تلقائيًا (المقارنة النصية تضع "" قبل أي تاريخ حقيقي).
+      final uploadedDate = (t['uploaded_date'] ?? '').toString();
       final academic = academicLookup[studentId];
       final remainingHours = academic?.remainingHours;
       final gpa = academic?.gpa;
@@ -336,6 +355,7 @@ class ExcelExportService {
 
       if (actions.isEmpty) {
         rowSpecs.add(_RowSpec(
+          day: uploadedDate,
           hoursSortKey: hoursSortKey,
           studentId: studentId,
           actionPriority: 99,
@@ -405,6 +425,7 @@ class ExcelExportService {
           collegeNotes,
         ];
         rowSpecs.add(_RowSpec(
+          day: uploadedDate,
           hoursSortKey: hoursSortKey,
           studentId: studentId,
           actionPriority: isAdd ? 0 : (isDelete ? 1 : (isChange ? 2 : 98)),
@@ -414,7 +435,11 @@ class ExcelExportService {
       }
     }
 
+    // اليوم أولًا (المتراكم الأقدم أعلى الملف)، ثم نفس الترتيب السابق داخل كل
+    // يوم (سليمان صراحةً 2026-08-28: فاصل يومي واضح بدل التداخل الكامل).
     rowSpecs.sort((a, b) {
+      final byDay = a.day.compareTo(b.day);
+      if (byDay != 0) return byDay;
       final byHours = a.hoursSortKey.compareTo(b.hoursSortKey);
       if (byHours != 0) return byHours;
       final byId = a.studentId.compareTo(b.studentId);
@@ -423,12 +448,35 @@ class ExcelExportService {
     });
 
     var dataRowIndex = 0; // صفر-فهرسة بين صفوف البيانات (بدون العناوين/التعليمات)
+    String? currentDay;
+    var dayColorCursor = 0;
     for (final spec in rowSpecs) {
+      if (spec.day != currentDay) {
+        if (currentDay != null) {
+          // صف فارغ كامل يفصل عن مجموعة اليوم السابق (بلا لون).
+          sheet.appendRow([]);
+          dataRowIndex++;
+        }
+        currentDay = spec.day;
+        final colorHex = _dayHeaderColors[dayColorCursor % _dayHeaderColors.length];
+        dayColorCursor++;
+        final rowIndex = dataRowIndex + headerRowIndex + 1;
+        final titleText = spec.day.isEmpty ? 'حالات سابقة (بلا تاريخ رفع مسجَّل)' : spec.day;
+        sheet.appendRow([TextCellValue(titleText)]);
+        final titleStyle = _dayTitleStyle(colorHex);
+        for (var c = 0; c < _headers.length; c++) {
+          sheet.cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: rowIndex)).cellStyle = titleStyle;
+        }
+        dataRowIndex++;
+      }
       _appendStyledRow(sheet, spec.values, dataRowIndex, headerRowIndex, tier: spec.tier);
       dataRowIndex++;
     }
 
-    return Uint8List.fromList(workbook.encode()!);
+    return DepartmentWorkbookResult(
+      bytes: Uint8List.fromList(workbook.encode()!),
+      totalDataRowCount: dataRowIndex,
+    );
   }
 
   /// يحوّل قيمة عمود واحد إلى نوع خلية Excel الصحيح - رقم صحيح/عشري فعلي
@@ -486,18 +534,31 @@ class ExcelExportService {
 /// [ExcelExportService.buildDepartmentWorkbook].
 enum GraduationTier { expected, near, normal }
 
-/// صف مبنى مؤقتًا قبل الكتابة الفعلية بالشيت - يُرتَّب أولًا حسب
+/// ناتج [ExcelExportService.buildDepartmentWorkbook] - [totalDataRowCount]
+/// ضروري لضبط نطاق القوائم المنسدلة بشكل صحيح عند التمرير لـ
+/// [ExcelProtectionService.protect] (يشمل صفوف عنوان اليوم والفواصل الفارغة،
+/// لا صفوف بيانات التذاكر فقط).
+class DepartmentWorkbookResult {
+  final Uint8List bytes;
+  final int totalDataRowCount;
+  const DepartmentWorkbookResult({required this.bytes, required this.totalDataRowCount});
+}
+
+/// صف مبنى مؤقتًا قبل الكتابة الفعلية بالشيت - يُرتَّب أولًا حسب [day] (يوم
+/// رفع التذكرة، الأقدم أولًا - المجهول "" يُعامَل كأقدم فيوضع أولًا)، ثم
 /// [hoursSortKey] (الساعات المتبقية تصاعديًا، المجهول يُعامَل كأكبر قيمة
 /// فيوضع أخيرًا)، ثم [studentId] كفاصل تعادل، ثم [actionPriority] (0=إضافة،
 /// 1=حذف، 2=تعديل، أكبر=غير مصنَّف/بلا إجراءات) لإبقاء حزمة كل طالب متتابعة.
 /// [tier] يحدّد لون تمييز الصف (قرب التخرّج).
 class _RowSpec {
+  final String day;
   final int hoursSortKey;
   final String studentId;
   final int actionPriority;
   final GraduationTier tier;
   final List<dynamic> values;
   const _RowSpec({
+    required this.day,
     required this.hoursSortKey,
     required this.studentId,
     required this.actionPriority,

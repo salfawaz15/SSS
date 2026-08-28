@@ -32,14 +32,11 @@ class EscalationFileService {
     required int statusColumnIndex,
     required int notesColumnIndex,
   }) async {
-    final rawBytes = await ExcelExportService.buildDepartmentWorkbook(tickets);
-    final dataRowCount = tickets.fold<int>(0, (sum, t) {
-      final actions = (t['actions'] as List?) ?? [];
-      return sum + (actions.isEmpty ? 1 : actions.length);
-    });
+    final workbookResult = await ExcelExportService.buildDepartmentWorkbook(tickets);
+    final dataRowCount = workbookResult.totalDataRowCount;
 
     return ExcelProtectionService.protect(
-      rawBytes,
+      workbookResult.bytes,
       dropdowns: [
         DropdownColumn(
           columnIndex: statusColumnIndex,

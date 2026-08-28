@@ -17,13 +17,10 @@ class MailService {
     required String coordinatorEmail,
     String? coordinatorName,
   }) async {
-    final rawXlsxBytes = await ExcelExportService.buildDepartmentWorkbook(tickets);
-    final dataRowCount = tickets.fold<int>(0, (sum, t) {
-      final actions = (t['actions'] as List?) ?? [];
-      return sum + (actions.isEmpty ? 1 : actions.length);
-    });
+    final workbookResult = await ExcelExportService.buildDepartmentWorkbook(tickets);
+    final dataRowCount = workbookResult.totalDataRowCount;
     final xlsxBytes = ExcelProtectionService.protect(
-      rawXlsxBytes,
+      workbookResult.bytes,
       dropdowns: [
         DropdownColumn(
           columnIndex: ExcelExportService.coordinatorStatusColumnIndex,

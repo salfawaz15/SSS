@@ -165,12 +165,9 @@ class AdvisorZipService {
 
     for (final entry in byAdvisor.entries) {
       final advisorTickets = entry.value;
-      final rawBytes = await ExcelExportService.buildDepartmentWorkbook(advisorTickets, includeInstructions: true);
-      final withReasonsSheet = _addReasonsReferenceSheet(rawBytes);
-      final dataRowCount = advisorTickets.fold<int>(0, (sum, t) {
-        final actions = (t['actions'] as List?) ?? [];
-        return sum + (actions.isEmpty ? 1 : actions.length);
-      });
+      final workbookResult = await ExcelExportService.buildDepartmentWorkbook(advisorTickets, includeInstructions: true);
+      final withReasonsSheet = _addReasonsReferenceSheet(workbookResult.bytes);
+      final dataRowCount = workbookResult.totalDataRowCount;
       final protectedBytes = ExcelProtectionService.protect(
         withReasonsSheet,
         dropdowns: [

@@ -62,7 +62,7 @@ void main() {
     // نبني ملف Excel مُصدَّر فعليًا (كما سيرسله التطبيق)، ثم "نحاكي" تعديل
     // المرشد لعمودي الحالة/الملاحظات مباشرة في القيم المُصدَّرة، ثم نمرره
     // إلى نفس مُحلّل الملفات المعالجة الذي سيستخدمه التطبيق فعليًا.
-    final rawBytes = await ExcelExportService.buildDepartmentWorkbook(tickets);
+    final rawBytes = (await ExcelExportService.buildDepartmentWorkbook(tickets)).bytes;
     expect(rawBytes, isNotEmpty);
 
     // نحاكي الصفوف كما لو أُعيدت من المرشد بعد التعبئة (بدل التلاعب بملف
@@ -149,8 +149,8 @@ void main() {
       },
     ];
 
-    final bytes = await ExcelExportService.buildDepartmentWorkbook(tickets);
-    final rows = ProcessedFileParserService.parseProcessedRows(bytes);
+    final workbookResult = await ExcelExportService.buildDepartmentWorkbook(tickets);
+    final rows = ProcessedFileParserService.parseProcessedRows(workbookResult.bytes);
 
     expect(rows.length, 1);
     expect(rows.first['university_id'], '443333333');
