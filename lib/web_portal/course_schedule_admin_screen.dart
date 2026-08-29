@@ -730,7 +730,7 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
     final seen = <String>{};
     final options = <String>[];
     for (final row in _filteredRows(includeShared: true)) {
-      final option = '${row.record.courseCode} - ${row.record.courseName}';
+      final option = '${row.record.theoryCourseCodeFull} - ${row.record.courseName}';
       if (seen.add(option)) options.add(option);
     }
     if (_shatrFilter != _kAllShatr) {
