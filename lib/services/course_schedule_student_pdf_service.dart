@@ -220,6 +220,7 @@ class CourseScheduleStudentPdfService {
   /// الكلية الخمسة - هذا ما يُنزَّل فعليًا من زر التنزيل تحت بطاقة كل شطر.
   static Future<Uint8List> buildZipForShatr({
     required String shatrLabel,
+    required String shatrFileWord,
     required List<CourseSectionRecord> records,
     List<CourseSectionRecord> outsideRecords = const [],
   }) async {
@@ -232,7 +233,10 @@ class CourseScheduleStudentPdfService {
         records: deptRecords,
         outsideRecords: outsideRecords,
       );
-      final fileName = '${_sanitizeFileName(department)}.pdf';
+      // اسم الملف ثابت الصيغة عمدًا ("قسم [الاسم] - طلاب/طالبات.pdf") حتى لا
+      // يتغيّر بين تنزيلة وأخرى مهما تحدَّثت المقررات لاحقًا - بطلب سليمان
+      // صراحةً (2026-08-29).
+      final fileName = '${_sanitizeFileName(department)} - $shatrFileWord.pdf';
       archive.addFile(ArchiveFile(fileName, pdfBytes.length, pdfBytes));
     }
     final zipBytes = ZipEncoder().encode(archive) ?? <int>[];
@@ -248,6 +252,7 @@ Future<Uint8List> buildCourseScheduleStudentZip(Shatr shatr) async {
   final outsideRecords = await OutsideCourseRepository.loadSections(shatr);
   return CourseScheduleStudentPdfService.buildZipForShatr(
     shatrLabel: shatr.label,
+    shatrFileWord: shatr == Shatr.male ? 'طلاب' : 'طالبات',
     records: records,
     outsideRecords: outsideRecords,
   );
