@@ -350,7 +350,7 @@ class _AcademicServicesHubScreenState extends State<AcademicServicesHubScreen> {
           Text('شعبة ${r.theorySection}', style: const TextStyle(fontSize: 12, color: DashTokens.textSecondary)),
           Expanded(
             child: Text(
-              '${r.courseName} (${r.courseCode})',
+              '${r.courseName} (${r.theoryCourseCodeFull})',
               textAlign: TextAlign.right,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,

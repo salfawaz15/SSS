@@ -171,7 +171,7 @@ class CourseScheduleStudentPdfService {
       // المرفوع لا تضمن هذا الترتيب، فتظهر أحيانًا بترتيب عشوائي بلا هذا الفرز.
       final theoryMeetings = [...r.meetings]..sort((a, b) => a.day.compareTo(b.day));
       rows.add([
-        r.courseCode,
+        r.theoryCourseCodeFull,
         r.courseName,
         'نظري',
         r.theorySection,
@@ -184,7 +184,7 @@ class CourseScheduleStudentPdfService {
       if (r.practicalSection != null) {
         final practicalMeetings = [...r.practicalMeetings]..sort((a, b) => a.day.compareTo(b.day));
         rows.add([
-          r.courseCode,
+          r.practicalCourseCodeFull,
           r.courseName,
           'عملي',
           r.practicalSection!,

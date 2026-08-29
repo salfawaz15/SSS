@@ -553,7 +553,7 @@ class _CourseCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('${record.courseName} (${record.courseCode})', style: AppTextStyles.body().copyWith(fontWeight: FontWeight.w700)),
+          Text('${record.courseName} (${record.theoryCourseCodeFull})', style: AppTextStyles.body().copyWith(fontWeight: FontWeight.w700)),
           const SizedBox(height: 6),
           // نظري وعملي جنبًا إلى جنب كوحدة واحدة (لا اسم محاضر مكرَّر هنا) -
           // بطلب سليمان صراحةً (2026-08-24).

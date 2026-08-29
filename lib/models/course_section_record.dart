@@ -51,6 +51,13 @@ class CourseSectionRecord {
   final int? practicalMaxCapacity; // "اعلى حد" لشعبة العملي (إن وُجدت)
   final int? practicalRegistered; // "المسجلين" في شعبة العملي (إن وُجدت)
 
+  // رمز المقرر الكامل كما يظهر بالمنظومة الأصلية (مع لاحقة "-N" الساعات،
+  // مثال "601201-3") - `courseCode` وحده بلا اللاحقة يبقى للمطابقة الداخلية
+  // مع course_catalog.dart، بينما هذا للعرض للمستخدم (سليمان صراحةً
+  // 2026-08-29: الرمز كان "يُفقَد" بلا اللاحقة بكل مكان بالموقع).
+  String get theoryCourseCodeFull => '$courseCode-$theoryHours';
+  String get practicalCourseCodeFull => '$courseCode-$practicalHours';
+
   const CourseSectionRecord({
     required this.courseCode,
     required this.courseName,
