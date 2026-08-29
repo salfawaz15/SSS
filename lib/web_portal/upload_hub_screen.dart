@@ -13,6 +13,7 @@ import '../services/advisor_roster_service.dart';
 import '../services/advisor_zip_service.dart';
 import '../services/college_roster_repository.dart';
 import '../services/course_schedule_repository.dart';
+import '../services/course_schedule_student_pdf_service.dart';
 import '../services/docx_schedule_parser_service.dart';
 import '../services/escalation_file_service.dart';
 import '../services/excel_parser_service.dart';
@@ -30,8 +31,11 @@ import 'upload_flows.dart';
 
 /// صفحة مركزية واحدة لكل الملفات التي مصدرها المنظومة الداخلية للجامعة
 /// حصرًا (وليس Microsoft Forms أو الموقع نفسه) - بطلب سليمان صراحةً
-/// (2026-08-17). صفحة **رفع فقط** بلا أي إحصائيات/تحليلات/تقارير (ستكون
-/// بصفحة مستقلة لاحقًا) - سليمان صراحةً: "الصفحة تكون مخصصة للرفع فقط".
+/// (2026-08-17). صفحة **رفع** بلا أي إحصائيات/تحليلات/تقارير (ستكون بصفحة
+/// مستقلة لاحقًا) - سليمان صراحةً: "الصفحة تكون مخصصة للرفع فقط". استثناء
+/// وحيد أُضيف لاحقًا (2026-08-27): زرا تنزيل ملف مضغوط بمواد الطلاب/الطالبات
+/// الدراسية (نسخة طالب مبسّطة، لا تقرير إداري) تحت بطاقة "المقررات الدراسية"
+/// مباشرة - راجع [_downloadCoursesForStudents].
 ///
 /// **المقررات الدراسية**: خانة رفع واحدة فقط (لا فصل طلاب/طالبات) - يستخرج
 /// شطر كل شعبة تلقائيًا من حقل "المقر" داخل الملف نفسه
@@ -62,6 +66,8 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   int _maleCourseCount = 0;
   int _femaleCourseCount = 0;
   bool _uploadingCourses = false;
+  bool _downloadingMaleCourses = false;
+  bool _downloadingFemaleCourses = false;
 
   DateTime? _rosterLastSavedAt;
   int _rosterFacultyCount = 0;
@@ -451,6 +457,35 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
       if (mounted) showUploadErrorDialog(context, 'تعذّر رفع الملف', '$e');
     } finally {
       if (mounted) setState(() => _stageKeys.remove(key));
+    }
+  }
+
+  /// يبني ملفًا مضغوطًا (5 ملفات PDF، ملف لكل قسم) بمواد شطر واحد بما هو
+  /// متاح للطالب رؤيته فقط (بلا قاعة/عضو هيئة تدريس/عدد مسجلين) - بطلب
+  /// سليمان صراحةً (2026-08-27).
+  Future<void> _downloadCoursesForStudents(Shatr shatr) async {
+    setState(() {
+      if (shatr == Shatr.male) {
+        _downloadingMaleCourses = true;
+      } else {
+        _downloadingFemaleCourses = true;
+      }
+    });
+    try {
+      final zipBytes = await buildCourseScheduleStudentZip(shatr);
+      downloadBytes(zipBytes, 'المواد_الدراسية_${shatr.docId}.zip');
+    } catch (e) {
+      if (mounted) showUploadErrorDialog(context, 'تعذّر تجهيز الملف', '$e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          if (shatr == Shatr.male) {
+            _downloadingMaleCourses = false;
+          } else {
+            _downloadingFemaleCourses = false;
+          }
+        });
+      }
     }
   }
 
@@ -1136,9 +1171,25 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
           const SizedBox(height: 10),
           Row(
             children: [
-              Expanded(child: _courseCountStat(label: 'مقررات شطر الطلاب', count: _maleCourseCount, emoji: '👨‍🎓')),
+              Expanded(
+                child: _courseCountStat(
+                  label: 'مقررات شطر الطلاب',
+                  count: _maleCourseCount,
+                  emoji: '👨‍🎓',
+                  onDownload: _maleCourseCount == 0 ? null : () => _downloadCoursesForStudents(Shatr.male),
+                  isDownloading: _downloadingMaleCourses,
+                ),
+              ),
               const SizedBox(width: 10),
-              Expanded(child: _courseCountStat(label: 'مقررات شطر الطالبات', count: _femaleCourseCount, emoji: '👩‍🎓')),
+              Expanded(
+                child: _courseCountStat(
+                  label: 'مقررات شطر الطالبات',
+                  count: _femaleCourseCount,
+                  emoji: '👩‍🎓',
+                  onDownload: _femaleCourseCount == 0 ? null : () => _downloadCoursesForStudents(Shatr.female),
+                  isDownloading: _downloadingFemaleCourses,
+                ),
+              ),
             ],
           ),
           if (coursesDate != null)
@@ -1151,8 +1202,16 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     );
   }
 
-  /// بطاقة إحصائية صغيرة: عدد شعب المقررات المرفوعة لشطر واحد.
-  Widget _courseCountStat({required String label, required int count, required String emoji}) {
+  /// بطاقة إحصائية صغيرة: عدد شعب المقررات المرفوعة لشطر واحد، مع زر تنزيل
+  /// اختياري لملف الطالب المضغوط (5 ملفات PDF حسب القسم) - بطلب سليمان
+  /// صراحةً (2026-08-27): "المواد الدراسية لطلبة كلية إدارة الأعمال".
+  Widget _courseCountStat({
+    required String label,
+    required int count,
+    required String emoji,
+    VoidCallback? onDownload,
+    bool isDownloading = false,
+  }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(9)),
@@ -1161,6 +1220,16 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
           Text('$emoji  $count', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppColors.greenDark)),
           const SizedBox(height: 2),
           Text(label, style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600), textAlign: TextAlign.center),
+          if (onDownload != null || isDownloading) ...[
+            const SizedBox(height: 4),
+            RoundIconButton(
+              tooltip: 'تنزيل ملف مضغوط بمواد الطالب (PDF لكل قسم)',
+              color: AppColors.greenDark,
+              icon: Icons.download_outlined,
+              onPressed: onDownload,
+              isLoading: isDownloading,
+            ),
+          ],
         ],
       ),
     );

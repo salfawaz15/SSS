@@ -7,12 +7,20 @@ class CourseCatalogEntry {
   final String department;
   final List<String> plans; // ['خطة 38'] أو ['خطة 47'] أو كلاهما
   final String? note;
+  // إجباري/اختياري ضمن خطة قسمه المالك - مستخرَجة يدويًا من ملفات الخطط
+  // الدراسية الرسمية (وليس من ملف التسكين الفصلي، الذي لا يحمل هذا التصنيف
+  // إطلاقًا) بطلب سليمان صراحةً (2026-08-27) - راجحة على `note` عند التعارض.
+  // مقررات قسم الاقتصاد والتمويل (3 برامج فرعية بترقيم غير متطابق بين
+  // الوثائق) استُثنيت عمدًا (تبقى false الافتراضية = إجباري) لعدم توفّر
+  // مطابقة موثوقة رمز-برمز حتى الآن.
+  final bool elective;
 
   const CourseCatalogEntry({
     required this.code,
     required this.department,
     required this.plans,
     this.note,
+    this.elective = false,
   });
 }
 
@@ -52,10 +60,10 @@ class CourseCatalog {
     '66013203': CourseCatalogEntry(code: '66013203', department: mgmt, plans: both),
     '6601321': CourseCatalogEntry(code: '6601321', department: mgmt, plans: both),
     '6601322': CourseCatalogEntry(code: '6601322', department: mgmt, plans: p38),
-    '66014201': CourseCatalogEntry(code: '66014201', department: mgmt, plans: both),
+    '66014201': CourseCatalogEntry(code: '66014201', department: mgmt, plans: both, elective: true),
     '6601421': CourseCatalogEntry(code: '6601421', department: mgmt, plans: p38),
-    '66014102': CourseCatalogEntry(code: '66014102', department: mgmt, plans: p38),
-    '66014103': CourseCatalogEntry(code: '66014103', department: mgmt, plans: p38),
+    '66014102': CourseCatalogEntry(code: '66014102', department: mgmt, plans: p38, elective: true),
+    '66014103': CourseCatalogEntry(code: '66014103', department: mgmt, plans: p38, elective: true),
 
     // قسم التسويق
     '602313': CourseCatalogEntry(code: '602313', department: mkt, plans: both),
@@ -64,19 +72,19 @@ class CourseCatalog {
     '602324': CourseCatalogEntry(code: '602324', department: mkt, plans: both),
     '602413': CourseCatalogEntry(code: '602413', department: mkt, plans: both),
     '602420': CourseCatalogEntry(code: '602420', department: mkt, plans: both),
-    '602424': CourseCatalogEntry(code: '602424', department: mkt, plans: both),
+    '602424': CourseCatalogEntry(code: '602424', department: mkt, plans: both, elective: true),
     '602425': CourseCatalogEntry(code: '602425', department: mkt, plans: both),
     '602426': CourseCatalogEntry(code: '602426', department: mkt, plans: both),
     '602427': CourseCatalogEntry(code: '602427', department: mkt, plans: both),
     '602428': CourseCatalogEntry(code: '602428', department: mkt, plans: both),
-    '602429': CourseCatalogEntry(code: '602429', department: mkt, plans: both),
-    '66024210': CourseCatalogEntry(code: '66024210', department: mkt, plans: both),
-    '6602481': CourseCatalogEntry(code: '6602481', department: mkt, plans: both),
+    '602429': CourseCatalogEntry(code: '602429', department: mkt, plans: both, elective: true),
+    '66024210': CourseCatalogEntry(code: '66024210', department: mkt, plans: both, elective: true),
+    '6602481': CourseCatalogEntry(code: '6602481', department: mkt, plans: both, elective: true),
 
     // قسم نظم المعلومات الإدارية
     '603205': CourseCatalogEntry(code: '603205', department: mis, plans: both, note: 'شعبة نظري - العملي يُسجَّل تلقائيًا'),
     '603322': CourseCatalogEntry(code: '603322', department: mis, plans: both),
-    '603413': CourseCatalogEntry(code: '603413', department: mis, plans: both),
+    '603413': CourseCatalogEntry(code: '603413', department: mis, plans: both, elective: true),
     '603415': CourseCatalogEntry(code: '603415', department: mis, plans: both),
     '603416': CourseCatalogEntry(code: '603416', department: mis, plans: both),
     '603417': CourseCatalogEntry(code: '603417', department: mis, plans: both),
@@ -85,10 +93,10 @@ class CourseCatalog {
     '66033202': CourseCatalogEntry(code: '66033202', department: mis, plans: p38),
     '66033208': CourseCatalogEntry(code: '66033208', department: mis, plans: p38),
     '66033209': CourseCatalogEntry(code: '66033209', department: mis, plans: both),
-    '66034101': CourseCatalogEntry(code: '66034101', department: mis, plans: both),
+    '66034101': CourseCatalogEntry(code: '66034101', department: mis, plans: both, elective: true),
     '66034103': CourseCatalogEntry(code: '66034103', department: mis, plans: p38),
     '66034104': CourseCatalogEntry(code: '66034104', department: mis, plans: both),
-    '66034109': CourseCatalogEntry(code: '66034109', department: mis, plans: p47),
+    '66034109': CourseCatalogEntry(code: '66034109', department: mis, plans: p47, elective: true),
 
     // قسم المحاسبة
     '606204': CourseCatalogEntry(code: '606204', department: acc, plans: both),
@@ -103,10 +111,10 @@ class CourseCatalog {
     '606461': CourseCatalogEntry(code: '606461', department: acc, plans: both),
     '6604321': CourseCatalogEntry(code: '6604321', department: acc, plans: both),
     '66044101': CourseCatalogEntry(code: '66044101', department: acc, plans: p38),
-    '66044102': CourseCatalogEntry(code: '66044102', department: acc, plans: both),
+    '66044102': CourseCatalogEntry(code: '66044102', department: acc, plans: both, elective: true),
     '6604412': CourseCatalogEntry(code: '6604412', department: acc, plans: both),
     '6604421': CourseCatalogEntry(code: '6604421', department: acc, plans: both),
-    '6604422': CourseCatalogEntry(code: '6604422', department: acc, plans: p38),
+    '6604422': CourseCatalogEntry(code: '6604422', department: acc, plans: p38, elective: true),
 
     // قسم الاقتصاد والتمويل
     '605201': CourseCatalogEntry(code: '605201', department: fin, plans: both, note: 'متطلب كلية لكل الأقسام'),
@@ -120,18 +128,18 @@ class CourseCatalog {
     '605331': CourseCatalogEntry(code: '605331', department: fin, plans: both),
     '605361': CourseCatalogEntry(code: '605361', department: fin, plans: both),
     '605421': CourseCatalogEntry(code: '605421', department: fin, plans: both),
-    '605432': CourseCatalogEntry(code: '605432', department: fin, plans: p38),
+    '605432': CourseCatalogEntry(code: '605432', department: fin, plans: p38, elective: true),
     '605441': CourseCatalogEntry(code: '605441', department: fin, plans: both),
     '605451': CourseCatalogEntry(code: '605451', department: fin, plans: both),
     '605462': CourseCatalogEntry(code: '605462', department: fin, plans: both),
     '605463': CourseCatalogEntry(code: '605463', department: fin, plans: both),
     '605469': CourseCatalogEntry(code: '605469', department: fin, plans: both),
     '6605321': CourseCatalogEntry(code: '6605321', department: fin, plans: both),
-    '6605411': CourseCatalogEntry(code: '6605411', department: fin, plans: both),
+    '6605411': CourseCatalogEntry(code: '6605411', department: fin, plans: both, elective: true),
     '605414': CourseCatalogEntry(code: '605414', department: fin, plans: both),
     '66053101': CourseCatalogEntry(code: '66053101', department: fin, plans: both, note: 'متاح أيضًا لقسم الإدارة'),
     '66053102': CourseCatalogEntry(code: '66053102', department: fin, plans: both),
-    '66053103': CourseCatalogEntry(code: '66053103', department: fin, plans: both),
+    '66053103': CourseCatalogEntry(code: '66053103', department: fin, plans: both, elective: true),
     '6605311': CourseCatalogEntry(code: '6605311', department: fin, plans: both),
     '6605314': CourseCatalogEntry(code: '6605314', department: fin, plans: p38),
     '6605315': CourseCatalogEntry(code: '6605315', department: fin, plans: both),
@@ -147,7 +155,7 @@ class CourseCatalog {
     '6605416': CourseCatalogEntry(code: '6605416', department: fin, plans: p38),
     '66054201': CourseCatalogEntry(code: '66054201', department: fin, plans: p38),
     '6605421': CourseCatalogEntry(code: '6605421', department: fin, plans: p38),
-    '6605424': CourseCatalogEntry(code: '6605424', department: fin, plans: both),
+    '6605424': CourseCatalogEntry(code: '6605424', department: fin, plans: both, elective: true),
     '6605425': CourseCatalogEntry(code: '6605425', department: fin, plans: p38),
     '604364': CourseCatalogEntry(code: '604364', department: fin, plans: p38),
     '604458': CourseCatalogEntry(code: '604458', department: fin, plans: both),
@@ -159,10 +167,10 @@ class CourseCatalog {
     '6601211': CourseCatalogEntry(code: '6601211', department: mgmt, plans: p47, note: 'متطلب كلية إجباري لكل الأقسام'),
     '6603241': CourseCatalogEntry(code: '6603241', department: mis, plans: p47, note: 'متطلب كلية إجباري - شعبة نظري (العملي يُسجَّل تلقائيًا)'),
     '6601241': CourseCatalogEntry(code: '6601241', department: mgmt, plans: p38),
-    '6601401': CourseCatalogEntry(code: '6601401', department: mgmt, plans: p47, note: 'اختياري'),
-    '6602302': CourseCatalogEntry(code: '6602302', department: mkt, plans: p47, note: 'اختياري'),
-    '66014101': CourseCatalogEntry(code: '66014101', department: mgmt, plans: p47, note: 'اختياري'),
-    '66033105': CourseCatalogEntry(code: '66033105', department: mis, plans: p47, note: 'اختياري'),
+    '6601401': CourseCatalogEntry(code: '6601401', department: mgmt, plans: p47, note: 'اختياري', elective: true),
+    '6602302': CourseCatalogEntry(code: '6602302', department: mkt, plans: p47, note: 'اختياري', elective: true),
+    '66014101': CourseCatalogEntry(code: '66014101', department: mgmt, plans: p47, note: 'اختياري', elective: true),
+    '66033105': CourseCatalogEntry(code: '66033105', department: mis, plans: p47, note: 'اختياري', elective: true),
   };
 
   static const List<String> departments = [mgmt, acc, mkt, fin, mis];
@@ -193,6 +201,17 @@ class CourseCatalog {
   /// رمز المقرر من نص خيار جاهز بصيغة "رمز - اسم (نوع)" كما في
   /// [outsideCollegeCourses].
   static String outsideCourseCode(String option) => option.split(' - ').first.trim();
+
+  /// إجباري/اختياري لمقرر من خارج الكلية - مُستخرَج من لاحقة "(إجباري)"/
+  /// "(اختياري)" الصريحة بنص [outsideCollegeCourses] نفسه (بخلاف مقررات
+  /// الكلية التي تحتاج حقل [CourseCatalogEntry.elective] لأنها لا تحمل هذا
+  /// الوسم بنص واحد جاهز). يُستخدَم لعرض نفس التصنيف على شعب فعلية
+  /// (CourseSectionRecord) لا الخيارات النصية فقط.
+  static bool isOutsideCourseElective(String code) {
+    final match = outsideCollegeCourses.where((o) => outsideCourseCode(o) == code);
+    if (match.isEmpty) return false;
+    return match.first.contains('اختياري');
+  }
 
   /// يقاطع [outsideCollegeCourses] الثابتة مع رموز مقررات فعلية (مستخرجة من
   /// ملف حويّة الجامعة الشامل لهذا الفصل)، فيستبعد ما لم يُطرَح فعليًا هذا

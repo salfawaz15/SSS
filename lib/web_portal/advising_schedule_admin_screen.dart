@@ -350,33 +350,31 @@ class _AdvisingScheduleAdminScreenState extends State<AdvisingScheduleAdminScree
             bytes: await _buildFilteredPdf(signage: true),
             filename: 'شاشات_العرض_توزيع_فترات_الإرشاد_$fileTag.pdf',
           )),
+      // كل أزرار ZIP هنا تجلب بيانات طازجة دومًا (لا تعتمد على `_filteredData`
+      // المخزَّنة) - قد تكون هذه فارغة/قديمة إن ضُغط الزر فور تبديل الفلتر قبل
+      // اكتمال التحميل، أو حتى بعد اكتمال التحميل العادي إن لم يُعَد بناء
+      // الودجت بعد لسبب آخر - دليل فعلي من سليمان: ظهر فارغًا مرتين لزرَّين
+      // مختلفين هنا (onPptxZip أولاً 2026-08-25، ثم onDepartmentFoldersZip
+      // بنفس الخلل تحديدًا 2026-08-27) رغم وجود بيانات فعلية كاملة - التسوية
+      // بينهما هي تعميم نفس الإصلاح (تجاهل `_filteredData` كليًا هنا) على كل
+      // الأزرار الأربعة بدل الاكتفاء بواحد فقط كما كان سابقًا.
       onSignageImagesZip: () => _runPdfAction(() async {
-        final all = _isFiltered ? _filteredData : await _loadFilteredData();
+        final all = await _loadFilteredData();
         final zipBytes = await AdvisingScheduleSignageImageService.buildZip(byDeptShatr: all);
         await downloadBytes(zipBytes, 'شاشات_العرض_$fileTag.zip');
       }),
-      // نفس صور شاشات العرض لكن مجمَّعة بمجلد شطر ← مجلد قسم بدل ملف مسطَّح -
-      // طلب سليمان صراحةً (2026-08-27): يريد شاشة قسم واحد تحوي فتراته فقط
-      // بلا اختلاط بصور بقية الأقسام.
       onSignageImagesByDepartmentZip: () => _runPdfAction(() async {
-        final all = _isFiltered ? _filteredData : await _loadFilteredData();
+        final all = await _loadFilteredData();
         final zipBytes = await AdvisingScheduleSignageImageService.buildZipByDepartment(byDeptShatr: all);
         await downloadBytes(zipBytes, 'شاشات_العرض_حسب_القسم_$fileTag.zip');
       }),
-      // يجلب بيانات طازجة دومًا (لا يعتمد على `_filteredData` المخزَّنة) - قد
-      // تكون هذه فارغة/قديمة إن ضُغط الزر فور تبديل الفلتر قبل اكتمال
-      // التحميل - دليل فعلي من سليمان (2026-08-25): ملف ZIP خرج فارغًا رغم
-      // وجود بيانات فعلية كاملة بكل الأقسام.
       onPptxZip: () => _runPdfAction(() async {
         final all = await _loadFilteredData();
         final zipBytes = await AdvisingSchedulePptxService.buildZip(byDeptShatr: all);
         await downloadBytes(zipBytes, 'عروض_فترات_الإرشاد_الأكاديمي.zip');
       }),
-      // مطلوب من إدارة الكلية صراحةً (سليمان 2026-08-27): ملف مضغوط منظَّم
-      // بمجلد لكل شطر ثم مجلد فرعي لكل قسم بداخله ملف PDF واحد يجمع كل أيام
-      // ذلك القسم فقط - ليسهل تعميم ملف قسم بعينه على مرشديه.
       onDepartmentFoldersZip: () => _runPdfAction(() async {
-        final all = _isFiltered ? _filteredData : await _loadFilteredData();
+        final all = await _loadFilteredData();
         final zipBytes = await AdvisingSchedulePdfService.buildDepartmentFolderZip(byDeptShatr: all);
         await downloadBytes(zipBytes, 'ملفات_الأقسام_$fileTag.zip');
       }),

@@ -29,6 +29,8 @@ import '../services/advisor_roster_service.dart';
 import '../services/advisor_zip_service.dart';
 import '../services/college_roster_parser_service.dart';
 import '../services/college_roster_repository.dart';
+import '../models/course_schedule_change.dart';
+import '../services/course_schedule_change_pdf_service.dart';
 import '../services/course_schedule_change_repository.dart';
 import '../services/course_schedule_diff_service.dart';
 import '../services/course_schedule_repository.dart';
@@ -64,6 +66,57 @@ String? _shatrLabelFromFreeText(String raw) {
   if (raw.contains('طالبات')) return Shatr.female.label;
   if (raw.contains('طلاب')) return Shatr.male.label;
   return null;
+}
+
+/// يعرض تنبيهًا بتغييرات جدول المقررات المكتشَفة تلقائيًا مقارنة بآخر رفعة
+/// معتمدة (إضافة/حذف شعبة، تغيير محاضر)، مع زر لتنزيلها PDF - طلب صريح من
+/// سليمان (2026-08-27) بعد كل رفعة "الحويّة" تحديدًا.
+Future<void> _showCourseScheduleChangesDialog(
+  BuildContext context,
+  List<CourseScheduleChangeEntry> changes,
+) async {
+  final added = changes.where((c) => c.type == CourseScheduleChangeType.added).length;
+  final removed = changes.where((c) => c.type == CourseScheduleChangeType.removed).length;
+  final instructorChanged = changes.where((c) => c.type == CourseScheduleChangeType.instructorChanged).length;
+
+  if (!context.mounted) return;
+  await showDialog<void>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: Text('${changes.length} تغيير باعتماد هذه الرفعة مقارنة بالسابقة'),
+      content: SizedBox(
+        width: 520,
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('• $added شعبة أُضيفت.\n• $removed شعبة حُذفت.\n• $instructorChanged تغيير محاضر شعبة.'),
+              const SizedBox(height: 12),
+              ...changes.take(30).map((c) => Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Text('• ${c.note}', style: const TextStyle(fontSize: 13)),
+                  )),
+              if (changes.length > 30)
+                Text('...و${changes.length - 30} تغييرًا إضافيًا (بالملف الكامل).',
+                    style: const TextStyle(fontStyle: FontStyle.italic)),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () async {
+            final bytes = await CourseScheduleChangePdfService.build(changes);
+            final dateLabel = DateTime.now().toString().substring(0, 10);
+            downloadBytes(bytes, 'تغييرات_جدول_المقررات_$dateLabel.pdf');
+          },
+          child: const Text('تنزيل PDF'),
+        ),
+        FilledButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('حسنًا')),
+      ],
+    ),
+  );
 }
 
 /// كـ[_shatrLabelFromFreeText] لكن يُرجِع [Shatr] نفسه (لا تسميته النصية) -
@@ -1363,19 +1416,34 @@ Future<void> runUploadCourses({
     // خاصًا بشطر واحد فقط (لا يشمل الشطرين معًا كما هو مفترض أصلاً)، فحفظ
     // قائمة فارغة كان يمحو بصمت آخر نسخة معتمدة للشطر الآخر - لاحظه سليمان
     // صراحةً (2026-08-26): "اذا تم رفع شطر الطلاب يحذف شطر الطالبات والعكس".
+    final appliedChanges = <CourseScheduleChangeEntry>[];
     if (male.ownRecords.isNotEmpty) {
       await CourseScheduleRepository.saveSchedule(Shatr.male, male.ownRecords);
       await OutsideCourseRepository.save(Shatr.male, male.outsideOptions, male.outsideRecords);
-      if (previousMale.isNotEmpty) await CourseScheduleChangeRepository.appendChanges(changesMale);
+      if (previousMale.isNotEmpty) {
+        await CourseScheduleChangeRepository.appendChanges(changesMale);
+        appliedChanges.addAll(changesMale);
+      }
     }
     if (female.ownRecords.isNotEmpty) {
       await CourseScheduleRepository.saveSchedule(Shatr.female, female.ownRecords);
       await OutsideCourseRepository.save(Shatr.female, female.outsideOptions, female.outsideRecords);
-      if (previousFemale.isNotEmpty) await CourseScheduleChangeRepository.appendChanges(changesFemale);
+      if (previousFemale.isNotEmpty) {
+        await CourseScheduleChangeRepository.appendChanges(changesFemale);
+        appliedChanges.addAll(changesFemale);
+      }
     }
     onSuccess();
     if (!context.mounted) return;
     onMessage('تم رفع الملف بنجاح');
+
+    // تنبيه بالتغييرات الفعلية مقارنة بآخر رفعة معتمدة + إمكانية تنزيلها
+    // PDF - بطلب صريح من سليمان (2026-08-27) كي يعرف فورًا ما تغيّر بلا
+    // مقارنة يدوية بين نسختين. يظهر فقط إن وُجدت رفعة سابقة فعلية للمقارنة
+    // (أول رفعة على الإطلاق لا "تغييرات" ذات معنى بالنسبة لها).
+    if (appliedChanges.isNotEmpty) {
+      await _showCourseScheduleChangesDialog(context, appliedChanges);
+    }
   } catch (e) {
     if (!context.mounted) return;
     showUploadErrorDialog(context, 'تعذّر قراءة الملف', '$e');
