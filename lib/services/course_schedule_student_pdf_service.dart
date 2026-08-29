@@ -48,6 +48,7 @@ class CourseScheduleStudentPdfService {
     required String shatrLabel,
     required List<CourseSectionRecord> records,
     List<CourseSectionRecord> outsideRecords = const [],
+    bool includeNotes = false,
   }) async {
     final regularBytes = await rootBundle.load('assets/fonts/NotoNaskhArabic-Regular.ttf');
     final boldBytes = await rootBundle.load('assets/fonts/NotoNaskhArabic-Bold.ttf');
@@ -74,7 +75,7 @@ class CourseScheduleStudentPdfService {
           if (records.isEmpty)
             pw.Text('لا توجد مواد متاحة لهذا القسم/الشطر بعد.', style: const pw.TextStyle(fontSize: 11))
           else
-            _coursesTable(records),
+            _coursesTable(records, includeNotes: includeNotes),
           // مقررات من خارج الكلية (متطلبات/اختياريات تُدرَّس عبر كليات أخرى) -
           // متاحة لكل الأقسام بالتساوي (بطلب سليمان صراحةً 2026-08-27)، فتُضاف
           // دائمًا في نهاية الجدول بقسم/عنوان منفصل يوضّح أنها من خارج الكلية،
@@ -90,7 +91,7 @@ class CourseScheduleStudentPdfService {
               ),
             ),
             pw.SizedBox(height: 6),
-            _coursesTable(outsideRecords),
+            _coursesTable(outsideRecords, includeNotes: includeNotes),
           ],
         ],
       ),
@@ -163,8 +164,13 @@ class CourseScheduleStudentPdfService {
     return 'حضوري';
   }
 
-  static pw.Widget _coursesTable(List<CourseSectionRecord> records) {
-    final headers = ['رمز المقرر', 'اسم المقرر', 'النوع', 'الشعبة', 'اليوم', 'الوقت', 'الحضور'];
+  /// "مقفلة" = المسجلين ≥ أعلى حد (تجريبي بطلب سليمان 2026-08-29 - عمود
+  /// "ملاحظات" اختياري لمعرفة الطالب أي شعبة مقفلة، بلا أرقام أو تفاصيل
+  /// إضافية، فقط الكلمة نفسها).
+  static String _capacityNote(int registered, int maxCapacity) => registered >= maxCapacity ? 'مقفلة' : 'متاحة';
+
+  static pw.Widget _coursesTable(List<CourseSectionRecord> records, {bool includeNotes = false}) {
+    final headers = ['رمز المقرر', 'اسم المقرر', 'النوع', 'الشعبة', 'اليوم', 'الوقت', 'الحضور', if (includeNotes) 'ملاحظات'];
     final rows = <List<String>>[];
     for (final r in records) {
       // ترتيب المواعيد حسب يوم الأسبوع (الأحد..الخميس) - بيانات الملف
@@ -178,6 +184,7 @@ class CourseScheduleStudentPdfService {
         theoryMeetings.isEmpty ? '-' : theoryMeetings.map((m) => m.dayName).join('\n'),
         theoryMeetings.isEmpty ? '-' : theoryMeetings.map((m) => '${m.from} - ${m.to}').join('\n'),
         theoryMeetings.isEmpty ? '-' : theoryMeetings.map((m) => _attendanceLabel(m.room)).join('\n'),
+        if (includeNotes) _capacityNote(r.theoryRegistered, r.theoryMaxCapacity),
       ]);
       // الشعبة العملية المرتبطة (إن وُجدت) تُعرَض كصف مستقل بنفس اسم/رمز
       // المقرر - الطالب يحتاج معرفة موعدها أيضًا لا موعد النظري فقط.
@@ -191,6 +198,7 @@ class CourseScheduleStudentPdfService {
           practicalMeetings.isEmpty ? '-' : practicalMeetings.map((m) => m.dayName).join('\n'),
           practicalMeetings.isEmpty ? '-' : practicalMeetings.map((m) => '${m.from} - ${m.to}').join('\n'),
           practicalMeetings.isEmpty ? '-' : practicalMeetings.map((m) => _attendanceLabel(m.room)).join('\n'),
+          if (includeNotes) _capacityNote(r.practicalRegistered ?? 0, r.practicalMaxCapacity ?? 0),
         ]);
       }
     }
@@ -223,6 +231,7 @@ class CourseScheduleStudentPdfService {
     required String shatrFileWord,
     required List<CourseSectionRecord> records,
     List<CourseSectionRecord> outsideRecords = const [],
+    bool includeNotes = false,
   }) async {
     final archive = Archive();
     for (final department in CourseCatalog.departments) {
@@ -232,6 +241,7 @@ class CourseScheduleStudentPdfService {
         shatrLabel: shatrLabel,
         records: deptRecords,
         outsideRecords: outsideRecords,
+        includeNotes: includeNotes,
       );
       // اسم الملف ثابت الصيغة عمدًا ("قسم [الاسم] - طلاب/طالبات.pdf") حتى لا
       // يتغيّر بين تنزيلة وأخرى مهما تحدَّثت المقررات لاحقًا - بطلب سليمان
@@ -247,7 +257,7 @@ class CourseScheduleStudentPdfService {
 /// اختصار لتحميل بيانات شطر معيّن ثم بناء ملفه المضغوط مباشرة - يُستخدَم من
 /// زر التنزيل بصفحة "رفع الملفات" حتى لا تحتاج الشاشة الاحتفاظ بكل السجلات
 /// بحالتها (تحمَّل عند الطلب فقط).
-Future<Uint8List> buildCourseScheduleStudentZip(Shatr shatr) async {
+Future<Uint8List> buildCourseScheduleStudentZip(Shatr shatr, {bool includeNotes = false}) async {
   final records = await CourseScheduleRepository.loadSchedule(shatr);
   final outsideRecords = await OutsideCourseRepository.loadSections(shatr);
   return CourseScheduleStudentPdfService.buildZipForShatr(
@@ -255,5 +265,6 @@ Future<Uint8List> buildCourseScheduleStudentZip(Shatr shatr) async {
     shatrFileWord: shatr == Shatr.male ? 'طلاب' : 'طالبات',
     records: records,
     outsideRecords: outsideRecords,
+    includeNotes: includeNotes,
   );
 }

@@ -13,10 +13,12 @@ import '../models/college_roster_member.dart';
 import '../models/course_section_record.dart';
 import '../services/college_roster_repository.dart';
 import '../services/course_schedule_repository.dart';
+import '../services/course_schedule_student_pdf_service.dart';
 import '../services/course_table_pdf_service.dart';
 import '../services/instructor_schedule_pdf_service.dart';
 import '../services/instructor_schedule_table.dart';
 import '../services/outside_course_repository.dart';
+import '../services/web_download.dart';
 import '../theme/app_theme.dart';
 import '../theme/dashboard_table.dart';
 import '../theme/dashboard_tokens.dart';
@@ -157,6 +159,7 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
   String _placementFilter = _kAllPlacement;
   final _searchCtrl = TextEditingController();
   bool _showOutsideCourses = false;
+  bool _downloadingTrialNotesFile = false;
 
   late final TabController _tabController;
 
@@ -518,6 +521,14 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
                     icon: const Icon(Icons.ios_share_outlined),
                     color: AppColors.green,
                   ),
+                  IconButton(
+                    tooltip: 'تجريبي: تنزيل ملف مواد الطلاب مع عمود "ملاحظات" (متاحة/مقفلة)',
+                    onPressed: _downloadingTrialNotesFile ? null : _downloadTrialNotesFile,
+                    icon: _downloadingTrialNotesFile
+                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.science_outlined),
+                    color: AppColors.green,
+                  ),
                 ],
               ),
             ],
@@ -740,6 +751,29 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
       }
     }
     return options;
+  }
+
+  /// **تجريبي** (بطلب سليمان صراحةً 2026-08-29): نفس ملف "المواد الدراسية
+  /// المتاحة" للطلاب لكن بعمود "ملاحظات" إضافي يذكر "متاحة"/"مقفلة" فقط لكل
+  /// شعبة (المسجلين ≥ أعلى حد = مقفلة) - بلا أي أرقام أو تفاصيل أخرى. زر
+  /// إداري فقط، لا يمسّ ملف التنزيل الحي للطلاب إطلاقًا
+  /// ([CourseScheduleStudentPdfService.build]/`buildZipForShatr` بلا هذا
+  /// العمود افتراضيًا).
+  Future<void> _downloadTrialNotesFile() async {
+    if (_shatrFilter == _kAllShatr) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('اختر شطرًا محدَّدًا أولًا (وليس "الكل") لتجربة هذا الملف.')),
+      );
+      return;
+    }
+    final shatr = _shatrFilter == Shatr.male.label ? Shatr.male : Shatr.female;
+    setState(() => _downloadingTrialNotesFile = true);
+    try {
+      final zipBytes = await buildCourseScheduleStudentZip(shatr, includeNotes: true);
+      downloadBytes(zipBytes, 'تجريبي_ملاحظات_الشعب_${shatr.docId}.zip');
+    } finally {
+      if (mounted) setState(() => _downloadingTrialNotesFile = false);
+    }
   }
 
   void _showFormsExportDialog() {
