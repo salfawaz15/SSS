@@ -5,6 +5,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import '../utils/name_display.dart';
 import 'pdf_brand_kit.dart';
 import 'report_data_service.dart';
 import 'report_filter_service.dart';
@@ -1022,7 +1023,7 @@ class ReportPdfService {
     final headers = ['المرشد', 'القسم', 'نسبة الإنجاز'];
     final rows = top.map((a) {
       final rate = a.total == 0 ? 0.0 : a.completed / a.total;
-      return [a.advisorName, a.department, '${(rate * 100).toStringAsFixed(0)}%'];
+      return [displayName(a.advisorName), a.department, '${(rate * 100).toStringAsFixed(0)}%'];
     }).toList();
     final (rtlHeaders, rtlRows) = _rtlTable(headers, rows);
     return pw.TableHelper.fromTextArray(
