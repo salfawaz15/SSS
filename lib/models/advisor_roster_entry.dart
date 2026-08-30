@@ -10,6 +10,10 @@ class AdvisorRosterEntry {
   final bool isCoordinator;
   final bool isOnLeave;
   final String email;
+  // مستثنى من استقبال أي حالات مُعاد توزيعها (من منسّق/مرشد في إجازة) رغم
+  // بقائه مرشدًا عاديًا يستلم ملفه بحالاته الأصلية فقط - بطلب سليمان الصريح
+  // (2026-08-30) لعضو محدد بقسم نظم المعلومات الإدارية.
+  final bool excludedFromRelief;
 
   const AdvisorRosterEntry({
     required this.id,
@@ -19,6 +23,7 @@ class AdvisorRosterEntry {
     required this.isCoordinator,
     this.isOnLeave = false,
     this.email = '',
+    this.excludedFromRelief = false,
   });
 
   factory AdvisorRosterEntry.fromJson(String id, Map<String, dynamic> json) => AdvisorRosterEntry(
@@ -29,5 +34,6 @@ class AdvisorRosterEntry {
     isCoordinator: json['is_coordinator'] == true,
     isOnLeave: json['is_on_leave'] == true,
     email: (json['email'] ?? '').toString(),
+    excludedFromRelief: json['excluded_from_relief'] == true,
   );
 }

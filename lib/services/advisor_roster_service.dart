@@ -29,6 +29,7 @@ class AdvisorRosterService {
     required bool isCoordinator,
     bool isOnLeave = false,
     String email = '',
+    bool excludedFromRelief = false,
   }) {
     return _col.add({
       'name': name,
@@ -37,6 +38,7 @@ class AdvisorRosterService {
       'is_coordinator': isCoordinator,
       'is_on_leave': isOnLeave,
       'email': email,
+      'excluded_from_relief': excludedFromRelief,
     });
   }
 
@@ -48,6 +50,7 @@ class AdvisorRosterService {
     required bool isCoordinator,
     bool isOnLeave = false,
     String email = '',
+    bool excludedFromRelief = false,
   }) {
     return _col.doc(id).update({
       'name': name,
@@ -56,6 +59,7 @@ class AdvisorRosterService {
       'is_coordinator': isCoordinator,
       'is_on_leave': isOnLeave,
       'email': email,
+      'excluded_from_relief': excludedFromRelief,
     });
   }
 

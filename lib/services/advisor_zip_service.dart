@@ -70,7 +70,7 @@ class AdvisorZipService {
     // حالات المُعفَين عليهم فقط.
     final regularsByGroup = <String, List<AdvisorRosterEntry>>{};
     for (final r in roster) {
-      if (r.isCoordinator || r.isOnLeave) continue;
+      if (r.isCoordinator || r.isOnLeave || r.excludedFromRelief) continue;
       regularsByGroup.putIfAbsent('${_normalizeDept(r.department)}|${r.shatr}', () => []).add(r);
     }
 

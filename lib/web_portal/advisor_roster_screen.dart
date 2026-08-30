@@ -58,6 +58,7 @@ class _AdvisorRosterScreenState extends State<AdvisorRosterScreen> {
     var department = entry?.department ?? _department;
     var isCoordinator = entry?.isCoordinator ?? false;
     var isOnLeave = entry?.isOnLeave ?? false;
+    var excludedFromRelief = entry?.excludedFromRelief ?? false;
 
     await showDialog<void>(
       context: context,
@@ -143,6 +144,14 @@ class _AdvisorRosterScreenState extends State<AdvisorRosterScreen> {
                   value: isOnLeave,
                   onChanged: (v) => setDialogState(() => isOnLeave = v ?? false),
                 ),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  title: const Text('استثناء من استقبال حالات التفريغ'),
+                  subtitle: const Text('لا تُسنَد له حالات منسّق/مرشد في إجازة، رغم بقائه مرشدًا عاديًا لحالاته الخاصة'),
+                  value: excludedFromRelief,
+                  onChanged: (v) => setDialogState(() => excludedFromRelief = v ?? false),
+                ),
               ],
             ),
           ),
@@ -164,6 +173,7 @@ class _AdvisorRosterScreenState extends State<AdvisorRosterScreen> {
                     isCoordinator: isCoordinator,
                     isOnLeave: isOnLeave,
                     email: email,
+                    excludedFromRelief: excludedFromRelief,
                   );
                 } else {
                   await AdvisorRosterService.update(
@@ -174,6 +184,7 @@ class _AdvisorRosterScreenState extends State<AdvisorRosterScreen> {
                     isCoordinator: isCoordinator,
                     isOnLeave: isOnLeave,
                     email: email,
+                    excludedFromRelief: excludedFromRelief,
                   );
                 }
                 if (context.mounted) Navigator.of(context).pop();
@@ -354,6 +365,7 @@ class _AdvisorRosterScreenState extends State<AdvisorRosterScreen> {
                               'في إجازة رسمية مؤقتًا - تُوزَّع حالاته على البقية'
                             else if (entry.isCoordinator)
                               'منسّق القسم',
+                            if (entry.excludedFromRelief) 'مستثنى من استقبال حالات التفريغ',
                             if (entry.email.isNotEmpty) entry.email,
                           ].join(' · '),
                         ),
