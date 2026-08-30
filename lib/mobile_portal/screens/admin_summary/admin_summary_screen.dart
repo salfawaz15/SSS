@@ -352,6 +352,26 @@ class _DeleteAddTabState extends State<_DeleteAddTab> {
                   ),
                 ],
                 const SizedBox(height: AppSpacing.xl),
+                Text('عدد الحالات حسب القسم والشطر', style: AppTextStyles.h3()),
+                const SizedBox(height: AppSpacing.sm),
+                if (departmentsWithCases.isEmpty)
+                  const MobileEmptyState(message: 'لا توجد بيانات حالات بعد', icon: Icons.apartment_outlined)
+                else ...[
+                  _DepartmentCaseCountTable(
+                    title: 'شطر الطلاب',
+                    departments: departmentsWithCases.where((d) => d.shatr.contains('طلاب') && !d.shatr.contains('طالبات')).toList(),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  _DepartmentCaseCountTable(
+                    title: 'شطر الطالبات',
+                    departments: departmentsWithCases.where((d) => d.shatr.contains('طالبات')).toList(),
+                  ),
+                ],
+                const SizedBox(height: AppSpacing.xl),
+                Text('عدد الحالات حسب العضو', style: AppTextStyles.h3()),
+                const SizedBox(height: AppSpacing.sm),
+                _AdvisorCaseCountTable(report: data.report),
+                const SizedBox(height: AppSpacing.xl),
                 Text('حالات تحتاج انتباه', style: AppTextStyles.h3()),
                 const SizedBox(height: AppSpacing.sm),
                 MobileAlertBanner(exceededCount: data.exceededCount),
@@ -401,6 +421,103 @@ class _DepartmentShatrTable extends StatelessWidget {
               label: _shortDepartmentName(dept.department),
               progress: dept.counts.completionRate,
               labelFlex: 3,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// جدول عدد الحالات (لا نسبة إنجاز) لكل قسم بشطر واحد - يجاوب مباشرة على
+/// "كم حالة بكل قسم؟" بدل شريط تقدّم فقط.
+class _DepartmentCaseCountTable extends StatelessWidget {
+  final String title;
+  final List<DepartmentReport> departments;
+  const _DepartmentCaseCountTable({required this.title, required this.departments});
+
+  static String _shortDepartmentName(String raw) => raw.replaceFirst('قسم ', '').trim();
+
+  @override
+  Widget build(BuildContext context) {
+    if (departments.isEmpty) return const SizedBox.shrink();
+    final sorted = [...departments]..sort((a, b) => b.counts.total.compareTo(a.counts.total));
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: AppTextStyles.body().copyWith(fontWeight: FontWeight.w700)),
+          const Divider(height: AppSpacing.md),
+          for (final dept in sorted)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(_shortDepartmentName(dept.department), style: AppTextStyles.body(), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ),
+                  Text('${dept.counts.total}', style: AppTextStyles.body(color: AppColors.greenDark).copyWith(fontWeight: FontWeight.w700)),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// جدول عدد الحالات لكل عضو (مرشد أكاديمي) - كل أعضاء كل الأقسام والشطرين
+/// بقائمة واحدة مرتَّبة تنازليًا حسب عدد الحالات.
+class _AdvisorCaseCountTable extends StatelessWidget {
+  final ReportData report;
+  const _AdvisorCaseCountTable({required this.report});
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = <AdvisorProgress>[];
+    for (final department in report.departments) {
+      for (final advisor in department.advisors) {
+        if (advisor.counts.total == 0) continue;
+        rows.add(AdvisorProgress(
+          shatr: department.shatr,
+          department: department.department,
+          advisorName: advisor.name,
+          counts: advisor.counts,
+        ));
+      }
+    }
+    if (rows.isEmpty) {
+      return const MobileEmptyState(message: 'لا توجد بيانات أعضاء بعد', icon: Icons.people_outline);
+    }
+    rows.sort((a, b) => b.counts.total.compareTo(a.counts.total));
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final row in rows)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(row.advisorName, style: AppTextStyles.body(), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ),
+                  Text(row.department.replaceFirst('قسم ', '').trim(), style: AppTextStyles.caption(color: Colors.black54)),
+                  const SizedBox(width: AppSpacing.sm),
+                  Text('${row.counts.total}', style: AppTextStyles.body(color: AppColors.greenDark).copyWith(fontWeight: FontWeight.w700)),
+                ],
+              ),
             ),
         ],
       ),
