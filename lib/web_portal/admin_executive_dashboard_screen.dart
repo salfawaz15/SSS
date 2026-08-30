@@ -764,6 +764,11 @@ class _FilterableDashboardContentState extends State<_FilterableDashboardContent
           ],
         );
       }),
+      const SizedBox(height: 8),
+      _CaseCountBreakdownSection(
+        deptCounts: _computeDeptCaseCounts(filtered),
+        advisorCounts: _computeAdvisorCaseCounts(filtered),
+      ),
     ];
   }
 
@@ -1702,6 +1707,161 @@ class _AccountabilityRow extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(color: AppColors.errorRed.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
             child: Text('$count حالة', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.errorRed)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// عدد حالات (إجراءات) قسم علمي واحد بشطر واحد - نفس تعريف "حالة" المعتمَد
+/// ببقية اللوحة (كل صف/إجراء مستقل، مطابق لـ[_computeKpiStats]).
+class _DeptCaseCount {
+  final String department;
+  final String shatrLabel;
+  final int count;
+  const _DeptCaseCount({required this.department, required this.shatrLabel, required this.count});
+}
+
+/// عدد حالات عضو (مرشد أكاديمي) واحد - يجمع كل التذاكر المسجَّلة باسمه بصرف
+/// النظر عمن يعالجها فعليًا حاليًا (لا "تفريغ" هنا، بخلاف `ReportDataService`
+/// المستخدَم بتقارير Excel - هذه لمحة سريعة على اسم المرشد المسجَّل بالنموذج).
+class _AdvisorCaseCount {
+  final String advisorName;
+  final String department;
+  final String shatrLabel;
+  final int count;
+  const _AdvisorCaseCount({required this.advisorName, required this.department, required this.shatrLabel, required this.count});
+}
+
+List<_DeptCaseCount> _computeDeptCaseCounts(List<Map<String, dynamic>> tickets) {
+  final counts = <String, int>{};
+  for (final t in tickets) {
+    final dept = _DashboardData._displayDepartment((t['department'] ?? '').toString());
+    final shatrLabel = _shatrDisplayLabel((t['shatr'] ?? '').toString());
+    final actions = (t['actions'] as List?) ?? const [];
+    final key = '$shatrLabel|$dept';
+    counts[key] = (counts[key] ?? 0) + actions.length;
+  }
+  final rows = counts.entries.map((e) {
+    final parts = e.key.split('|');
+    return _DeptCaseCount(shatrLabel: parts[0], department: parts[1], count: e.value);
+  }).toList();
+  rows.sort((a, b) => b.count.compareTo(a.count));
+  return rows;
+}
+
+List<_AdvisorCaseCount> _computeAdvisorCaseCounts(List<Map<String, dynamic>> tickets) {
+  final counts = <String, int>{};
+  for (final t in tickets) {
+    final advisor = (t['advisor'] ?? '').toString().trim();
+    if (advisor.isEmpty) continue;
+    final dept = _DashboardData._displayDepartment((t['department'] ?? '').toString());
+    final shatrLabel = _shatrDisplayLabel((t['shatr'] ?? '').toString());
+    final actions = (t['actions'] as List?) ?? const [];
+    final key = '$advisor|$dept|$shatrLabel';
+    counts[key] = (counts[key] ?? 0) + actions.length;
+  }
+  final rows = counts.entries.map((e) {
+    final parts = e.key.split('|');
+    return _AdvisorCaseCount(advisorName: parts[0], department: parts[1], shatrLabel: parts[2], count: e.value);
+  }).toList();
+  rows.sort((a, b) => b.count.compareTo(a.count));
+  return rows;
+}
+
+/// قسم "عدد الحالات حسب القسم والعضو" - يجيب مباشرة على طلب سليمان صراحةً
+/// (2026-08-30): كم حالة لكل قسم/شطر، وكم حالة لكل مرشد أكاديمي بالاسم.
+/// نفس نمط [_AccountabilitySection] البصري (بطاقة بيضاء + شريط جانبي + عنوان
+/// + قائمة بارتفاع أقصى وتمرير داخلي) حفاظًا على اتساق اللوحة.
+class _CaseCountBreakdownSection extends StatelessWidget {
+  final List<_DeptCaseCount> deptCounts;
+  final List<_AdvisorCaseCount> advisorCounts;
+  const _CaseCountBreakdownSection({required this.deptCounts, required this.advisorCounts});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(14)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(width: 4, height: 20, decoration: BoxDecoration(color: AppColors.green, borderRadius: BorderRadius.circular(2))),
+              const SizedBox(width: 10),
+              const Icon(Icons.bar_chart_outlined, size: 19, color: AppColors.greenDark),
+              const SizedBox(width: 7),
+              const Expanded(child: Text('عدد الحالات حسب القسم والعضو', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 19, color: AppColors.greenDark))),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (deptCounts.isEmpty && advisorCounts.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              child: Center(
+                child: Text('لا توجد بيانات حالات ضمن هذا الفلتر', style: TextStyle(fontSize: 12.5, color: const Color(0xFF747A76))),
+              ),
+            )
+          else
+            SizedBox(
+              height: 260,
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (deptCounts.isNotEmpty) ...[
+                      Text('حسب القسم والشطر', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.grey.shade700)),
+                      const SizedBox(height: 8),
+                      for (final d in deptCounts) _CaseCountRow(primary: d.department.replaceFirst('قسم ', ''), secondary: d.shatrLabel, count: d.count),
+                    ],
+                    if (deptCounts.isNotEmpty && advisorCounts.isNotEmpty) const SizedBox(height: 16),
+                    if (advisorCounts.isNotEmpty) ...[
+                      Text('حسب العضو', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.grey.shade700)),
+                      const SizedBox(height: 8),
+                      for (final a in advisorCounts)
+                        _CaseCountRow(primary: a.advisorName, secondary: '${a.department.replaceFirst('قسم ', '')} - ${a.shatrLabel}', count: a.count),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CaseCountRow extends StatelessWidget {
+  final String primary;
+  final String secondary;
+  final int count;
+  const _CaseCountRow({required this.primary, required this.secondary, required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      constraints: const BoxConstraints(minHeight: 46),
+      decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(10)),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(primary, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5), maxLines: 1, overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 2),
+                Text(secondary, style: const TextStyle(fontSize: 10.5, color: Color(0xFF747A76))),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(color: AppColors.green.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
+            child: Text('$count حالة', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.greenDark)),
           ),
         ],
       ),
