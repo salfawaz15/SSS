@@ -953,16 +953,16 @@ class ReportPdfService {
     doc.addPage(
       pw.MultiPage(
         textDirection: pw.TextDirection.rtl,
-        margin: const pw.EdgeInsets.all(28),
+        margin: const pw.EdgeInsets.all(20),
         header: (context) => PdfBrandKit.header(title: title, logo: logo, subtitle: subtitle, generatedAt: DateTime.now()),
         footer: PdfBrandKit.footer,
         build: (context) => [
           if (actionTypeStats.isNotEmpty) ...[
             _actionTypeCaseSummaryRow(actionTypeStats),
-            pw.SizedBox(height: 14),
+            pw.SizedBox(height: 10),
           ],
-          pw.Text('أفضل قسم لكل شطر', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
-          pw.SizedBox(height: 8),
+          pw.Text('أفضل قسم لكل شطر', style: pw.TextStyle(fontSize: 11.5, fontWeight: pw.FontWeight.bold)),
+          pw.SizedBox(height: 5),
           pw.Row(
             children: [
               pw.Expanded(child: _bestDeptCard('شطر الطلاب', bestMaleDept)),
@@ -970,9 +970,9 @@ class ReportPdfService {
               pw.Expanded(child: _bestDeptCard('شطر الطالبات', bestFemaleDept)),
             ],
           ),
-          pw.SizedBox(height: 18),
-          pw.Text('أفضل 3 مرشدين لكل شطر', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
-          pw.SizedBox(height: 8),
+          pw.SizedBox(height: 10),
+          pw.Text('أفضل 3 مرشدين لكل شطر', style: pw.TextStyle(fontSize: 11.5, fontWeight: pw.FontWeight.bold)),
+          pw.SizedBox(height: 5),
           pw.Row(
             children: [
               pw.Expanded(child: _topAdvisorsTable('شطر الطلاب', maleAdvisors.take(3).toList())),
@@ -980,15 +980,15 @@ class ReportPdfService {
               pw.Expanded(child: _topAdvisorsTable('شطر الطالبات', femaleAdvisors.take(3).toList())),
             ],
           ),
-          pw.SizedBox(height: 18),
-          pw.Text('مقارنة شاملة بكل الأقسام والشطرين (الأعلى إنجازًا أولاً)', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
-          pw.SizedBox(height: 8),
+          pw.SizedBox(height: 10),
+          pw.Text('مقارنة شاملة بكل الأقسام والشطرين (الأعلى إنجازًا أولاً)', style: pw.TextStyle(fontSize: 11.5, fontWeight: pw.FontWeight.bold)),
+          pw.SizedBox(height: 5),
           _deptComparisonTable(deptRows.where((d) => d.total > 0).toList()),
-          pw.SizedBox(height: 30),
+          pw.SizedBox(height: 12),
           pw.Center(
             child: pw.Text(
               'وحدة الإرشاد الأكاديمي والخريجين',
-              style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: _greenDark),
+              style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: _greenDark),
             ),
           ),
         ],
@@ -1009,7 +1009,7 @@ class ReportPdfService {
     pw.Widget cell(String label, String value, PdfColor color, {String? sub}) {
       return pw.Expanded(
         child: pw.Container(
-          padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
           decoration: pw.BoxDecoration(
             border: pw.Border(top: pw.BorderSide(color: color, width: 3)),
             color: const PdfColor.fromInt(0xFFF8FAF9),
@@ -1018,12 +1018,12 @@ class ReportPdfService {
           child: pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.center,
             children: [
-              pw.Text(label, style: pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
-              pw.SizedBox(height: 3),
-              pw.Text(value, style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: _greenDark)),
+              pw.Text(label, style: pw.TextStyle(fontSize: 8.5, color: PdfColors.grey700)),
+              pw.SizedBox(height: 2),
+              pw.Text(value, style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: _greenDark)),
               if (sub != null) ...[
-                pw.SizedBox(height: 3),
-                pw.Text(sub, style: pw.TextStyle(fontSize: 7.5, color: PdfColors.grey700), textAlign: pw.TextAlign.center),
+                pw.SizedBox(height: 2),
+                pw.Text(sub, style: pw.TextStyle(fontSize: 7, color: PdfColors.grey700), textAlign: pw.TextAlign.center),
               ],
             ],
           ),
@@ -1049,21 +1049,21 @@ class ReportPdfService {
 
   static pw.Widget _bestDeptCard(String shatrLabel, DeptShatrPerformance? dept) {
     return pw.Container(
-      padding: const pw.EdgeInsets.all(12),
+      padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: pw.BoxDecoration(color: _greenDark, borderRadius: pw.BorderRadius.circular(8)),
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.center,
         children: [
-          pw.Text(shatrLabel, style: pw.TextStyle(fontSize: 10, color: PdfColors.white)),
-          pw.SizedBox(height: 4),
+          pw.Text(shatrLabel, style: pw.TextStyle(fontSize: 9, color: PdfColors.white)),
+          pw.SizedBox(height: 2),
           pw.Text(
             dept == null ? '-' : dept.department,
-            style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+            style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
           ),
-          pw.SizedBox(height: 4),
+          pw.SizedBox(height: 2),
           pw.Text(
             dept == null ? 'لا توجد بيانات' : 'نسبة الإنجاز ${(dept.completionRate * 100).toStringAsFixed(0)}%',
-            style: pw.TextStyle(fontSize: 10, color: _goldLight),
+            style: pw.TextStyle(fontSize: 9, color: _goldLight),
           ),
         ],
       ),
@@ -1087,6 +1087,7 @@ class ReportPdfService {
       headerDecoration: pw.BoxDecoration(color: _gold),
       cellStyle: const pw.TextStyle(fontSize: 8),
       cellAlignment: pw.Alignment.center,
+      cellPadding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
       border: pw.TableBorder.all(color: _lightGray, width: 0.5),
       tableDirection: pw.TextDirection.rtl,
     );
@@ -1112,10 +1113,11 @@ class ReportPdfService {
     return pw.TableHelper.fromTextArray(
       headers: rtlHeaders,
       data: rtlRows,
-      headerStyle: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 9),
+      headerStyle: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 8.5),
       headerDecoration: pw.BoxDecoration(color: _greenDark),
-      cellStyle: const pw.TextStyle(fontSize: 8.5),
+      cellStyle: const pw.TextStyle(fontSize: 8),
       cellAlignment: pw.Alignment.center,
+      cellPadding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2.5),
       border: pw.TableBorder.all(color: _lightGray, width: 0.5),
       tableDirection: pw.TextDirection.rtl,
     );
