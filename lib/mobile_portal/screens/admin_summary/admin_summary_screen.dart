@@ -15,6 +15,7 @@ import '../../widgets/mobile_status_row.dart';
 import '../../widgets/mobile_workflow_summary_card.dart';
 import '../../widgets/portal_app_bar_logo.dart';
 import 'admin_summary_data_controller.dart';
+import 'coordinator_email_screen.dart';
 
 /// حد أقصى لعرض المحتوى على الشاشات العريضة (تابلت) - بلا هذا الحد كانت
 /// بطاقات `MobileKpiCard`/`MobileWorkflowSummaryCard` (نسب عرض/ارتفاع ثابتة)
@@ -263,6 +264,22 @@ class _DeleteAddTabState extends State<_DeleteAddTab> {
             child: _capWideScreen(ListView(
               padding: const EdgeInsets.all(AppSpacing.lg),
               children: [
+                // زر الإرسال بالبريد لمنسّقي الأقسام يعمل من التطبيق تحديدًا
+                // (لا الموقع) - محاولة الموقع تصطدم بقيود CORS (المتصفح يمنع
+                // اتصال JS مباشر بـSendGrid)، بخلاف التطبيق (سليمان صراحةً
+                // 2026-08-30).
+                Card(
+                  color: AppColors.greenDark,
+                  child: ListTile(
+                    leading: const Icon(Icons.mail_outline, color: Colors.white),
+                    title: const Text('إرسال ملفات الأقسام لمنسّقيها بالبريد', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                    trailing: const Icon(Icons.chevron_left, color: Colors.white),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const CoordinatorEmailScreen()),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.xl),
                 // أهم جزء بقسم "الحذف والإضافة" حسب سليمان صراحةً (2026-08-23):
                 // حالة الحالات عند المرشد الأكاديمي تحديدًا - منجزة/لم يُعمَل
                 // عليها/محوَّلة لمنسّق القسم (لم يُنفَّذها المرشد فانتقلت
