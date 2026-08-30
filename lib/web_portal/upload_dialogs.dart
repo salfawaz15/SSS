@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
+import '../services/firestore_ticket_service.dart' show MergeResult;
+
 /// حوارات مشتركة لعمليات الرفع الثقيلة (معالجة/خطأ) - مستخدَمة من صفحاتها
 /// الأصلية (منسّق القسم/الكلية) ومن صفحة "رفع ملفات" المركزية معًا، حتى لا
 /// يتكرر نفس الكود بمكانين قد يختلفان لاحقًا بلا قصد.
@@ -55,6 +57,47 @@ void showUploadErrorDialog(BuildContext context, String title, String details) {
           icon: const Icon(Icons.copy_outlined, size: 18),
           label: const Text('نسخ'),
         ),
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق')),
+      ],
+    ),
+  );
+}
+
+/// حوار "الحالات غير المطابَقة" بعد رفع ملف معالج - بطلب سليمان صراحةً
+/// (2026-08-30: "كيف أعرف الحالات التي لم ترفع أو غير المطابقة؟"). قبل هذا
+/// كان يُعرَض عدد مجرَّد بلا أي تفاصيل تُمكِّن المتابعة الفعلية - يعرض الآن
+/// هوية كل صف فشلت مطابقته (رقم جامعي/نوع الإجراء/المقرر) حتى يمكن مراجعتها
+/// يدويًا (غالبًا: طالب حُذفت حالته من الملف الأساسي، أو خطأ كتابي بالمقرر/الشعبة).
+void showUnmatchedRowsDialog(BuildContext context, MergeResult result) {
+  showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('الحالات غير المطابَقة'),
+      content: SizedBox(
+        width: 520,
+        child: result.unmatchedRows.isEmpty
+            ? const Text('لا توجد تفاصيل إضافية لهذه الحالات.')
+            : SingleChildScrollView(
+                child: DataTable(
+                  columns: const [
+                    DataColumn(label: Text('الرقم الجامعي')),
+                    DataColumn(label: Text('نوع الإجراء')),
+                    DataColumn(label: Text('المقرر')),
+                    DataColumn(label: Text('الشعبة')),
+                  ],
+                  rows: [
+                    for (final row in result.unmatchedRows)
+                      DataRow(cells: [
+                        DataCell(Text((row['university_id'] ?? '').toString())),
+                        DataCell(Text((row['action_type'] ?? '').toString())),
+                        DataCell(Text((row['course'] ?? '').toString())),
+                        DataCell(Text((row['section'] ?? '').toString())),
+                      ]),
+                  ],
+                ),
+              ),
+      ),
+      actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق')),
       ],
     ),

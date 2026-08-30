@@ -7,11 +7,16 @@ class MergeResult {
   // (لا عمود الأسباب الجاهزة ولا "يرجى كتابة السبب الآخر") - تنبيه لمنسّق
   // القسم قبل اعتماد الملف بدل مرور الرفض بلا سبب بصمت.
   final int missingReasonCount;
+  // الصفوف الخام غير المطابَقة نفسها (لا العدد فقط) - بطلب سليمان صراحةً
+  // (2026-08-30: "كيف أعرف الحالات التي لم ترفع أو غير المطابقة؟") حتى يمكن
+  // عرض هوية كل صف فاشل (رقم جامعي/مقرر/نوع إجراء) بدل رقم مجرَّد بلا تفاصيل.
+  final List<Map<String, dynamic>> unmatchedRows;
 
   const MergeResult({
     required this.matchedCount,
     required this.unmatchedCount,
     this.missingReasonCount = 0,
+    this.unmatchedRows = const [],
   });
 }
 
@@ -229,6 +234,7 @@ class FirestoreTicketService {
     var unmatched = 0;
     var missingReason = 0;
     final changedDocIds = <String>{};
+    final unmatchedRows = <Map<String, dynamic>>[];
 
     for (final row in processedRows) {
       final key = _actionKey(
@@ -240,6 +246,7 @@ class FirestoreTicketService {
       final action = actionIndex[key];
       if (action == null) {
         unmatched++;
+        unmatchedRows.add(row);
         continue;
       }
 
@@ -272,7 +279,7 @@ class FirestoreTicketService {
     }
     await batch.commit();
 
-    return MergeResult(matchedCount: matched, unmatchedCount: unmatched, missingReasonCount: missingReason);
+    return MergeResult(matchedCount: matched, unmatchedCount: unmatched, missingReasonCount: missingReason, unmatchedRows: unmatchedRows);
   }
 
   /// يفرّغ حالة الإنجاز/الملاحظات/جهة الإنجاز لكل حالات قسم/شطر واحد (تراجع

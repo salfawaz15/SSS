@@ -29,6 +29,7 @@ import 'portal_cards.dart';
 import 'portal_header.dart';
 import 'stage_progress_chart.dart';
 import 'ticket_action_stats_panel.dart';
+import 'upload_dialogs.dart';
 
 /// شاشة المنسّق في بوابة الويب: تعرض فقط حالات قسمه/شطره (Firestore rules
 /// تمنع أي وصول لغير ذلك بنيويًا)، مع زر تنزيل وزر رفع ملف معالج، وتقرير
@@ -956,9 +957,18 @@ class _CoordinatorBodyState extends State<_CoordinatorBody> {
               if (_lastResult!.unmatchedCount > 0)
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
-                  child: Text(
-                    'صفوف لم تُطابق: ${_lastResult!.unmatchedCount}',
-                    style: TextStyle(color: Colors.orange.shade800),
+                  child: Row(
+                    children: [
+                      Text(
+                        'صفوف لم تُطابق: ${_lastResult!.unmatchedCount}',
+                        style: TextStyle(color: Colors.orange.shade800),
+                      ),
+                      const SizedBox(width: 8),
+                      TextButton(
+                        onPressed: () => showUnmatchedRowsDialog(context, _lastResult!),
+                        child: const Text('عرض التفاصيل'),
+                      ),
+                    ],
                   ),
                 ),
             ],

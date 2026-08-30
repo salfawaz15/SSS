@@ -568,12 +568,13 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   }
 
   /// رسالة نجاح مؤقتة تختفي تلقائيًا - بلا خانة حالة دائمة بالواجهة.
-  void _showSuccessSnackBar(String message) {
+  void _showSuccessSnackBar(String message, {SnackBarAction? action}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        duration: const Duration(seconds: 3),
+        duration: Duration(seconds: action != null ? 8 : 3),
         backgroundColor: AppColors.green,
         behavior: SnackBarBehavior.floating,
+        action: action,
         content: Row(
           children: [
             const Icon(Icons.check_circle, color: Colors.white, size: 20),
@@ -587,7 +588,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
 
   /// ملخّص نتيجة الدمج كنص - يضيف تنبيهًا لو رفض المرشد إجراءً ("لم يتم
   /// التنفيذ") بلا تحديد سبب، حتى لا يمر ذلك بصمت لمنسّق القسم/الكلية.
-  String _mergeResultMessage(dynamic mergeResult, {String prefix = 'تم الدمج'}) {
+  String _mergeResultMessage(MergeResult mergeResult, {String prefix = 'تم الدمج'}) {
     final base = '$prefix: ${mergeResult.matchedCount} حالة مطابَقة'
         '${mergeResult.unmatchedCount > 0 ? '، ${mergeResult.unmatchedCount} غير مطابَقة' : ''}';
     if (mergeResult.missingReasonCount > 0) {
@@ -598,12 +599,13 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
 
   /// نفس [_showSuccessSnackBar] لكن بلون تنبيه (لا أخضر) ومدة أطول - تُستخدَم
   /// عند وجود حالات "لم يتم التنفيذ" بلا سبب محدَّد ضمن نتيجة الدمج.
-  void _showWarningSnackBar(String message) {
+  void _showWarningSnackBar(String message, {SnackBarAction? action}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         duration: const Duration(seconds: 10),
         backgroundColor: Colors.orange.shade800,
         behavior: SnackBarBehavior.floating,
+        action: action,
         content: Row(
           children: [
             const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 20),
@@ -615,12 +617,21 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     );
   }
 
-  void _showMergeResultSnackBar(dynamic mergeResult, {String prefix = 'تم الدمج'}) {
+  /// زر "عرض التفاصيل" بالرسالة المؤقتة عند وجود حالات غير مطابَقة - بطلب
+  /// سليمان صراحةً (2026-08-30) بدل رقم مجرَّد بلا إمكانية معرفة أيّها فعليًا.
+  void _showMergeResultSnackBar(MergeResult mergeResult, {String prefix = 'تم الدمج'}) {
     final message = _mergeResultMessage(mergeResult, prefix: prefix);
+    final action = mergeResult.unmatchedCount > 0
+        ? SnackBarAction(
+            label: 'عرض التفاصيل',
+            textColor: Colors.white,
+            onPressed: () => showUnmatchedRowsDialog(context, mergeResult),
+          )
+        : null;
     if (mergeResult.missingReasonCount > 0) {
-      _showWarningSnackBar(message);
+      _showWarningSnackBar(message, action: action);
     } else {
-      _showSuccessSnackBar(message);
+      _showSuccessSnackBar(message, action: action);
     }
   }
 
