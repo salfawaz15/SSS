@@ -9,7 +9,7 @@ import '../utils/name_display.dart';
 import 'pdf_brand_kit.dart';
 import 'report_data_service.dart';
 import 'report_filter_service.dart';
-import 'ticket_action_stats_service.dart' show AdvisorCaseStats, DeptShatrPerformance;
+import 'ticket_action_stats_service.dart' show ActionTypeCaseCounts, AdvisorCaseStats, DeptShatrPerformance;
 
 /// حزمة وسيطات بناء التقرير الشامل - تُرسَل كاملة إلى خيط معالجة منفصل
 /// (isolate عبر compute) حتى لا يجمّد بناء PDF الثقيل (تنسيق عربي + جداول
@@ -919,6 +919,7 @@ class ReportPdfService {
     List<AdvisorCaseStats> advisors, {
     required String title,
     String? subtitle,
+    Map<String, ActionTypeCaseCounts> actionTypeStats = const {},
   }) async {
     final (regularBytes, boldBytes) = await _loadFontBytes();
     final logoBytes = await _loadLogoBytes();
@@ -956,6 +957,10 @@ class ReportPdfService {
         header: (context) => PdfBrandKit.header(title: title, logo: logo, subtitle: subtitle, generatedAt: DateTime.now()),
         footer: PdfBrandKit.footer,
         build: (context) => [
+          if (actionTypeStats.isNotEmpty) ...[
+            _actionTypeCaseSummaryRow(actionTypeStats),
+            pw.SizedBox(height: 14),
+          ],
           pw.Text('أفضل قسم لكل شطر', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 8),
           pw.Row(
@@ -991,6 +996,55 @@ class ReportPdfService {
     );
 
     return doc.save();
+  }
+
+  /// "عدد الحالات الكاملة" (إجمالي إضافة+حذف+تعديل) + تفصيل منجز/مصعَّد/لم
+  /// يُعمل عليه تحت كل نوع إجراء - بطلب سليمان صراحةً (2026-08-30) بعد سؤاله
+  /// عن معنى الأرقام بلوحة الإدارة. صف واحد مضغوط حتى يبقى التقرير بصفحة واحدة.
+  static pw.Widget _actionTypeCaseSummaryRow(Map<String, ActionTypeCaseCounts> stats) {
+    const order = ['إضافة', 'حذف', 'تعديل'];
+    final types = order.where(stats.containsKey).toList();
+    final totalCases = types.fold<int>(0, (sum, t) => sum + stats[t]!.total);
+
+    pw.Widget cell(String label, String value, PdfColor color, {String? sub}) {
+      return pw.Expanded(
+        child: pw.Container(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          decoration: pw.BoxDecoration(
+            border: pw.Border(top: pw.BorderSide(color: color, width: 3)),
+            color: const PdfColor.fromInt(0xFFF8FAF9),
+            borderRadius: pw.BorderRadius.circular(6),
+          ),
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.center,
+            children: [
+              pw.Text(label, style: pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
+              pw.SizedBox(height: 3),
+              pw.Text(value, style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: _greenDark)),
+              if (sub != null) ...[
+                pw.SizedBox(height: 3),
+                pw.Text(sub, style: pw.TextStyle(fontSize: 7.5, color: PdfColors.grey700), textAlign: pw.TextAlign.center),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
+
+    return pw.Row(
+      children: [
+        cell('عدد الحالات الكاملة', '$totalCases', _greenDark),
+        for (final t in types) ...[
+          pw.SizedBox(width: 8),
+          cell(
+            'طلبات $t',
+            '${stats[t]!.total}',
+            _gold,
+            sub: 'منجز ${stats[t]!.completed} · مصعَّد ${stats[t]!.escalatedToCoordinator} · لم يُعمل عليه ${stats[t]!.notStarted}',
+          ),
+        ],
+      ],
+    );
   }
 
   static pw.Widget _bestDeptCard(String shatrLabel, DeptShatrPerformance? dept) {

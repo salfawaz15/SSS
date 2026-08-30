@@ -66,6 +66,16 @@ class DeptShatrPerformance {
   double get completionRate => total == 0 ? 0 : completed / total;
 }
 
+/// عدّادات نوع إجراء واحد (إضافة/حذف/تعديل) بنفس تصنيف [AdvisorCaseStats]
+/// الثلاثي (منجز/مصعَّد لمنسّق/لم يُعمل عليه إطلاقًا) - أساس صف "عدد الحالات
+/// الكاملة" بتقرير الأداء اليومي (بطلب سليمان صراحةً 2026-08-30).
+class ActionTypeCaseCounts {
+  int total = 0;
+  int completed = 0;
+  int escalatedToCoordinator = 0;
+  int notStarted = 0;
+}
+
 class TicketActionStatsService {
   /// يجمّع أداء كل مرشدي نفس القسم/الشطر معًا بصف واحد - يُستخدم لترتيب
   /// الأقسام ببعضها بتقرير الأداء اليومي (لا لعرض كل مرشد منفردًا).
@@ -120,6 +130,35 @@ class TicketActionStatsService {
     }
 
     return byAdvisor.values.toList()..sort((a, b) => b.total.compareTo(a.total));
+  }
+
+  /// نفس تصنيف [buildAdvisorCaseStats] الثلاثي لكن مجمَّعًا حسب نوع الإجراء
+  /// (إضافة/حذف/تعديل) بدل المرشد - "عدد الحالات الكاملة" = مجموع الثلاثة.
+  static Map<String, ActionTypeCaseCounts> buildActionTypeCaseStats(List<Map<String, dynamic>> tickets) {
+    final byType = <String, ActionTypeCaseCounts>{};
+
+    for (final ticket in tickets) {
+      final actions = (ticket['actions'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
+      for (final action in actions) {
+        final actionType = (action['action_type'] ?? '').toString().trim();
+        if (actionType.isEmpty) continue;
+        final counts = byType.putIfAbsent(actionType, () => ActionTypeCaseCounts());
+        counts.total++;
+
+        final advisorStatus = (action['advisor_status'] ?? '').toString().trim();
+        final coordinatorStatus = (action['coordinator_status'] ?? '').toString().trim();
+        final collegeStatus = (action['college_status'] ?? '').toString().trim();
+        if (advisorStatus.isNotEmpty) {
+          counts.completed++;
+        } else if (coordinatorStatus.isNotEmpty || collegeStatus.isNotEmpty) {
+          counts.escalatedToCoordinator++;
+        } else {
+          counts.notStarted++;
+        }
+      }
+    }
+
+    return byType;
   }
 
   static TicketActionStats build(List<Map<String, dynamic>> tickets) {
