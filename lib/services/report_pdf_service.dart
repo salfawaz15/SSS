@@ -5,6 +5,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import '../utils/name_display.dart';
 import 'pdf_brand_kit.dart';
 import 'report_data_service.dart';
 import 'report_filter_service.dart';
@@ -978,6 +979,13 @@ class ReportPdfService {
           pw.Text('مقارنة شاملة بكل الأقسام والشطرين (الأعلى إنجازًا أولاً)', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 8),
           _deptComparisonTable(deptRows.where((d) => d.total > 0).toList()),
+          pw.SizedBox(height: 30),
+          pw.Center(
+            child: pw.Text(
+              'وحدة الإرشاد الأكاديمي والخريجين',
+              style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: _greenDark),
+            ),
+          ),
         ],
       ),
     );
@@ -1015,7 +1023,7 @@ class ReportPdfService {
     final headers = ['المرشد', 'القسم', 'نسبة الإنجاز'];
     final rows = top.map((a) {
       final rate = a.total == 0 ? 0.0 : a.completed / a.total;
-      return [a.advisorName, a.department, '${(rate * 100).toStringAsFixed(0)}%'];
+      return [displayName(a.advisorName), a.department, '${(rate * 100).toStringAsFixed(0)}%'];
     }).toList();
     final (rtlHeaders, rtlRows) = _rtlTable(headers, rows);
     return pw.TableHelper.fromTextArray(
