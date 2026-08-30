@@ -1,6 +1,7 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
+import '../data/academic_department_names.dart';
 import '../services/excel_parser_service.dart';
 import '../services/report_data_service.dart';
 import '../services/ticket_action_stats_service.dart';
@@ -94,7 +95,11 @@ class _TicketActionStatsPanelState extends State<TicketActionStatsPanel> {
 
     final tickets = widget.tickets.where((t) {
       if (_shatr != null && (t['shatr'] ?? '') != _shatr) return false;
-      if (_department != null && (t['department'] ?? '') != _department) return false;
+      // مقارنة متسامحة (لا حرفية) - اسم القسم الخام بالتذكرة قد يختلف عن
+      // النص المعتمَد بـExcelParserService.departments (بلا "قسم" أو بصورة
+      // همزة مختلفة)، فكانت المقارنة الحرفية تُخفي بيانات موجودة فعليًا
+      // وتُظهر "لا توجد بيانات مطابقة" خطأً (سليمان صراحةً 2026-08-30).
+      if (_department != null && normalizeDepartmentName((t['department'] ?? '').toString()) != _department) return false;
       return true;
     }).toList();
 
@@ -396,6 +401,15 @@ class _FilterPill extends StatelessWidget {
           style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: active ? Colors.white : Colors.grey.shade700),
           icon: Icon(Icons.expand_more, size: 16, color: active ? Colors.white : Colors.grey.shade600),
           dropdownColor: Colors.white,
+          // بلا `selectedItemBuilder` كان الفلتر بعد الاختيار يعرض قيمة
+          // العضو/القسم وحدها ("الإدارة") بلا أي إشارة لاسم الحقل نفسه -
+          // يصعب تمييز أي فلتر هو أي عمود عند تفعيل أكثر من فلتر معًا
+          // (سليمان صراحةً 2026-08-30).
+          selectedItemBuilder: (context) => [
+            Text(label, style: TextStyle(color: active ? Colors.white : Colors.grey.shade700)),
+            for (final item in items)
+              Text('$label: ${itemLabel(item)}', style: TextStyle(color: active ? Colors.white : Colors.grey.shade700), overflow: TextOverflow.ellipsis),
+          ],
           items: [
             DropdownMenuItem(value: null, child: Text(label, style: const TextStyle(color: Colors.black87))),
             for (final item in items) DropdownMenuItem(value: item, child: Text(itemLabel(item), style: const TextStyle(color: Colors.black87))),
