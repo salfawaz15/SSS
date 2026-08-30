@@ -978,6 +978,13 @@ class ReportPdfService {
           pw.Text('مقارنة شاملة بكل الأقسام والشطرين (الأعلى إنجازًا أولاً)', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 8),
           _deptComparisonTable(deptRows.where((d) => d.total > 0).toList()),
+          pw.SizedBox(height: 30),
+          pw.Center(
+            child: pw.Text(
+              'وحدة الإرشاد الأكاديمي والخريجين',
+              style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: _greenDark),
+            ),
+          ),
         ],
       ),
     );
