@@ -959,7 +959,7 @@ class ReportPdfService {
         build: (context) => [
           if (actionTypeStats.isNotEmpty) ...[
             _actionTypeCaseSummaryRow(actionTypeStats),
-            pw.SizedBox(height: 10),
+            pw.SizedBox(height: 6),
           ],
           pw.Text('أفضل قسم لكل شطر', style: pw.TextStyle(fontSize: 11.5, fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 5),
@@ -1006,41 +1006,28 @@ class ReportPdfService {
     final types = order.where(stats.containsKey).toList();
     final totalCases = types.fold<int>(0, (sum, t) => sum + stats[t]!.total);
 
-    pw.Widget cell(String label, String value, PdfColor color, {String? sub}) {
+    pw.Widget cell(String text, PdfColor color) {
       return pw.Expanded(
         child: pw.Container(
-          padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+          padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 3),
           decoration: pw.BoxDecoration(
-            border: pw.Border(top: pw.BorderSide(color: color, width: 3)),
+            border: pw.Border(top: pw.BorderSide(color: color, width: 2)),
             color: const PdfColor.fromInt(0xFFF8FAF9),
-            borderRadius: pw.BorderRadius.circular(6),
+            borderRadius: pw.BorderRadius.circular(4),
           ),
-          child: pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.center,
-            children: [
-              pw.Text(label, style: pw.TextStyle(fontSize: 8.5, color: PdfColors.grey700)),
-              pw.SizedBox(height: 2),
-              pw.Text(value, style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: _greenDark)),
-              if (sub != null) ...[
-                pw.SizedBox(height: 2),
-                pw.Text(sub, style: pw.TextStyle(fontSize: 7, color: PdfColors.grey700), textAlign: pw.TextAlign.center),
-              ],
-            ],
-          ),
+          child: pw.Text(text, style: pw.TextStyle(fontSize: 7.5, color: PdfColors.grey800), textAlign: pw.TextAlign.center),
         ),
       );
     }
 
     return pw.Row(
       children: [
-        cell('عدد الحالات الكاملة', '$totalCases', _greenDark),
+        cell('عدد الحالات الكاملة: $totalCases', _greenDark),
         for (final t in types) ...[
-          pw.SizedBox(width: 8),
+          pw.SizedBox(width: 6),
           cell(
-            'طلبات $t',
-            '${stats[t]!.total}',
+            '$t: ${stats[t]!.total} (منجز ${stats[t]!.completed} · مصعَّد ${stats[t]!.escalatedToCoordinator} · لم يُعمل عليه ${stats[t]!.notStarted})',
             _gold,
-            sub: 'منجز ${stats[t]!.completed} · مصعَّد ${stats[t]!.escalatedToCoordinator} · لم يُعمل عليه ${stats[t]!.notStarted}',
           ),
         ],
       ],
