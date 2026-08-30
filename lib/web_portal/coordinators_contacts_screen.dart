@@ -29,9 +29,11 @@ class _CoordinatorsContactsScreenState
     for (final shatr in [
       ExcelParserService.shatrMale,
       ExcelParserService.shatrFemale,
-    ])
+    ]) ...[
       for (final department in ExcelParserService.departments)
         MapEntry(shatr, department),
+      MapEntry(shatr, Coordinator.collegeMarker),
+    ],
   ];
 
   final Map<String, TextEditingController> _nameControllers = {};
@@ -181,6 +183,7 @@ class _CoordinatorsContactsScreenState
               itemBuilder: (context, index) {
                 final pair = _pairs[index];
                 final key = '${pair.key}|${pair.value}';
+                final isCollege = pair.value == Coordinator.collegeMarker;
                 return Card(
                   margin: const EdgeInsets.only(bottom: 12),
                   child: Padding(
@@ -192,17 +195,17 @@ class _CoordinatorsContactsScreenState
                           children: [
                             CircleAvatar(
                               radius: 14,
-                              backgroundColor: AppColors.green.withValues(alpha: 0.12),
-                              child: const Icon(
-                                Icons.apartment_outlined,
+                              backgroundColor: (isCollege ? AppColors.gold : AppColors.green).withValues(alpha: 0.12),
+                              child: Icon(
+                                isCollege ? Icons.school_outlined : Icons.apartment_outlined,
                                 size: 15,
-                                color: AppColors.green,
+                                color: isCollege ? AppColors.gold : AppColors.green,
                               ),
                             ),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                '${pair.value} — ${pair.key}',
+                                isCollege ? 'منسّق/ة الكلية — ${pair.key}' : '${pair.value} — ${pair.key}',
                                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                               ),
                             ),

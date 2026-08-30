@@ -1,4 +1,9 @@
 class Coordinator {
+  /// اسم قسم اصطناعي (لا يطابق أي قسم علمي حقيقي) لتمييز صفّ منسّق/ة الكلية
+  /// ضمن نفس مجموعة `coordinator_contacts` - المستوى الثالث بمسار التصعيد
+  /// (مرشد ← منسّق قسم ← منسّق كلية)، يمثّل شطرًا كاملاً لا قسمًا واحدًا.
+  static const String collegeMarker = 'الكلية';
+
   final String shatr;
   final String department;
   final String name;
