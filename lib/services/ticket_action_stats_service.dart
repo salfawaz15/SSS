@@ -1,3 +1,4 @@
+import '../data/academic_department_names.dart';
 import 'report_data_service.dart' show StatusCounts, effectiveStatus, isCompletedStatus;
 
 /// عدّادات نوع إجراء واحد (إضافة/حذف/تعديل): العدد الكلي + توزيع حالة
@@ -49,14 +50,46 @@ class AdvisorCaseStats {
   AdvisorCaseStats({required this.advisorName, required this.department, required this.shatr});
 }
 
+/// أداء قسم/شطر واحد مجمَّعًا من كل مرشديه - أساس "تقرير الأداء اليومي"
+/// المُرسَل لعمادة الكلية (سليمان صراحةً 2026-08-30): يقارن الأقسام ببعضها
+/// لتحفيزها، بنفس تعريف "الإنجاز" المعتمَد (باشر الحالة، لا "تم التنفيذ" فقط).
+class DeptShatrPerformance {
+  final String department;
+  final String shatr;
+  int total = 0;
+  int completed = 0;
+  int escalatedToCoordinator = 0;
+  int notStarted = 0;
+
+  DeptShatrPerformance({required this.department, required this.shatr});
+
+  double get completionRate => total == 0 ? 0 : completed / total;
+}
+
 class TicketActionStatsService {
+  /// يجمّع أداء كل مرشدي نفس القسم/الشطر معًا بصف واحد - يُستخدم لترتيب
+  /// الأقسام ببعضها بتقرير الأداء اليومي (لا لعرض كل مرشد منفردًا).
+  static List<DeptShatrPerformance> aggregateByDepartmentShatr(List<AdvisorCaseStats> advisors) {
+    final byKey = <String, DeptShatrPerformance>{};
+    for (final a in advisors) {
+      final key = '${a.shatr}|${a.department}';
+      final perf = byKey.putIfAbsent(key, () => DeptShatrPerformance(department: a.department, shatr: a.shatr));
+      perf.total += a.total;
+      perf.completed += a.completed;
+      perf.escalatedToCoordinator += a.escalatedToCoordinator;
+      perf.notStarted += a.notStarted;
+    }
+    return byKey.values.toList()..sort((a, b) => b.completionRate.compareTo(a.completionRate));
+  }
+
+
   static List<AdvisorCaseStats> buildAdvisorCaseStats(List<Map<String, dynamic>> tickets) {
     final byAdvisor = <String, AdvisorCaseStats>{};
 
     for (final ticket in tickets) {
       final advisorName = (ticket['advisor'] ?? '').toString().trim();
       if (advisorName.isEmpty) continue;
-      final department = (ticket['department'] ?? '').toString();
+      final department = normalizeDepartmentName((ticket['department'] ?? '').toString());
       final shatr = (ticket['shatr'] ?? '').toString();
       final actions = (ticket['actions'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
 
@@ -71,11 +104,16 @@ class TicketActionStatsService {
         final coordinatorStatus = (action['coordinator_status'] ?? '').toString().trim();
         final collegeStatus = (action['college_status'] ?? '').toString().trim();
 
-        if (isCompletedStatus(effectiveStatus(action))) {
+        // "إنجاز" المرشد = باشر الحالة بأي قيمة (تم التنفيذ أو لم يتم
+        // التنفيذ فصُعِّدت) - لا يعني "تم التنفيذ" فقط. "عدم الإنجاز" =
+        // لم يباشرها إطلاقًا (حالته فارغة)، بصرف النظر عمّن عالجها لاحقًا
+        // (سليمان صراحةً 2026-08-30، بعد أن ظهرت نسبة إنجاز 0% لمرشدين
+        // باشروا فعليًا حالاتهم بـ"لم يتم التنفيذ").
+        if (advisorStatus.isNotEmpty) {
           stats.completed++;
         } else if (coordinatorStatus.isNotEmpty || collegeStatus.isNotEmpty) {
           stats.escalatedToCoordinator++;
-        } else if (advisorStatus.isEmpty) {
+        } else {
           stats.notStarted++;
         }
       }
@@ -94,7 +132,7 @@ class TicketActionStatsService {
 
     for (final ticket in tickets) {
       final actions = (ticket['actions'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
-      final department = (ticket['department'] ?? '').toString();
+      final department = normalizeDepartmentName((ticket['department'] ?? '').toString());
       final shatr = (ticket['shatr'] ?? '').toString();
       final key = '$shatr|$department';
 
