@@ -8,6 +8,7 @@ import '../services/hardship_case_service.dart';
 import '../services/report_data_service.dart' show isCompletedStatus;
 import '../services/support_case_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/name_display.dart';
 import 'admin_nav.dart';
 import 'portal_header.dart';
 
@@ -1821,7 +1822,7 @@ class _CaseCountBreakdownSection extends StatelessWidget {
                       Text('حسب العضو', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.grey.shade700)),
                       const SizedBox(height: 8),
                       for (final a in advisorCounts)
-                        _CaseCountRow(primary: a.advisorName, secondary: '${a.department.replaceFirst('قسم ', '')} - ${a.shatrLabel}', count: a.count),
+                        _CaseCountRow(primary: displayName(a.advisorName), secondary: '${a.department.replaceFirst('قسم ', '')} - ${a.shatrLabel}', count: a.count),
                     ],
                   ],
                 ),

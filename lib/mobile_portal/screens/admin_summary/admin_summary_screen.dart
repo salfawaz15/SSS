@@ -4,6 +4,7 @@ import '../../../services/advising_overview_stats_service.dart';
 import '../../../services/report_data_service.dart';
 import '../../../services/ticket_action_stats_service.dart';
 import '../../../services/ticket_workflow_stats_service.dart';
+import '../../../utils/name_display.dart';
 import '../../theme/portal_theme.dart';
 import '../../widgets/mobile_alert_banner.dart';
 import '../../widgets/mobile_empty_state.dart';
@@ -511,7 +512,7 @@ class _AdvisorCaseCountTable extends StatelessWidget {
               child: Row(
                 children: [
                   Expanded(
-                    child: Text(row.advisorName, style: AppTextStyles.body(), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    child: Text(displayName(row.advisorName), style: AppTextStyles.body(), maxLines: 1, overflow: TextOverflow.ellipsis),
                   ),
                   Text(row.department.replaceFirst('قسم ', '').trim(), style: AppTextStyles.caption(color: Colors.black54)),
                   const SizedBox(width: AppSpacing.sm),
