@@ -1,3 +1,4 @@
+import '../data/academic_department_names.dart';
 import 'report_data_service.dart' show StatusCounts, effectiveStatus, isCompletedStatus;
 
 /// عدّادات نوع إجراء واحد (إضافة/حذف/تعديل): العدد الكلي + توزيع حالة
@@ -56,7 +57,7 @@ class TicketActionStatsService {
     for (final ticket in tickets) {
       final advisorName = (ticket['advisor'] ?? '').toString().trim();
       if (advisorName.isEmpty) continue;
-      final department = (ticket['department'] ?? '').toString();
+      final department = normalizeDepartmentName((ticket['department'] ?? '').toString());
       final shatr = (ticket['shatr'] ?? '').toString();
       final actions = (ticket['actions'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
 
@@ -71,11 +72,16 @@ class TicketActionStatsService {
         final coordinatorStatus = (action['coordinator_status'] ?? '').toString().trim();
         final collegeStatus = (action['college_status'] ?? '').toString().trim();
 
-        if (isCompletedStatus(effectiveStatus(action))) {
+        // "إنجاز" المرشد = باشر الحالة بأي قيمة (تم التنفيذ أو لم يتم
+        // التنفيذ فصُعِّدت) - لا يعني "تم التنفيذ" فقط. "عدم الإنجاز" =
+        // لم يباشرها إطلاقًا (حالته فارغة)، بصرف النظر عمّن عالجها لاحقًا
+        // (سليمان صراحةً 2026-08-30، بعد أن ظهرت نسبة إنجاز 0% لمرشدين
+        // باشروا فعليًا حالاتهم بـ"لم يتم التنفيذ").
+        if (advisorStatus.isNotEmpty) {
           stats.completed++;
         } else if (coordinatorStatus.isNotEmpty || collegeStatus.isNotEmpty) {
           stats.escalatedToCoordinator++;
-        } else if (advisorStatus.isEmpty) {
+        } else {
           stats.notStarted++;
         }
       }
@@ -94,7 +100,7 @@ class TicketActionStatsService {
 
     for (final ticket in tickets) {
       final actions = (ticket['actions'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
-      final department = (ticket['department'] ?? '').toString();
+      final department = normalizeDepartmentName((ticket['department'] ?? '').toString());
       final shatr = (ticket['shatr'] ?? '').toString();
       final key = '$shatr|$department';
 

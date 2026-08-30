@@ -134,7 +134,7 @@ class _TicketActionStatsPanelState extends State<TicketActionStatsPanel> {
                   title: 'أفضل 5 مرشدين إنجازًا',
                   subtitle: 'حسب نسبة الطلبات المكتملة',
                   icon: Icons.emoji_events_outlined,
-                  child: _BestAdvisorsTable(advisors: bestAdvisors.take(5).toList()),
+                  child: _BestAdvisorsTable(advisors: bestAdvisors.take(5).toList(), allAdvisors: bestAdvisors),
                 );
                 final deptCard = _CardShell(
                   title: 'توزيع الحالات حسب القسم',
@@ -585,8 +585,9 @@ class _StatusGauge extends StatelessWidget {
 
 class _BestAdvisorsTable extends StatelessWidget {
   final List<AdvisorCaseStats> advisors;
+  final List<AdvisorCaseStats> allAdvisors;
 
-  const _BestAdvisorsTable({required this.advisors});
+  const _BestAdvisorsTable({required this.advisors, required this.allAdvisors});
 
   static Color _rateColor(double rate) {
     if (rate <= 0.5) return Color.lerp(_Tokens.danger, _Tokens.warning, (rate / 0.5).clamp(0.0, 1.0))!;
@@ -620,12 +621,67 @@ class _BestAdvisorsTable extends StatelessWidget {
         Align(
           alignment: Alignment.centerLeft,
           child: TextButton(
-            onPressed: null,
+            onPressed: () => _showAllAdvisorsDialog(context),
             style: TextButton.styleFrom(foregroundColor: _Tokens.gold600, padding: EdgeInsets.zero, textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
             child: const Text('عرض جميع المرشدين ←'),
           ),
         ),
       ],
+    );
+  }
+
+  /// كان الزر بلا `onPressed` (معطَّل صامتًا منذ إضافته) - سليمان لاحظ فعليًا
+  /// عدم استجابته للضغط (2026-08-30). يفتح الآن نافذة بكل المرشدين مرتَّبين
+  /// (لا أفضل 5 فقط) بنفس تصميم صفوف الجدول المصغَّر.
+  void _showAllAdvisorsDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 700, maxHeight: 600),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text('كل المرشدين', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _Tokens.textPrimary)),
+                    ),
+                    IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.of(dialogContext).pop()),
+                  ],
+                ),
+                const Divider(height: 8, color: _Tokens.border),
+                Row(
+                  children: [
+                    _th('الاسم', 24),
+                    _th('القسم', 15),
+                    _th('الشطر', 9),
+                    _th('عدد الحالات', 10),
+                    _th('نسبة الإنجاز', 18),
+                  ],
+                ),
+                const Divider(height: 14, color: _Tokens.border),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        for (var i = 0; i < allAdvisors.length; i++)
+                          Padding(
+                            padding: EdgeInsets.only(bottom: i == allAdvisors.length - 1 ? 0 : 9),
+                            child: _AdvisorRow(advisor: allAdvisors[i], isFirst: i == 0, rateColorOf: _rateColor),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
