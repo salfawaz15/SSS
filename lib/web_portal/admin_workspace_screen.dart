@@ -963,18 +963,38 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
 
   /// "تقرير الأداء اليومي" لعمادة الكلية - بطلب سليمان صراحةً (2026-08-30):
   /// تقرير تحفيزي يقارن الأقسام والمرشدين ببعضهم (لا متابعة المتأخرين فقط
-  /// كـ[AdminReportsScreen]) ليُرسَل يدويًا للعمادة كل يوم.
+  /// كـ[AdminReportsScreen]) ليُرسَل يدويًا للعمادة كل يوم. يسأل أولاً عن رقم
+  /// يوم دورة الحذف والإضافة (الأول/الثاني/الثالث) - لا يمكن استنتاجه تلقائيًا
+  /// من البيانات نفسها، بخلاف تاريخ اليوم الذي يظهر تلقائيًا بترويسة PDF.
   Future<void> _downloadDailyPerformanceReport(List<Map<String, dynamic>> tickets) async {
+    final dayLabel = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        title: const Text('أي يوم من دورة الحذف والإضافة؟'),
+        children: [
+          for (final day in ['اليوم الأول', 'اليوم الثاني', 'اليوم الثالث'])
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(dialogContext).pop(day),
+              child: Text(day),
+            ),
+        ],
+      ),
+    );
+    if (dayLabel == null) return;
+
     try {
       final advisors = TicketActionStatsService.buildAdvisorCaseStats(tickets);
       final deptRows = TicketActionStatsService.aggregateByDepartmentShatr(advisors);
+      final now = DateTime.now();
       final bytes = await ReportPdfService.buildDailyPerformanceReport(
         deptRows,
         advisors,
         title: 'تقرير الأداء اليومي - الحذف والإضافة',
-        subtitle: 'وحدة الإرشاد الأكاديمي والخريجين - كلية إدارة الأعمال',
+        // بلا تكرار اسم الوحدة (يظهر أصلاً بجانب الشعار تلقائيًا) ولا التاريخ
+        // (يظهر أصلاً كـ"تاريخ الإصدار" تلقائيًا) - فقط المعلومة الجديدة فعليًا.
+        subtitle: 'كلية إدارة الأعمال - $dayLabel',
       );
-      downloadBytes(bytes, 'تقرير_الأداء_اليومي_${DateTime.now().toString().substring(0, 10)}.pdf');
+      downloadBytes(bytes, 'تقرير_الأداء_${dayLabel.replaceAll(' ', '_')}_${now.toString().substring(0, 10)}.pdf');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('تم تنزيل تقرير الأداء اليومي بنجاح')),

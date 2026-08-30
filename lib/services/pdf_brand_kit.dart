@@ -99,15 +99,15 @@ class PdfBrandKit {
     return pw.Column(
       children: [
         pw.Divider(color: lightGray),
-        pw.Stack(
-          children: [
-            pw.Text(
-              'صفحة ${context.pageNumber} من ${context.pagesCount}  -  وحدة الإرشاد الأكاديمي والخريجين',
-              style: pw.TextStyle(fontSize: 8, color: grayText),
-              textAlign: pw.TextAlign.center,
-            ),
-            pw.Positioned(left: 0, bottom: 0, child: watermark()),
-          ],
+        // التوقيع المائي بسطر مستقل أعلى أقصى يسار الصفحة، فوق سطر رقم
+        // الصفحة (لا فوقه/متداخلاً معه) - `Positioned` داخل `Stack` كانت
+        // تُحاذي التوقيع مع نفس سطر النص فتظهر قريبة من المنتصف بلا عرض
+        // كامل صريح للصفحة (سليمان صراحةً 2026-08-30).
+        pw.Align(alignment: pw.Alignment.centerLeft, child: watermark()),
+        pw.Text(
+          'صفحة ${context.pageNumber} من ${context.pagesCount}  -  وحدة الإرشاد الأكاديمي والخريجين',
+          style: pw.TextStyle(fontSize: 8, color: grayText),
+          textAlign: pw.TextAlign.center,
         ),
       ],
     );
