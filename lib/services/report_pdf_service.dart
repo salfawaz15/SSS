@@ -1084,14 +1084,13 @@ class ReportPdfService {
     if (rows.isEmpty) {
       return pw.Text('لا توجد بيانات', style: const pw.TextStyle(fontSize: 10));
     }
-    final headers = ['القسم', 'الشطر', 'إجمالي الحالات', 'باشرها المرشد', 'صُعِّدت دون مباشرة', 'لم يُباشَر إطلاقًا', 'نسبة الإنجاز'];
+    final headers = ['القسم', 'الشطر', 'إجمالي الحالات', 'باشرها المرشد', 'لم يُباشَر إطلاقًا', 'نسبة الإنجاز'];
     final tableRows = rows.map((d) {
       return [
         d.department.replaceFirst('قسم ', ''),
         d.shatr,
         '${d.total}',
         '${d.completed}',
-        '${d.escalatedToCoordinator}',
         '${d.notStarted}',
         '${(d.completionRate * 100).toStringAsFixed(0)}%',
       ];
