@@ -50,6 +50,6 @@ jobs:
       - run: flutter build web --release --pwa-strategy=none
 
       - name: Deploy to Firebase Hosting preview channel (لا يمس الموقع الفعلي)
-        run: npx firebase-tools hosting:channel:deploy preview-coordinator-email --expires 7d --token "$FIREBASE_TOKEN"
+        run: npx firebase-tools hosting:channel:deploy preview-college-coordinator --expires 7d --token "$FIREBASE_TOKEN"
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}

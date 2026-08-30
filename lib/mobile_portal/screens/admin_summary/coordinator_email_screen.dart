@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../../../data/academic_department_names.dart';
@@ -50,12 +52,31 @@ class _CoordinatorEmailScreenState extends State<CoordinatorEmailScreen> {
     return null;
   }
 
-  Future<void> _send(String key, List<Map<String, dynamic>> tickets, String shatr, String department) async {
-    final coordinator = _findCoordinator(shatr, department);
+  /// بريد منسّق/ة الكلية الحقيقي (المستوى الثالث) - يُطابَق بمفتاح
+  /// `shatr|الكلية` مباشرة (لا حاجة لتطبيع أسماء أقسام هنا، ليس قسمًا).
+  Coordinator? _findCollegeCoordinator(String shatr) {
+    return _coordinatorContacts['$shatr|${Coordinator.collegeMarker}'];
+  }
+
+  void _showSnack(String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: isError ? Colors.red.shade700 : null),
+    );
+  }
+
+  Future<void> _send({
+    required String key,
+    required Coordinator? coordinator,
+    required String missingLabel,
+    required Future<Uint8List> Function() buildFile,
+    required String subject,
+    required String attachmentFilename,
+  }) async {
     if (coordinator == null || coordinator.email.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('لا يوجد بريد محفوظ لمنسّق قسم "$department" - أضفه أولاً من شاشة "بيانات منسقي الأقسام" بالموقع'),
+          content: Text('لا يوجد بريد محفوظ لـ"$missingLabel" - أضفه أولاً من شاشة "بيانات منسقي الأقسام" بالموقع'),
           backgroundColor: Colors.orange.shade800,
         ),
       );
@@ -64,34 +85,51 @@ class _CoordinatorEmailScreenState extends State<CoordinatorEmailScreen> {
 
     setState(() => _sendingKeys.add(key));
     try {
-      final bytes = await EscalationFileService.buildStage2File(tickets);
-      final shatrLabel = shatr == ExcelParserService.shatrMale ? 'male' : 'female';
+      final bytes = await buildFile();
       final success = await MailService.sendPrebuiltAttachment(
         toEmail: coordinator.email.trim(),
         toName: coordinator.name,
-        subject: 'حالات الحذف والإضافة - $department - $shatr',
+        subject: subject,
         bodyText:
             'السلام عليكم ورحمة الله وبركاته\n'
             'مرفق لكم حالات الحذف والإضافة لتعميمها على المرشدين الأكاديميين\n'
             'وحدة الإرشاد الأكاديمي والخريجين',
         xlsxBytes: bytes,
-        attachmentFilename: '${department}_${shatrLabel}_مرحلة_المنسق.xlsx',
+        attachmentFilename: attachmentFilename,
       );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(success ? 'تم إرسال البريد لمنسّق/ة "$department" بنجاح' : 'تعذّر إرسال البريد - حاول مرة أخرى'),
-            backgroundColor: success ? null : Colors.red.shade700,
-          ),
-        );
-      }
+      _showSnack(
+        success ? 'تم إرسال البريد لـ"$missingLabel" بنجاح' : 'تعذّر إرسال البريد - حاول مرة أخرى',
+        isError: !success,
+      );
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذّر إرسال البريد: $e')));
-      }
+      _showSnack('تعذّر إرسال البريد: $e', isError: true);
     } finally {
       if (mounted) setState(() => _sendingKeys.remove(key));
     }
+  }
+
+  Future<void> _sendDepartment(String key, List<Map<String, dynamic>> tickets, String shatr, String department) {
+    final shatrLabel = shatr == ExcelParserService.shatrMale ? 'male' : 'female';
+    return _send(
+      key: key,
+      coordinator: _findCoordinator(shatr, department),
+      missingLabel: 'منسّق قسم "$department"',
+      buildFile: () => EscalationFileService.buildStage2File(tickets),
+      subject: 'حالات الحذف والإضافة - $department - $shatr',
+      attachmentFilename: '${department}_${shatrLabel}_مرحلة_المنسق.xlsx',
+    );
+  }
+
+  Future<void> _sendCollege(String key, List<Map<String, dynamic>> shatrTickets, String shatr) {
+    final shatrLabel = shatr == ExcelParserService.shatrMale ? 'male' : 'female';
+    return _send(
+      key: key,
+      coordinator: _findCollegeCoordinator(shatr),
+      missingLabel: 'منسّق/ة الكلية - $shatr',
+      buildFile: () => EscalationFileService.buildStage3File(shatrTickets),
+      subject: 'حالات الحذف والإضافة - منسّق الكلية - $shatr',
+      attachmentFilename: 'الكلية_${shatrLabel}_مرحلة_منسق_الكلية.xlsx',
+    );
   }
 
   @override
@@ -117,36 +155,76 @@ class _CoordinatorEmailScreenState extends State<CoordinatorEmailScreen> {
           }
           final groups = ExcelParserService.groupByShatrAndDepartment(tickets);
           final entries = groups.entries.where((e) => e.value.isNotEmpty).toList();
-          return ListView.builder(
+          final shatrs = [ExcelParserService.shatrMale, ExcelParserService.shatrFemale];
+
+          return ListView(
             padding: const EdgeInsets.all(AppSpacing.lg),
-            itemCount: entries.length,
-            itemBuilder: (context, index) {
-              final entry = entries[index];
-              final parts = entry.key.split('|');
-              final shatr = parts[0];
-              final department = parts.length > 1 ? parts[1] : '';
-              final isSending = _sendingKeys.contains(entry.key);
-              return Card(
-                margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: AppColors.green.withValues(alpha: 0.12),
-                    child: const Icon(Icons.apartment_outlined, color: AppColors.green),
+            children: [
+              Text('منسّقو الكلية (المرحلة 3)', style: AppTextStyles.h3()),
+              const SizedBox(height: AppSpacing.sm),
+              for (final shatr in shatrs) ...[
+                _buildRow(
+                  key: 'college|$shatr',
+                  icon: Icons.school_outlined,
+                  iconColor: AppColors.gold,
+                  title: 'منسّق/ة الكلية',
+                  subtitle: '$shatr - عدد الحالات: ${tickets.where((t) => (t['shatr'] ?? '') == shatr).length}',
+                  onSend: () => _sendCollege(
+                    'college|$shatr',
+                    tickets.where((t) => (t['shatr'] ?? '') == shatr).toList(),
+                    shatr,
                   ),
-                  title: Text(department.isEmpty ? '(بدون قسم)' : department),
-                  subtitle: Text('$shatr - عدد الحالات: ${entry.value.length}'),
-                  trailing: isSending
-                      ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
-                      : IconButton(
-                          tooltip: 'إرسال ملف مرحلة المنسّق بالبريد',
-                          icon: const Icon(Icons.mail_outline, color: Colors.teal),
-                          onPressed: () => _send(entry.key, entry.value, shatr, department),
-                        ),
                 ),
-              );
-            },
+                const SizedBox(height: AppSpacing.sm),
+              ],
+              const SizedBox(height: AppSpacing.md),
+              Text('منسّقو الأقسام (المرحلة 2)', style: AppTextStyles.h3()),
+              const SizedBox(height: AppSpacing.sm),
+              for (final entry in entries) ...[
+                Builder(builder: (context) {
+                  final parts = entry.key.split('|');
+                  final shatr = parts[0];
+                  final department = parts.length > 1 ? parts[1] : '';
+                  return _buildRow(
+                    key: entry.key,
+                    icon: Icons.apartment_outlined,
+                    iconColor: AppColors.green,
+                    title: department.isEmpty ? '(بدون قسم)' : department,
+                    subtitle: '$shatr - عدد الحالات: ${entry.value.length}',
+                    onSend: () => _sendDepartment(entry.key, entry.value, shatr, department),
+                  );
+                }),
+                const SizedBox(height: AppSpacing.sm),
+              ],
+            ],
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildRow({
+    required String key,
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required String subtitle,
+    required VoidCallback onSend,
+  }) {
+    final isSending = _sendingKeys.contains(key);
+    return Card(
+      margin: EdgeInsets.zero,
+      child: ListTile(
+        leading: CircleAvatar(backgroundColor: iconColor.withValues(alpha: 0.12), child: Icon(icon, color: iconColor)),
+        title: Text(title),
+        subtitle: Text(subtitle),
+        trailing: isSending
+            ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
+            : IconButton(
+                tooltip: 'إرسال بالبريد',
+                icon: const Icon(Icons.mail_outline, color: Colors.teal),
+                onPressed: onSend,
+              ),
       ),
     );
   }
