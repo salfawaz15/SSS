@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
@@ -8,6 +9,67 @@ import 'excel_protection_service.dart';
 
 class MailService {
   static const String _sendGridUrl = 'https://api.sendgrid.com/v3/mail/send';
+
+  /// يرسل ملف Excel جاهزًا (مبنيًا مسبقًا من المتصل - مثل ملف "مرحلة
+  /// المنسّق" `EscalationFileService.buildStage2File`) لبريد منسّق قسم حقيقي
+  /// (`FirestoreCoordinatorService`، لا حساب الدخول الداخلي الوهمي بالبوابة)
+  /// - يُستخدم من لوحة إدارة الموقع (`admin_workspace_screen.dart`) عبر زر
+  /// "إرسال بالبريد" بجانب زر التنزيل، بلا حاجة لإعادة بناء الملف كما تفعل
+  /// [sendDepartmentReport] القديمة (مصمَّمة لتطبيق CBA Advising فقط وبعمود
+  /// حالة مختلف).
+  static Future<bool> sendPrebuiltAttachment({
+    required String toEmail,
+    String? toName,
+    required String subject,
+    required String bodyText,
+    required Uint8List xlsxBytes,
+    required String attachmentFilename,
+  }) async {
+    final body = {
+      'personalizations': [
+        {
+          'to': [
+            {
+              'email': toEmail,
+              if (toName != null && toName.isNotEmpty) 'name': toName,
+            },
+          ],
+        },
+      ],
+      'from': {'email': Secrets.senderEmail},
+      'subject': subject,
+      'content': [
+        {'type': 'text/plain', 'value': bodyText},
+      ],
+      'attachments': [
+        {
+          'content': base64Encode(xlsxBytes),
+          'filename': attachmentFilename,
+          'type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'disposition': 'attachment',
+        },
+      ],
+    };
+
+    try {
+      final response = await http.post(
+        Uri.parse(_sendGridUrl),
+        headers: {
+          'Authorization': 'Bearer ${Secrets.sendGridApiKey}',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(body),
+      );
+      if (response.statusCode == 202) return true;
+      // ignore: avoid_print
+      print('فشل إرسال الإيميل: ${response.statusCode} - ${response.body}');
+      return false;
+    } catch (e) {
+      // ignore: avoid_print
+      print('خطأ أثناء إرسال الإيميل: $e');
+      return false;
+    }
+  }
 
   static Future<bool> sendDepartmentReport({
     required String shatr,

@@ -7,14 +7,18 @@ import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../data/academic_department_names.dart';
 import '../models/advisor_roster_entry.dart';
+import '../models/coordinator.dart';
 import '../services/advisor_roster_service.dart';
 import '../services/advisor_zip_service.dart';
 import '../services/app_update_service.dart';
 import '../services/disability_file_service.dart';
 import '../services/escalation_file_service.dart';
 import '../services/excel_parser_service.dart';
+import '../services/firestore_coordinator_service.dart';
 import '../services/firestore_ticket_service.dart';
+import '../services/mail_service.dart';
 import '../services/processed_file_parser_service.dart';
 import '../services/report_data_service.dart';
 import '../services/report_excel_service.dart';
@@ -53,6 +57,12 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
   /// مُحمَّلة مرة واحدة عند فتح اللوحة - تُستخدم في لوحة متابعة الإنجاز حتى
   /// لا يظهر منسّق قسم كأن لديه حالات معلَّقة بعد أن تفرَّغ منها فعليًا.
   List<AdvisorRosterEntry> _roster = [];
+  // بريد/اسم منسّقي الأقسام الحقيقيين (`coordinator_contacts` بـFirestore) -
+  // لإرسال ملف "مرحلة المنسّق" بالبريد مباشرة بضغطة واحدة، بدل الاعتماد على
+  // حساب الدخول الداخلي الوهمي بالبوابة (`PortalAccounts.coordinatorEmail`
+  // ليس بريدًا حقيقيًا يستقبل رسائل).
+  Map<String, Coordinator> _coordinatorContacts = {};
+  final Set<String> _emailingKeys = {};
 
   @override
   void initState() {
@@ -65,6 +75,9 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
     });
     AdvisorRosterService.loadAll().then((r) {
       if (mounted) setState(() => _roster = r);
+    });
+    FirestoreCoordinatorService.watchAll().first.then((c) {
+      if (mounted) setState(() => _coordinatorContacts = c);
     });
   }
 
@@ -204,6 +217,87 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
       }
     } finally {
       if (mounted) setState(() => _downloadingKeys.remove(stage2Key));
+    }
+  }
+
+  /// يرسل نفس ملف "مرحلة المنسّق" ([_downloadStage2OnBehalf]) بالبريد
+  /// الإلكتروني الحقيقي لمنسّق القسم مباشرة (بدل تنزيله ثم إرساله يدويًا) -
+  /// بطلب سليمان صراحةً (2026-08-30). البريد الحقيقي يُقرأ من
+  /// `coordinator_contacts` (شاشة "بيانات منسقي الأقسام")، لا من حساب الدخول
+  /// الداخلي الوهمي بالبوابة.
+  /// بحث متسامح بدل مطابقة نصية حرفية بالمفتاح - نص القسم بالتذكرة الفعلية
+  /// (من عمود "القسم العلمي" بملف Microsoft Forms) قد يختلف بصورة الهمزة
+  /// (الادارية/الإدارية) عن النص المخزَّن بشاشة "بيانات منسقي الأقسام"
+  /// (`ExcelParserService.departments` الثابتة)، فتفشل مطابقة المفتاح
+  /// الحرفية صامتة رغم وجود بريد محفوظ فعليًا لنفس القسم (سليمان لاحظه
+  /// فعليًا 2026-08-30 لقسم نظم المعلومات الإدارية تحديدًا).
+  Coordinator? _findCoordinator(String shatr, String department) {
+    final normalizedTarget = normalizeDepartmentName(department);
+    for (final c in _coordinatorContacts.values) {
+      if (c.shatr == shatr && normalizeDepartmentName(c.department) == normalizedTarget) {
+        return c;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _emailStage2ToCoordinator(
+    String key,
+    List<Map<String, dynamic>> tickets,
+    String department,
+  ) async {
+    final shatr = key.split('|')[0];
+    final coordinator = _findCoordinator(shatr, department);
+    if (coordinator == null || coordinator.email.trim().isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('لا يوجد بريد محفوظ لمنسّق قسم "$department" - أضفه أولاً من شاشة "بيانات منسقي الأقسام"'),
+            backgroundColor: Colors.orange.shade800,
+            action: SnackBarAction(
+              label: 'الذهاب للشاشة',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const CoordinatorsContactsScreen()),
+              ),
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    setState(() => _emailingKeys.add(key));
+    try {
+      final bytes = await EscalationFileService.buildStage2File(tickets);
+      final parts = key.split('|');
+      final shatrLabel = parts[0] == ExcelParserService.shatrMale ? 'male' : 'female';
+      final success = await MailService.sendPrebuiltAttachment(
+        toEmail: coordinator.email.trim(),
+        toName: coordinator.name,
+        subject: 'حالات الحذف والإضافة - $department - ${parts[0]}',
+        bodyText:
+            'السلام عليكم ورحمة الله وبركاته\n'
+            'مرفق لكم حالات الحذف والإضافة لتعميمها على المرشدين الأكاديميين\n'
+            'وحدة الإرشاد الأكاديمي والخريجين',
+        xlsxBytes: bytes,
+        attachmentFilename: '${department}_${shatrLabel}_مرحلة_المنسق.xlsx',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(success ? 'تم إرسال البريد لمنسّق/ة "$department" بنجاح' : 'تعذّر إرسال البريد - حاول مرة أخرى'),
+            backgroundColor: success ? null : Colors.red.shade700,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تعذّر إرسال البريد: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _emailingKeys.remove(key));
     }
   }
 
@@ -551,6 +645,7 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
         final isDownloading = _downloadingKeys.contains(key);
         final isDownloadingDisability = _downloadingKeys.contains('disability|$key');
         final isDownloadingStage2 = _downloadingKeys.contains('stage2dl|$key');
+        final isEmailing = _emailingKeys.contains(key);
         final isUploadingProcessed = _downloadingKeys.contains('upload|$key');
         final hasDisabilityCases = DisabilityFileService.filterDisabilityTickets(e.value).isNotEmpty;
         return Card(
@@ -593,6 +688,13 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
                   icon: Icons.assignment_return_outlined,
                   isLoading: isDownloadingStage2,
                   onPressed: isDownloadingStage2 ? null : () => _downloadStage2OnBehalf(key, e.value),
+                ),
+                RoundIconButton(
+                  tooltip: 'إرسال ملف مرحلة المنسّق بالبريد لمنسّق/ة القسم',
+                  color: Colors.teal,
+                  icon: Icons.mail_outline,
+                  isLoading: isEmailing,
+                  onPressed: isEmailing ? null : () => _emailStage2ToCoordinator(key, e.value, department),
                 ),
                 RoundIconButton(
                   tooltip: 'رفع ملف معالج لهذا القسم (نيابةً عن المنسّق)',
