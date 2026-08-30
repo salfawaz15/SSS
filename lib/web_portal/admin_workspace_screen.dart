@@ -23,6 +23,7 @@ import '../services/processed_file_parser_service.dart';
 import '../services/report_data_service.dart';
 import '../services/report_excel_service.dart';
 import '../services/report_pdf_service.dart';
+import '../services/ticket_action_stats_service.dart';
 import '../services/stage_snapshot_service.dart';
 import '../services/web_download.dart';
 import '../theme/app_theme.dart';
@@ -948,8 +949,44 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
             MaterialPageRoute(builder: (_) => const AdminReportsScreen()),
           ),
         ),
+        const SizedBox(height: 14),
+        PortalActionCard(
+          icon: Icons.emoji_events_outlined,
+          title: 'تقرير الأداء اليومي لعمادة الكلية',
+          subtitle: 'أفضل قسم وأفضل 3 مرشدين لكل شطر + مقارنة شاملة - تقرير تحفيزي',
+          gradientColors: const [Colors.teal, Colors.tealAccent],
+          onTap: () => _downloadDailyPerformanceReport(tickets),
+        ),
       ],
     );
+  }
+
+  /// "تقرير الأداء اليومي" لعمادة الكلية - بطلب سليمان صراحةً (2026-08-30):
+  /// تقرير تحفيزي يقارن الأقسام والمرشدين ببعضهم (لا متابعة المتأخرين فقط
+  /// كـ[AdminReportsScreen]) ليُرسَل يدويًا للعمادة كل يوم.
+  Future<void> _downloadDailyPerformanceReport(List<Map<String, dynamic>> tickets) async {
+    try {
+      final advisors = TicketActionStatsService.buildAdvisorCaseStats(tickets);
+      final deptRows = TicketActionStatsService.aggregateByDepartmentShatr(advisors);
+      final bytes = await ReportPdfService.buildDailyPerformanceReport(
+        deptRows,
+        advisors,
+        title: 'تقرير الأداء اليومي - الحذف والإضافة',
+        subtitle: 'وحدة الإرشاد الأكاديمي والخريجين - كلية إدارة الأعمال',
+      );
+      downloadBytes(bytes, 'تقرير_الأداء_اليومي_${DateTime.now().toString().substring(0, 10)}.pdf');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تم تنزيل تقرير الأداء اليومي بنجاح')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تعذّر إنشاء التقرير: $e')),
+        );
+      }
+    }
   }
 
   /// يفتح نافذة في منتصف الشاشة بأزرار التقرير الشامل السريع (طباعة/Excel/PDF).

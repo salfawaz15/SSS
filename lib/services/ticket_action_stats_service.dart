@@ -50,7 +50,39 @@ class AdvisorCaseStats {
   AdvisorCaseStats({required this.advisorName, required this.department, required this.shatr});
 }
 
+/// أداء قسم/شطر واحد مجمَّعًا من كل مرشديه - أساس "تقرير الأداء اليومي"
+/// المُرسَل لعمادة الكلية (سليمان صراحةً 2026-08-30): يقارن الأقسام ببعضها
+/// لتحفيزها، بنفس تعريف "الإنجاز" المعتمَد (باشر الحالة، لا "تم التنفيذ" فقط).
+class DeptShatrPerformance {
+  final String department;
+  final String shatr;
+  int total = 0;
+  int completed = 0;
+  int escalatedToCoordinator = 0;
+  int notStarted = 0;
+
+  DeptShatrPerformance({required this.department, required this.shatr});
+
+  double get completionRate => total == 0 ? 0 : completed / total;
+}
+
 class TicketActionStatsService {
+  /// يجمّع أداء كل مرشدي نفس القسم/الشطر معًا بصف واحد - يُستخدم لترتيب
+  /// الأقسام ببعضها بتقرير الأداء اليومي (لا لعرض كل مرشد منفردًا).
+  static List<DeptShatrPerformance> aggregateByDepartmentShatr(List<AdvisorCaseStats> advisors) {
+    final byKey = <String, DeptShatrPerformance>{};
+    for (final a in advisors) {
+      final key = '${a.shatr}|${a.department}';
+      final perf = byKey.putIfAbsent(key, () => DeptShatrPerformance(department: a.department, shatr: a.shatr));
+      perf.total += a.total;
+      perf.completed += a.completed;
+      perf.escalatedToCoordinator += a.escalatedToCoordinator;
+      perf.notStarted += a.notStarted;
+    }
+    return byKey.values.toList()..sort((a, b) => b.completionRate.compareTo(a.completionRate));
+  }
+
+
   static List<AdvisorCaseStats> buildAdvisorCaseStats(List<Map<String, dynamic>> tickets) {
     final byAdvisor = <String, AdvisorCaseStats>{};
 

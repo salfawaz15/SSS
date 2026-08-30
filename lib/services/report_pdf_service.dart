@@ -8,6 +8,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'pdf_brand_kit.dart';
 import 'report_data_service.dart';
 import 'report_filter_service.dart';
+import 'ticket_action_stats_service.dart' show AdvisorCaseStats, DeptShatrPerformance;
 
 /// حزمة وسيطات بناء التقرير الشامل - تُرسَل كاملة إلى خيط معالجة منفصل
 /// (isolate عبر compute) حتى لا يجمّد بناء PDF الثقيل (تنسيق عربي + جداول
@@ -106,6 +107,7 @@ class ReportPdfService {
   static final _green = PdfColor.fromHex('154B36');
   static final _greenDark = PdfColor.fromHex('0D3324');
   static final _gold = PdfColor.fromHex('C9A227');
+  static final _goldLight = PdfColor.fromHex('F0DD9B');
   static final _red = PdfColor.fromHex('C0392B');
   static final _lightGray = PdfColor.fromHex('E5E9E7');
 
@@ -904,5 +906,156 @@ class ReportPdfService {
       );
     }
     return widgets;
+  }
+
+  /// "تقرير الأداء اليومي" لعمادة الكلية - بطلب سليمان صراحةً (2026-08-30):
+  /// يقارن الأقسام والمرشدين ببعضهم (أفضل قسم لكل شطر، أفضل 3 مرشدين لكل
+  /// شطر، ثم جدول مقارنة كامل) بهدف تحفيزي - إبراز المتقدّمين لا فقط متابعة
+  /// المتأخرين (بخلاف [buildFollowUp]). بلا isolate (بيانات صغيرة: أقسام
+  /// وشطران فقط، لا آلاف الصفوف).
+  static Future<Uint8List> buildDailyPerformanceReport(
+    List<DeptShatrPerformance> deptRows,
+    List<AdvisorCaseStats> advisors, {
+    required String title,
+    String? subtitle,
+  }) async {
+    final (regularBytes, boldBytes) = await _loadFontBytes();
+    final logoBytes = await _loadLogoBytes();
+    final regularFont = pw.Font.ttf(regularBytes.buffer.asByteData());
+    final boldFont = pw.Font.ttf(boldBytes.buffer.asByteData());
+    final logo = pw.MemoryImage(logoBytes);
+
+    final doc = pw.Document(theme: pw.ThemeData.withFont(base: regularFont, bold: boldFont));
+
+    const maleShatr = 'شطر الطلاب';
+    const femaleShatr = 'شطر الطالبات';
+
+    final maleDepts = deptRows.where((d) => d.shatr == maleShatr && d.total > 0).toList();
+    final femaleDepts = deptRows.where((d) => d.shatr == femaleShatr && d.total > 0).toList();
+    final bestMaleDept = maleDepts.isEmpty ? null : maleDepts.first;
+    final bestFemaleDept = femaleDepts.isEmpty ? null : femaleDepts.first;
+
+    final maleAdvisors = advisors.where((a) => a.shatr == maleShatr && a.total > 0).toList()
+      ..sort((a, b) {
+        final rateA = a.total == 0 ? 0.0 : a.completed / a.total;
+        final rateB = b.total == 0 ? 0.0 : b.completed / b.total;
+        return rateB.compareTo(rateA);
+      });
+    final femaleAdvisors = advisors.where((a) => a.shatr == femaleShatr && a.total > 0).toList()
+      ..sort((a, b) {
+        final rateA = a.total == 0 ? 0.0 : a.completed / a.total;
+        final rateB = b.total == 0 ? 0.0 : b.completed / b.total;
+        return rateB.compareTo(rateA);
+      });
+
+    doc.addPage(
+      pw.MultiPage(
+        textDirection: pw.TextDirection.rtl,
+        margin: const pw.EdgeInsets.all(28),
+        header: (context) => PdfBrandKit.header(title: title, logo: logo, subtitle: subtitle, generatedAt: DateTime.now()),
+        footer: PdfBrandKit.footer,
+        build: (context) => [
+          pw.Text('أفضل قسم لكل شطر', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
+          pw.SizedBox(height: 8),
+          pw.Row(
+            children: [
+              pw.Expanded(child: _bestDeptCard('شطر الطلاب', bestMaleDept)),
+              pw.SizedBox(width: 10),
+              pw.Expanded(child: _bestDeptCard('شطر الطالبات', bestFemaleDept)),
+            ],
+          ),
+          pw.SizedBox(height: 18),
+          pw.Text('أفضل 3 مرشدين لكل شطر', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
+          pw.SizedBox(height: 8),
+          pw.Row(
+            children: [
+              pw.Expanded(child: _topAdvisorsTable('شطر الطلاب', maleAdvisors.take(3).toList())),
+              pw.SizedBox(width: 10),
+              pw.Expanded(child: _topAdvisorsTable('شطر الطالبات', femaleAdvisors.take(3).toList())),
+            ],
+          ),
+          pw.SizedBox(height: 18),
+          pw.Text('مقارنة شاملة بكل الأقسام والشطرين (الأعلى إنجازًا أولاً)', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
+          pw.SizedBox(height: 8),
+          _deptComparisonTable(deptRows.where((d) => d.total > 0).toList()),
+        ],
+      ),
+    );
+
+    return doc.save();
+  }
+
+  static pw.Widget _bestDeptCard(String shatrLabel, DeptShatrPerformance? dept) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(12),
+      decoration: pw.BoxDecoration(color: _greenDark, borderRadius: pw.BorderRadius.circular(8)),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.center,
+        children: [
+          pw.Text(shatrLabel, style: pw.TextStyle(fontSize: 10, color: PdfColors.white)),
+          pw.SizedBox(height: 4),
+          pw.Text(
+            dept == null ? '-' : dept.department,
+            style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+          ),
+          pw.SizedBox(height: 4),
+          pw.Text(
+            dept == null ? 'لا توجد بيانات' : 'نسبة الإنجاز ${(dept.completionRate * 100).toStringAsFixed(0)}%',
+            style: pw.TextStyle(fontSize: 10, color: _goldLight),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _topAdvisorsTable(String shatrLabel, List<AdvisorCaseStats> top) {
+    if (top.isEmpty) {
+      return pw.Text('لا توجد بيانات كافية ($shatrLabel)', style: const pw.TextStyle(fontSize: 9));
+    }
+    final headers = ['المرشد', 'القسم', 'نسبة الإنجاز'];
+    final rows = top.map((a) {
+      final rate = a.total == 0 ? 0.0 : a.completed / a.total;
+      return [a.advisorName, a.department, '${(rate * 100).toStringAsFixed(0)}%'];
+    }).toList();
+    final (rtlHeaders, rtlRows) = _rtlTable(headers, rows);
+    return pw.TableHelper.fromTextArray(
+      headers: rtlHeaders,
+      data: rtlRows,
+      headerStyle: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 8),
+      headerDecoration: pw.BoxDecoration(color: _gold),
+      cellStyle: const pw.TextStyle(fontSize: 8),
+      cellAlignment: pw.Alignment.center,
+      border: pw.TableBorder.all(color: _lightGray, width: 0.5),
+      tableDirection: pw.TextDirection.rtl,
+    );
+  }
+
+  static pw.Widget _deptComparisonTable(List<DeptShatrPerformance> rows) {
+    if (rows.isEmpty) {
+      return pw.Text('لا توجد بيانات', style: const pw.TextStyle(fontSize: 10));
+    }
+    final headers = ['القسم', 'الشطر', 'إجمالي الحالات', 'باشرها المرشد', 'صُعِّدت دون مباشرة', 'لم يُباشَر إطلاقًا', 'نسبة الإنجاز'];
+    final tableRows = rows.map((d) {
+      return [
+        d.department.replaceFirst('قسم ', ''),
+        d.shatr,
+        '${d.total}',
+        '${d.completed}',
+        '${d.escalatedToCoordinator}',
+        '${d.notStarted}',
+        '${(d.completionRate * 100).toStringAsFixed(0)}%',
+      ];
+    }).toList();
+    final (rtlHeaders, rtlRows) = _rtlTable(headers, tableRows);
+    return pw.TableHelper.fromTextArray(
+      headers: rtlHeaders,
+      data: rtlRows,
+      headerStyle: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 9),
+      headerDecoration: pw.BoxDecoration(color: _greenDark),
+      cellStyle: const pw.TextStyle(fontSize: 8.5),
+      cellAlignment: pw.Alignment.center,
+      border: pw.TableBorder.all(color: _lightGray, width: 0.5),
+      tableDirection: pw.TextDirection.rtl,
+    );
   }
 }
