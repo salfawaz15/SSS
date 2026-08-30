@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../data/academic_department_names.dart';
 import '../models/advisor_roster_entry.dart';
 import '../models/coordinator.dart';
 import '../services/advisor_roster_service.dart';
@@ -224,12 +225,29 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
   /// بطلب سليمان صراحةً (2026-08-30). البريد الحقيقي يُقرأ من
   /// `coordinator_contacts` (شاشة "بيانات منسقي الأقسام")، لا من حساب الدخول
   /// الداخلي الوهمي بالبوابة.
+  /// بحث متسامح بدل مطابقة نصية حرفية بالمفتاح - نص القسم بالتذكرة الفعلية
+  /// (من عمود "القسم العلمي" بملف Microsoft Forms) قد يختلف بصورة الهمزة
+  /// (الادارية/الإدارية) عن النص المخزَّن بشاشة "بيانات منسقي الأقسام"
+  /// (`ExcelParserService.departments` الثابتة)، فتفشل مطابقة المفتاح
+  /// الحرفية صامتة رغم وجود بريد محفوظ فعليًا لنفس القسم (سليمان لاحظه
+  /// فعليًا 2026-08-30 لقسم نظم المعلومات الإدارية تحديدًا).
+  Coordinator? _findCoordinator(String shatr, String department) {
+    final normalizedTarget = normalizeDepartmentName(department);
+    for (final c in _coordinatorContacts.values) {
+      if (c.shatr == shatr && normalizeDepartmentName(c.department) == normalizedTarget) {
+        return c;
+      }
+    }
+    return null;
+  }
+
   Future<void> _emailStage2ToCoordinator(
     String key,
     List<Map<String, dynamic>> tickets,
     String department,
   ) async {
-    final coordinator = _coordinatorContacts[key];
+    final shatr = key.split('|')[0];
+    final coordinator = _findCoordinator(shatr, department);
     if (coordinator == null || coordinator.email.trim().isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
