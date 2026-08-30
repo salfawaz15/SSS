@@ -961,40 +961,37 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
     );
   }
 
+  static const _arabicWeekdays = {
+    1: 'الاثنين',
+    2: 'الثلاثاء',
+    3: 'الأربعاء',
+    4: 'الخميس',
+    5: 'الجمعة',
+    6: 'السبت',
+    7: 'الأحد',
+  };
+
   /// "تقرير الأداء اليومي" لعمادة الكلية - بطلب سليمان صراحةً (2026-08-30):
   /// تقرير تحفيزي يقارن الأقسام والمرشدين ببعضهم (لا متابعة المتأخرين فقط
-  /// كـ[AdminReportsScreen]) ليُرسَل يدويًا للعمادة كل يوم. يسأل أولاً عن رقم
-  /// يوم دورة الحذف والإضافة (الأول/الثاني/الثالث) - لا يمكن استنتاجه تلقائيًا
-  /// من البيانات نفسها، بخلاف تاريخ اليوم الذي يظهر تلقائيًا بترويسة PDF.
+  /// كـ[AdminReportsScreen]) ليُرسَل يدويًا للعمادة كل يوم. اسم اليوم بالأسبوع
+  /// والتاريخ يظهران تلقائيًا بلا أي سؤال يدوي (سليمان صراحةً: "اليوم
+  /// والتاريخ" يعني يوم الأسبوع الفعلي، لا اختيار يوم دورة يدويًا كما فهمتُ
+  /// أول مرة خطأً).
   Future<void> _downloadDailyPerformanceReport(List<Map<String, dynamic>> tickets) async {
-    final dayLabel = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => SimpleDialog(
-        title: const Text('أي يوم من دورة الحذف والإضافة؟'),
-        children: [
-          for (final day in ['اليوم الأول', 'اليوم الثاني', 'اليوم الثالث'])
-            SimpleDialogOption(
-              onPressed: () => Navigator.of(dialogContext).pop(day),
-              child: Text(day),
-            ),
-        ],
-      ),
-    );
-    if (dayLabel == null) return;
-
     try {
       final advisors = TicketActionStatsService.buildAdvisorCaseStats(tickets);
       final deptRows = TicketActionStatsService.aggregateByDepartmentShatr(advisors);
       final now = DateTime.now();
+      final weekday = _arabicWeekdays[now.weekday] ?? '';
       final bytes = await ReportPdfService.buildDailyPerformanceReport(
         deptRows,
         advisors,
         title: 'تقرير الأداء اليومي - الحذف والإضافة',
         // بلا تكرار اسم الوحدة (يظهر أصلاً بجانب الشعار تلقائيًا) ولا التاريخ
-        // (يظهر أصلاً كـ"تاريخ الإصدار" تلقائيًا) - فقط المعلومة الجديدة فعليًا.
-        subtitle: 'كلية إدارة الأعمال - $dayLabel',
+        // (يظهر أصلاً كـ"تاريخ الإصدار" تلقائيًا) - فقط اسم يوم الأسبوع الجديد فعليًا.
+        subtitle: 'كلية إدارة الأعمال - يوم $weekday',
       );
-      downloadBytes(bytes, 'تقرير_الأداء_${dayLabel.replaceAll(' ', '_')}_${now.toString().substring(0, 10)}.pdf');
+      downloadBytes(bytes, 'تقرير_الأداء_${now.toString().substring(0, 10)}.pdf');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('تم تنزيل تقرير الأداء اليومي بنجاح')),
