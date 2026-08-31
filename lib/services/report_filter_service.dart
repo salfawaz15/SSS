@@ -1,3 +1,4 @@
+import 'advisor_name_matching.dart';
 import 'excel_parser_service.dart';
 import 'report_data_service.dart';
 
@@ -118,17 +119,21 @@ class ReportFilterService {
   /// بالكامل) - أساس قائمة "الأعضاء المقصّرون" وملف حالاتهم المُرسَل
   /// لرئيس القسم بطلب سليمان صراحةً (2026-08-31).
   static List<Map<String, dynamic>> delinquentAdvisorTickets(List<Map<String, dynamic>> tickets) {
+    // مطابقة متسامحة بنفس منطق [normalizeAdvisorNameForMatch] (تتجاهل
+    // الألقاب وصور الهمزة/التاء المربوطة) - وإلا يظهر مرشد أنجز فعليًا ضمن
+    // "المقصّرين" فقط لأن اسمه كُتب بصيغة مختلفة قليلًا بتذكرة أخرى (سليمان
+    // صراحةً 2026-08-31: هتان عبدالعزيز راجح الشريف أنجز فعليًا وظهر خطأً).
     final advisorsWithProgress = <String>{};
     for (final ticket in tickets) {
       final actions = (ticket['actions'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
       final hasCompleted = actions.any((a) => isCompletedStatus((a['advisor_status'] ?? '').toString().trim()));
       if (!hasCompleted) continue;
       final advisor = (ticket['advisor'] ?? '').toString().trim();
-      if (advisor.isNotEmpty) advisorsWithProgress.add(advisor);
+      if (advisor.isNotEmpty) advisorsWithProgress.add(normalizeAdvisorNameForMatch(advisor));
     }
     return tickets.where((t) {
       final advisor = (t['advisor'] ?? '').toString().trim();
-      return advisor.isNotEmpty && !advisorsWithProgress.contains(advisor);
+      return advisor.isNotEmpty && !advisorsWithProgress.contains(normalizeAdvisorNameForMatch(advisor));
     }).toList();
   }
 
