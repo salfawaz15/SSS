@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:printing/printing.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -837,13 +838,27 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
             style: isHeader ? const TextStyle(fontWeight: FontWeight.bold) : null,
           ),
         );
+    // نسخ يدوي عبر التحديد بالماوس غير متاح - نصوص [Table] هنا `Text` عادي
+    // غير قابل للتحديد (لا `SelectionArea` هنا)، لذا زر نسخ صريح لكل قسم
+    // يجمع اسم القسم + أسماء الشطرين بنص واحد جاهز للصق بالإيميل (سليمان
+    // صراحةً 2026-08-31).
+    void copyDepartment(String department) {
+      final male = _joinNamesOrDash(verifiedByGroup['${ExcelParserService.shatrMale}|$department']);
+      final female = _joinNamesOrDash(verifiedByGroup['${ExcelParserService.shatrFemale}|$department']);
+      final text = 'القسم: $department\nشطر الطلاب:\n$male\nشطر الطالبات:\n$female';
+      Clipboard.setData(ClipboardData(text: text));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تم نسخ أسماء قسم $department')),
+      );
+    }
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(minWidth: 900),
+            constraints: const BoxConstraints(minWidth: 940),
             child: Table(
               border: TableBorder.all(color: Colors.grey.shade300),
               defaultVerticalAlignment: TableCellVerticalAlignment.top,
@@ -851,6 +866,7 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
                 0: FixedColumnWidth(160),
                 1: FlexColumnWidth(),
                 2: FlexColumnWidth(),
+                3: FixedColumnWidth(40),
               },
               children: [
                 TableRow(
@@ -859,6 +875,7 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
                     cellText('القسم', isHeader: true),
                     cellText('شطر الطلاب', isHeader: true),
                     cellText('شطر الطالبات', isHeader: true),
+                    const SizedBox.shrink(),
                   ],
                 ),
                 for (final department in departments)
@@ -866,6 +883,14 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
                     cellText(department),
                     cellText(_joinNamesOrDash(verifiedByGroup['${ExcelParserService.shatrMale}|$department'])),
                     cellText(_joinNamesOrDash(verifiedByGroup['${ExcelParserService.shatrFemale}|$department'])),
+                    Padding(
+                      padding: const EdgeInsets.all(4),
+                      child: IconButton(
+                        tooltip: 'نسخ أسماء هذا القسم بشطريه',
+                        icon: const Icon(Icons.copy_outlined, size: 18),
+                        onPressed: () => copyDepartment(department),
+                      ),
+                    ),
                   ]),
               ],
             ),
