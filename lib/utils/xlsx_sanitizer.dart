@@ -21,6 +21,11 @@ import 'package:archive/archive.dart';
 ///    فترمي `Exception: custom numFmtId starts at 164 but found a value
 ///    of ...`. الحل الموثَّق: حذف عنصر `<numFmts>` بالكامل من `styles.xml`
 ///    (تُهمَل تنسيقات الأرقام المخصَّصة، لا قيم الخلايا نفسها).
+/// 5. مساحة أسماء بديلة قديمة `purl.oclc.org/ooxml/...` بدل المعيار القياسي
+///    `schemas.openxmlformats.org` - تظهر بملفات حالات المرشدين المُصدَّرة
+///    (سليمان صراحةً 2026-08-31: خطأ "Damaged Excel file: styles" رغم أن
+///    الملف يفتح طبيعيًا ببرنامج Excel). حزمة `excel` تطابق روابط العلاقات
+///    ومساحة اسم `styleSheet` حرفيًا بالمعيار القياسي فلا تتعرّف على البديل.
 ///
 /// يُطبَّق دائمًا وبأمان (بلا تأثير لو الملف سليم أصلاً - كل الاستبدالات
 /// idempotent) قبل أي محاولة قراءة بأي مكان يستقبل ملف xlsx مرفوعًا، ويعيد
@@ -40,9 +45,12 @@ Uint8List sanitizeXlsxBytes(Uint8List bytes) {
       List<int> fixedContent = content;
 
       if (name.endsWith('.rels')) {
-        final text = utf8.decode(content, allowMalformed: true);
-        final fixed = text.replaceAll('Target="/xl/', 'Target="');
-        if (fixed != text) {
+        var fixed = utf8.decode(content, allowMalformed: true);
+        final original = fixed;
+        fixed = fixed
+            .replaceAll('Target="/xl/', 'Target="')
+            .replaceAll('http://purl.oclc.org/ooxml/officeDocument/relationships/', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/');
+        if (fixed != original) {
           changed = true;
           fixedContent = utf8.encode(fixed);
         }
@@ -51,7 +59,8 @@ Uint8List sanitizeXlsxBytes(Uint8List bytes) {
         var fixed = text
             .replaceAll('<x:', '<')
             .replaceAll('</x:', '</')
-            .replaceAll('xmlns:x="', 'xmlns="');
+            .replaceAll('xmlns:x="', 'xmlns="')
+            .replaceAll('http://purl.oclc.org/ooxml/spreadsheetml/main', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
         if (name.startsWith('xl/worksheets/')) {
           fixed = fixed.replaceAllMapped(
             RegExp(r'(<c\b[^>]*?)\s+t="s"([^>]*?)/>'),
