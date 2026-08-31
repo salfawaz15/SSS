@@ -9,6 +9,7 @@ import '../../../services/excel_parser_service.dart';
 import '../../../services/firestore_coordinator_service.dart';
 import '../../../services/firestore_ticket_service.dart';
 import '../../../services/mail_service.dart';
+import '../../../services/report_filter_service.dart';
 import '../../theme/portal_theme.dart';
 import '../../widgets/mobile_empty_state.dart';
 import '../../widgets/mobile_error_state.dart';
@@ -23,6 +24,11 @@ import '../../widgets/portal_app_bar_logo.dart';
 /// نفس منطق البحث المتسامح عن بريد المنسّق (`normalizeDepartmentName`) الذي
 /// أُصلح بالموقع - القسم بالتذكرة قد يختلف بصورة الهمزة عن النص المخزَّن
 /// بشاشة "بيانات منسقي الأقسام".
+/// وضع اختبار مؤقّت (نفس فكرة admin_workspace_screen.dart) - يوجّه الإرسال
+/// لبريد سليمان بدل بريد المنسّق الحقيقي أثناء اختبار الرسالتين الجديدتين.
+/// يُزال (يعود null) فور انتهاء الاختبار.
+const String? _testEmailOverride = 'tualfawaz@gmail.com';
+
 class CoordinatorEmailScreen extends StatefulWidget {
   const CoordinatorEmailScreen({super.key});
 
@@ -71,6 +77,7 @@ class _CoordinatorEmailScreenState extends State<CoordinatorEmailScreen> {
     required String missingLabel,
     required Future<Uint8List> Function() buildFile,
     required String subject,
+    required String bodyText,
     required String attachmentFilename,
   }) async {
     if (coordinator == null || coordinator.email.trim().isEmpty) {
@@ -87,13 +94,10 @@ class _CoordinatorEmailScreenState extends State<CoordinatorEmailScreen> {
     try {
       final bytes = await buildFile();
       final success = await MailService.sendPrebuiltAttachment(
-        toEmail: coordinator.email.trim(),
+        toEmail: _testEmailOverride ?? coordinator.email.trim(),
         toName: coordinator.name,
         subject: subject,
-        bodyText:
-            'السلام عليكم ورحمة الله وبركاته\n'
-            'مرفق لكم حالات الحذف والإضافة لتعميمها على المرشدين الأكاديميين\n'
-            'وحدة الإرشاد الأكاديمي والخريجين',
+        bodyText: bodyText,
         xlsxBytes: bytes,
         attachmentFilename: attachmentFilename,
       );
@@ -108,15 +112,47 @@ class _CoordinatorEmailScreenState extends State<CoordinatorEmailScreen> {
     }
   }
 
-  Future<void> _sendDepartment(String key, List<Map<String, dynamic>> tickets, String shatr, String department) {
+  static const _defaultBody =
+      'السلام عليكم ورحمة الله وبركاته\n'
+      'مرفق لكم حالات الحذف والإضافة لتعميمها على المرشدين الأكاديميين\n'
+      'وحدة الإرشاد الأكاديمي والخريجين';
+
+  /// يرسل فقط الحالات (الطلاب) التي لم يُنجز المرشد بعض إجراءاتها - على
+  /// مستوى الإجراء المنفرد لا التذكرة كاملة، نفس منطق الموقع بالضبط
+  /// ([ReportFilterService.pendingAdvisorTickets]) - بطلب سليمان صراحةً
+  /// (2026-08-31) بعد اكتشاف أن زر البريد بالموقع يفشل دائمًا بسبب قيود
+  /// CORS، فنُقلت نفس الميزة هنا للتطبيق (المسار الفعلي العامل).
+  Future<void> _sendPendingAdvisorCases(String key, List<Map<String, dynamic>> tickets, String shatr, String department) {
     final shatrLabel = shatr == ExcelParserService.shatrMale ? 'male' : 'female';
     return _send(
-      key: key,
+      key: 'pending|$key',
       coordinator: _findCoordinator(shatr, department),
       missingLabel: 'منسّق قسم "$department"',
-      buildFile: () => EscalationFileService.buildStage2File(tickets),
-      subject: 'حالات الحذف والإضافة - $department - $shatr',
-      attachmentFilename: '${department}_${shatrLabel}_مرحلة_المنسق.xlsx',
+      buildFile: () => EscalationFileService.buildStage2File(ReportFilterService.pendingAdvisorTickets(tickets)),
+      subject: 'حالات جديدة للمرشدين - $department - $shatr',
+      bodyText:
+          'السلام عليكم ورحمة الله وبركاته\n'
+          'مرفق لكم حالات المرشدين لإرسالها إلى المرشدين الأكاديميين لمباشرتها\n'
+          'وحدة الإرشاد الأكاديمي والخريجين',
+      attachmentFilename: '${department}_${shatrLabel}_حالات_جديدة.xlsx',
+    );
+  }
+
+  /// عكس [_sendPendingAdvisorCases] - فقط الإجراءات التي أنجزها المرشد
+  /// فعليًا ([ReportFilterService.completedAdvisorTickets]).
+  Future<void> _sendCompletedAdvisorCases(String key, List<Map<String, dynamic>> tickets, String shatr, String department) {
+    final shatrLabel = shatr == ExcelParserService.shatrMale ? 'male' : 'female';
+    return _send(
+      key: 'completed|$key',
+      coordinator: _findCoordinator(shatr, department),
+      missingLabel: 'منسّق قسم "$department"',
+      buildFile: () => EscalationFileService.buildStage2File(ReportFilterService.completedAdvisorTickets(tickets)),
+      subject: 'الحالات المعالجة من قبل المرشدين - $department - $shatr',
+      bodyText:
+          'السلام عليكم ورحمة الله وبركاته\n'
+          'مرفق لكم الحالات التي تم معالجتها من قبل المرشدين الأكاديميين\n'
+          'وحدة الإرشاد الأكاديمي والخريجين',
+      attachmentFilename: '${department}_${shatrLabel}_حالات_معالَجة.xlsx',
     );
   }
 
@@ -128,6 +164,7 @@ class _CoordinatorEmailScreenState extends State<CoordinatorEmailScreen> {
       missingLabel: 'منسّق/ة الكلية - $shatr',
       buildFile: () => EscalationFileService.buildStage3File(shatrTickets),
       subject: 'حالات الحذف والإضافة - منسّق الكلية - $shatr',
+      bodyText: _defaultBody,
       attachmentFilename: 'الكلية_${shatrLabel}_مرحلة_منسق_الكلية.xlsx',
     );
   }
@@ -185,13 +222,12 @@ class _CoordinatorEmailScreenState extends State<CoordinatorEmailScreen> {
                   final parts = entry.key.split('|');
                   final shatr = parts[0];
                   final department = parts.length > 1 ? parts[1] : '';
-                  return _buildRow(
+                  return _buildDepartmentRow(
                     key: entry.key,
-                    icon: Icons.apartment_outlined,
-                    iconColor: AppColors.green,
                     title: department.isEmpty ? '(بدون قسم)' : department,
                     subtitle: '$shatr - عدد الحالات: ${entry.value.length}',
-                    onSend: () => _sendDepartment(entry.key, entry.value, shatr, department),
+                    onSendPending: () => _sendPendingAdvisorCases(entry.key, entry.value, shatr, department),
+                    onSendCompleted: () => _sendCompletedAdvisorCases(entry.key, entry.value, shatr, department),
                   );
                 }),
                 const SizedBox(height: AppSpacing.sm),
@@ -225,6 +261,47 @@ class _CoordinatorEmailScreenState extends State<CoordinatorEmailScreen> {
                 icon: const Icon(Icons.mail_outline, color: Colors.teal),
                 onPressed: onSend,
               ),
+      ),
+    );
+  }
+
+  /// نفس زرَّي الموقع بالضبط (`admin_workspace_screen.dart`) - أحدهما يرسل
+  /// حالات جديدة (لم يُنجزها المرشد بعد) والآخر الحالات المعالَجة، لكن من
+  /// هنا فعليًا (المسار العامل بلا قيود CORS).
+  Widget _buildDepartmentRow({
+    required String key,
+    required String title,
+    required String subtitle,
+    required VoidCallback onSendPending,
+    required VoidCallback onSendCompleted,
+  }) {
+    final isSendingPending = _sendingKeys.contains('pending|$key');
+    final isSendingCompleted = _sendingKeys.contains('completed|$key');
+    return Card(
+      margin: EdgeInsets.zero,
+      child: ListTile(
+        leading: CircleAvatar(backgroundColor: AppColors.green.withValues(alpha: 0.12), child: const Icon(Icons.apartment_outlined, color: AppColors.green)),
+        title: Text(title),
+        subtitle: Text(subtitle),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            isSendingPending
+                ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
+                : IconButton(
+                    tooltip: 'إرسال الحالات الجديدة (لم يُنجزها المرشد بعد)',
+                    icon: const Icon(Icons.mark_email_unread_outlined, color: Colors.deepOrange),
+                    onPressed: onSendPending,
+                  ),
+            isSendingCompleted
+                ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
+                : IconButton(
+                    tooltip: 'إرسال الحالات المعالَجة من المرشدين',
+                    icon: const Icon(Icons.mail_outline, color: Colors.teal),
+                    onPressed: onSendCompleted,
+                  ),
+          ],
+        ),
       ),
     );
   }
