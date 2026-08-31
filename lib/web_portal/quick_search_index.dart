@@ -14,6 +14,7 @@ import 'hardship_cases_coordinator_screen.dart';
 import 'portal_operations_guide_page.dart';
 import 'portal_sitemap_screen.dart';
 import 'reports_hub_screen.dart';
+import 'student_status_card_screen.dart';
 import 'support_cases_admin_screen.dart';
 import 'support_cases_coordinator_screen.dart';
 import 'viewer_reports_screen.dart';
@@ -168,6 +169,12 @@ List<QuickSearchEntry> buildQuickSearchEntries(
           keywords: ['خدمات أكاديمية', 'تسكين', 'جداول'],
           icon: Icons.school_outlined,
           onTap: () => _push(context, const AcademicServicesHubScreen()),
+        ),
+        QuickSearchEntry(
+          title: 'بطاقة حالة طالب/ة',
+          keywords: ['طالب', 'بحث عن طالب', 'رقم جامعي', 'حالة طالب', 'بطاقة'],
+          icon: Icons.badge_outlined,
+          onTap: () => _push(context, const StudentStatusCardScreen()),
         ),
       ]);
     }

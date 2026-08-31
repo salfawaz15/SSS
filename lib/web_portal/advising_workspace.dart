@@ -7,6 +7,7 @@ import 'advising_hub_screen.dart';
 import 'advising_schedule_admin_screen.dart';
 import 'advisor_students_lookup_screen.dart';
 import 'hardship_cases_admin_screen.dart';
+import 'student_status_card_screen.dart';
 import 'support_cases_admin_screen.dart';
 
 /// نظام تصميم موحّد لـ"لوحة الإرشاد" (نظرة عامة + 5 شاشات فرعية) - بديل
@@ -26,7 +27,7 @@ import 'support_cases_admin_screen.dart';
 const double kAdvisingWorkspaceMaxWidth = 1400;
 
 /// مفاتيح الشاشات الست الثابتة - نفس الترتيب المطلوب بالتنقّل الداخلي.
-enum AdvisingSection { overview, cases, lookup, hardship, support, schedule }
+enum AdvisingSection { overview, cases, lookup, studentCard, hardship, support, schedule }
 
 class _AdvisingDestination {
   final AdvisingSection section;
@@ -65,6 +66,13 @@ final List<_AdvisingDestination> _kAdvisingDestinations = [
     icon: Icons.person_search_outlined,
     visible: (isSuperAdmin) => isSuperAdmin,
     builder: (_) => const AdvisorStudentsLookupScreen(),
+  ),
+  _AdvisingDestination(
+    section: AdvisingSection.studentCard,
+    label: 'بطاقة حالة طالب/ة',
+    icon: Icons.badge_outlined,
+    visible: (isSuperAdmin) => isSuperAdmin,
+    builder: (_) => const StudentStatusCardScreen(),
   ),
   _AdvisingDestination(
     section: AdvisingSection.hardship,
