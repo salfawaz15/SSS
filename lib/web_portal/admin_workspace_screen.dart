@@ -719,6 +719,24 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
                 child: const PortalMenuRow(icon: Icons.folder_zip_outlined, label: 'تنزيل ملفات الحالات'),
               ),
               PopupMenuItem(
+                value: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => StreamBuilder<List<Map<String, dynamic>>>(
+                      stream: FirestoreTicketService.watchAllTickets(),
+                      builder: (context, snapshot) {
+                        final tickets = snapshot.data ?? [];
+                        return PortalScaffold(
+                          title: 'الأعضاء الذين لم ينجزوا أي حالة',
+                          navItems: buildAdminNavItems(context, current: 'downloads'),
+                          body: _buildDelinquentAdvisorsTable(tickets, snapshot.hasData),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                child: const PortalMenuRow(icon: Icons.person_off_outlined, label: 'الأعضاء الذين لم ينجزوا أي حالة'),
+              ),
+              PopupMenuItem(
                 value: _confirmClearData,
                 child: PortalMenuRow(icon: Icons.delete_sweep_outlined, label: 'تفريغ البيانات', color: Colors.red.shade700),
               ),
@@ -763,6 +781,48 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
 
   /// قائمة تنزيل ملفات كل قسم/شطر - محتوى صفحة "تنزيل ملفات الحالات"
   /// المستقلة (كانت سابقًا مطويّة داخل الصفحة الرئيسية للوحة الإدارة).
+  /// جدول شامل واحد بكل الأقسام الخمسة وشطريها يعرض أسماء الأعضاء الذين لم
+  /// ينجزوا أي حالة إطلاقًا - لتسهيل حصر الأسماء وإرسالها لرؤساء الأقسام
+  /// دفعة واحدة بدل مراجعة كل بطاقة قسم على حدة (بطلب سليمان صراحةً 2026-08-31).
+  Widget _buildDelinquentAdvisorsTable(List<Map<String, dynamic>> tickets, bool hasData) {
+    if (!hasData) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    final groups = ExcelParserService.groupByShatrAndDepartment(tickets);
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: DataTable(
+            columns: const [
+              DataColumn(label: Text('القسم')),
+              DataColumn(label: Text('شطر الطلاب')),
+              DataColumn(label: Text('شطر الطالبات')),
+            ],
+            rows: ExcelParserService.departments.map((department) {
+              final maleTickets = groups['${ExcelParserService.shatrMale}|$department'] ?? const [];
+              final femaleTickets = groups['${ExcelParserService.shatrFemale}|$department'] ?? const [];
+              final maleNames = ReportFilterService.delinquentAdvisorNames(maleTickets);
+              final femaleNames = ReportFilterService.delinquentAdvisorNames(femaleTickets);
+              return DataRow(cells: [
+                DataCell(Text(department)),
+                DataCell(SizedBox(
+                  width: 280,
+                  child: Text(maleNames.isEmpty ? '-' : maleNames.join('\n')),
+                )),
+                DataCell(SizedBox(
+                  width: 280,
+                  child: Text(femaleNames.isEmpty ? '-' : femaleNames.join('\n')),
+                )),
+              ]);
+            }).toList(),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildDownloadsList(Map<String, List<Map<String, dynamic>>> groups, bool hasData) {
     if (!hasData) {
       return const Center(child: CircularProgressIndicator());
