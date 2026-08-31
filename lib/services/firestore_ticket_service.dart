@@ -11,12 +11,18 @@ class MergeResult {
   // (2026-08-30: "كيف أعرف الحالات التي لم ترفع أو غير المطابقة؟") حتى يمكن
   // عرض هوية كل صف فاشل (رقم جامعي/مقرر/نوع إجراء) بدل رقم مجرَّد بلا تفاصيل.
   final List<Map<String, dynamic>> unmatchedRows;
+  // عدد الإجراءات/التذاكر التي أُنشئت تلقائيًا فعليًا من صفوف غير مطابَقة
+  // (حالات النموذج الورقي غالبًا) - كلها ضمن unmatchedRows أيضًا، لكن هذا
+  // العدّاد يوضّح أنها لم تُهمَل بل دخلت النظام كتذاكر جديدة حقيقية (سليمان
+  // صراحةً 2026-09-01).
+  final int createdCount;
 
   const MergeResult({
     required this.matchedCount,
     required this.unmatchedCount,
     this.missingReasonCount = 0,
     this.unmatchedRows = const [],
+    this.createdCount = 0,
   });
 }
 
@@ -197,6 +203,12 @@ class FirestoreTicketService {
     return _mergeProcessedRowsIntoDocs(processedRows, snap.docs);
   }
 
+  /// عنوان "يوم" التذاكر المُنشأة تلقائيًا من صفوف النموذج الورقي غير
+  /// المطابَقة - يظهر كعنوان قسم مستقل بملفات المرشد اللاحقة تلقائيًا (نفس
+  /// آلية تجميع الأيام الموجودة أصلاً بـExcelExportService.buildDepartmentWorkbook،
+  /// بلا أي كود إضافي - القيمة هنا هي نص العنوان نفسه المعروض للمرشد لاحقًا).
+  static const String paperFormUploadedDateLabel = 'حالات مستلمة عبر النموذج الورقي';
+
   static Future<MergeResult> _mergeProcessedRowsIntoDocs(
     List<Map<String, dynamic>> processedRows,
     List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
@@ -232,29 +244,64 @@ class FirestoreTicketService {
 
     var matched = 0;
     var unmatched = 0;
+    var created = 0;
     var missingReason = 0;
     final changedDocIds = <String>{};
+    // معرِّفات تذاكر جُدَّت بالكامل الآن (طالب لم تكن له تذكرة أصلاً) - تُكتَب
+    // بـ`set` كاملة، بخلاف بقية التذاكر المحدَّثة التي تُكتَب بـ`update` لحقل
+    // actions فقط (المستند نفسه موجود مسبقًا).
+    final newTicketDocIds = <String>{};
     final unmatchedRows = <Map<String, dynamic>>[];
 
     for (final row in processedRows) {
+      final rowUniversityId = (row['university_id'] ?? '').toString();
       final key = _actionKey(
-        (row['university_id'] ?? '').toString(),
+        rowUniversityId,
         (row['action_type'] ?? '').toString(),
         (row['course'] ?? '').toString(),
         (row['section'] ?? '').toString(),
       );
-      final action = actionIndex[key];
-      if (action == null) {
-        unmatched++;
-        unmatchedRows.add(row);
-        continue;
-      }
-
+      final existingAction = actionIndex[key];
       final rowAdvisorStatus = (row['advisor_status'] ?? '').toString().trim();
       final rowAdvisorNotes = (row['advisor_notes'] ?? '').toString().trim();
       final rowAdvisorOtherReason = (row['advisor_other_reason'] ?? '').toString().trim();
       if (rowAdvisorStatus == 'لم يتم التنفيذ' && rowAdvisorNotes.isEmpty && rowAdvisorOtherReason.isEmpty) {
         missingReason++;
+      }
+
+      if (existingAction == null) {
+        // لا تذكرة/إجراء مطابِق - حالة نموذج ورقي غالبًا (طالب لم يمرّ أصلاً
+        // بنموذج Microsoft Forms الإلكتروني، سليمان صراحةً 2026-09-01): تُنشأ
+        // تذكرة/إجراء جديد فعليًا بدل تجاهل الصف بصمت، حتى يصل لمنسّق القسم
+        // بنفس المسار الطبيعي. صف بلا رقم جامعي (سطر فارغ لم يستخدمه المرشد)
+        // يُتجاهل بصمت هنا فقط - لا قيمة لتذكرة بلا هوية طالب.
+        if (rowUniversityId.isEmpty) continue;
+        final newAction = _buildActionFromRow(row);
+        var ticket = ticketsData[rowUniversityId];
+        if (ticket == null) {
+          newTicketDocIds.add(rowUniversityId);
+          ticket = {
+            'university_id': rowUniversityId,
+            'name': (row['name'] ?? '').toString(),
+            'shatr': (row['shatr'] ?? '').toString(),
+            'department': (row['department'] ?? '').toString(),
+            'advisor': (row['advisor'] ?? '').toString(),
+            'phone': '',
+            'has_disability': false,
+            'expected_graduate': false,
+            'uploaded_date': paperFormUploadedDateLabel,
+            'actions': <Map<String, dynamic>>[],
+          };
+          ticketsData[rowUniversityId] = ticket;
+        }
+        (ticket['actions'] as List).add(newAction);
+        actionIndex[key] = newAction;
+        actionOwnerDocId[key] = rowUniversityId;
+        created++;
+        changedDocIds.add(rowUniversityId);
+        unmatched++;
+        unmatchedRows.add(row);
+        continue;
       }
 
       // الأعمدة الثلاثة (مرشد/منسّق قسم/منسّق كلية) منفصلة الآن بالملف -
@@ -266,7 +313,7 @@ class FirestoreTicketService {
       // المرفوع (بلا مسح حقل جهة أخرى لم تُملَأ بهذا الملف تحديدًا).
       for (final field in ['advisor_status', 'advisor_notes', 'advisor_other_reason', 'coordinator_status', 'coordinator_notes', 'college_status', 'college_notes']) {
         final value = (row[field] ?? '').toString();
-        if (value.isNotEmpty) action[field] = value;
+        if (value.isNotEmpty) existingAction[field] = value;
       }
       matched++;
       final ownerId = actionOwnerDocId[key];
@@ -275,11 +322,43 @@ class FirestoreTicketService {
 
     final batch = FirebaseFirestore.instance.batch();
     for (final docId in changedDocIds) {
-      batch.update(_col.doc(docId), {'actions': ticketsData[docId]!['actions']});
+      if (newTicketDocIds.contains(docId)) {
+        batch.set(_col.doc(docId), ticketsData[docId]!);
+      } else {
+        batch.update(_col.doc(docId), {'actions': ticketsData[docId]!['actions']});
+      }
     }
     await batch.commit();
 
-    return MergeResult(matchedCount: matched, unmatchedCount: unmatched, missingReasonCount: missingReason, unmatchedRows: unmatchedRows);
+    return MergeResult(
+      matchedCount: matched,
+      unmatchedCount: unmatched,
+      missingReasonCount: missingReason,
+      unmatchedRows: unmatchedRows,
+      createdCount: created,
+    );
+  }
+
+  /// يبني إجراء (action) جاهزًا لتذكرة جديدة من صف ملف معالَج غير مطابَق -
+  /// نفس بنية إجراء تذكرة عادية (انظر ExcelParserService/ExcelExportService)
+  /// حتى يظهر بنفس الشكل تمامًا بملفات المرشد/التقارير اللاحقة.
+  static Map<String, dynamic> _buildActionFromRow(Map<String, dynamic> row) {
+    return {
+      'action_type': (row['action_type'] ?? '').toString(),
+      'course': (row['course'] ?? '').toString(),
+      'course_name': (row['course_name'] ?? '').toString(),
+      'course_code': (row['course_code'] ?? '').toString(),
+      'required_section': (row['required_section'] ?? '').toString(),
+      'current_section': (row['current_section'] ?? '').toString(),
+      'reason_detail': (row['reason_detail'] ?? '').toString(),
+      'advisor_status': (row['advisor_status'] ?? '').toString(),
+      'advisor_notes': (row['advisor_notes'] ?? '').toString(),
+      'advisor_other_reason': (row['advisor_other_reason'] ?? '').toString(),
+      'coordinator_status': (row['coordinator_status'] ?? '').toString(),
+      'coordinator_notes': (row['coordinator_notes'] ?? '').toString(),
+      'college_status': (row['college_status'] ?? '').toString(),
+      'college_notes': (row['college_notes'] ?? '').toString(),
+    };
   }
 
   /// يفرّغ حالة الإنجاز/الملاحظات/جهة الإنجاز لكل حالات قسم/شطر واحد (تراجع

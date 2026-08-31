@@ -165,7 +165,11 @@ class AdvisorZipService {
 
     for (final entry in byAdvisor.entries) {
       final advisorTickets = entry.value;
-      final workbookResult = await ExcelExportService.buildDepartmentWorkbook(advisorTickets, includeInstructions: true);
+      final workbookResult = await ExcelExportService.buildDepartmentWorkbook(
+        advisorTickets,
+        includeInstructions: true,
+        includePaperFormRows: true,
+      );
       final withReasonsSheet = _addReasonsReferenceSheet(workbookResult.bytes);
       final dataRowCount = workbookResult.totalDataRowCount;
       final protectedBytes = ExcelProtectionService.protect(
@@ -179,6 +183,27 @@ class AdvisorZipService {
             columnIndex: ExcelExportService.advisorNotesColumnIndex,
             rangeFormula: "'$_reasonsSheetName'!\$A\$1:\$A\$${ExcelExportService.advisorReasonOptions.length}",
           ),
+          // قوائم منسدلة إضافية مقتصرة على نطاق صفوف النموذج الورقي فقط (لا
+          // بقية الملف - تلك الأعمدة هناك تُملأ تلقائيًا من التذكرة الأصلية)
+          // بطلب سليمان صراحةً (2026-09-02): تمنع أخطاء إملائية حرة بكتابة
+          // نوع الإجراء/ذوي الإعاقة/تصنيف أولوية التخرج يدويًا.
+          if (workbookResult.paperFormFirstRow != null && workbookResult.paperFormLastRow != null) ...[
+            DropdownColumn(
+              columnIndex: ExcelExportService.actionTypeColumnIndex,
+              options: ExcelExportService.paperFormActionTypeOptions,
+              sqrefOverride: _paperFormColumnSqref(workbookResult, ExcelExportService.actionTypeColumnIndex),
+            ),
+            DropdownColumn(
+              columnIndex: ExcelExportService.disabilityColumnIndex,
+              options: ExcelExportService.paperFormYesNoOptions,
+              sqrefOverride: _paperFormColumnSqref(workbookResult, ExcelExportService.disabilityColumnIndex),
+            ),
+            DropdownColumn(
+              columnIndex: ExcelExportService.expectedGraduateColumnIndex,
+              options: ExcelExportService.paperFormGraduationPriorityOptions,
+              sqrefOverride: _paperFormColumnSqref(workbookResult, ExcelExportService.expectedGraduateColumnIndex),
+            ),
+          ],
         ],
         unlockedColumnIndexes: [
           ExcelExportService.advisorStatusColumnIndex,
@@ -203,6 +228,11 @@ class AdvisorZipService {
           ExcelExportService.collegeStatusColumnIndex,
           ExcelExportService.collegeNotesColumnIndex,
         ],
+        // خلايا صفوف النموذج الورقي الفارغة تُفتَح صراحةً بكل أعمدتها عدا
+        // الثلاثة المفتوحة أصلاً بكل الملف (حالة الإنجاز/ملاحظات المرشد/سبب
+        // آخر - تبقى قوائم منسدلة كما هي، لا نص حر) - بطلب سليمان صراحةً
+        // (2026-09-01، نموذج ورقي يوم الثلاثاء الأخير).
+        unlockedCellRefs: _paperFormUnlockedCellRefs(workbookResult),
         dataRowCount: dataRowCount,
         headerRowCount: 2,
       );
@@ -217,6 +247,62 @@ class AdvisorZipService {
     }
 
     return files;
+  }
+
+  /// أعمدة صفوف النموذج الورقي التي تبقى مقفلة كبقية الملف - إما لأنها قوائم
+  /// منسدلة أصلاً (حالة/ملاحظات المرشد)، أو مُعبَّأة تلقائيًا سلفًا بقيمة
+  /// صحيحة موحَّدة (الشطر/القسم/المرشد، انظر توثيق [ExcelExportService.
+  /// shatrColumnIndex])، أو لا يجوز للمرشد تعديلها أصلًا (منسّق القسم/الكلية).
+  static const Set<int> _paperFormLockedColumnIndexes = {
+    ExcelExportService.shatrColumnIndex,
+    ExcelExportService.departmentColumnIndex,
+    ExcelExportService.advisorNameColumnIndex,
+    ExcelExportService.advisorStatusColumnIndex,
+    ExcelExportService.advisorNotesColumnIndex,
+    ExcelExportService.advisorOtherReasonColumnIndex,
+    ExcelExportService.coordinatorStatusColumnIndex,
+    ExcelExportService.coordinatorNotesColumnIndex,
+    ExcelExportService.collegeStatusColumnIndex,
+    ExcelExportService.collegeNotesColumnIndex,
+  };
+
+  /// نطاق خلايا عمود واحد (مثل "K13:K32") مقتصر على صفوف النموذج الورقي فقط
+  /// - يُستخدَم كـ[DropdownColumn.sqrefOverride] لقوائم منسدلة إضافية لا
+  /// يجوز أن تمتد لبقية صفوف الملف العادية.
+  static String? _paperFormColumnSqref(DepartmentWorkbookResult result, int columnIndex) {
+    final first = result.paperFormFirstRow;
+    final last = result.paperFormLastRow;
+    if (first == null || last == null) return null;
+    final letter = _columnLetter(columnIndex);
+    return '$letter$first:$letter$last';
+  }
+
+  /// يبني قائمة مراجع خلايا صريحة (مثل "A45") لفتح كل أعمدة صفوف النموذج
+  /// الورقي الفارغة عدا الأعمدة ذات القوائم المنسدلة (تبقى كما هي).
+  static List<String> _paperFormUnlockedCellRefs(DepartmentWorkbookResult result) {
+    final first = result.paperFormFirstRow;
+    final last = result.paperFormLastRow;
+    if (first == null || last == null) return const [];
+    final refs = <String>[];
+    for (var row = first; row <= last; row++) {
+      for (var col = 0; col < ExcelExportService.columnCount; col++) {
+        if (_paperFormLockedColumnIndexes.contains(col)) continue;
+        refs.add('${_columnLetter(col)}$row');
+      }
+    }
+    return refs;
+  }
+
+  /// يحوّل فهرس عمود صفر-فهرسة إلى حرف/أحرف عمود Excel (0 -> A, 25 -> Z) -
+  /// نسخة محلية عن نفس منطق [ExcelProtectionService._columnLetter] الخاص.
+  static String _columnLetter(int index) {
+    var n = index;
+    var result = '';
+    do {
+      result = String.fromCharCode(65 + (n % 26)) + result;
+      n = (n ~/ 26) - 1;
+    } while (n >= 0);
+    return result;
   }
 
   static const String _reasonsSheetName = 'قائمة الأسباب';

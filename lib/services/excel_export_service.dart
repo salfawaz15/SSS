@@ -9,10 +9,15 @@ class ExcelExportService {
   // أسماء عناوين الأعمدة المرجعية - تُستخدم أيضًا عند إعادة قراءة الملفات
   // المعالَجة العائدة من المرشدين (ProcessedFileParserService) للبحث عن
   // العمود المطلوب بالاسم بدل الفهرس الثابت.
+  static const String studentNameHeader = 'اسم الطالب';
+  static const String shatrHeader = 'الشطر';
+  static const String departmentHeader = 'القسم';
+  static const String advisorNameHeader = 'المرشد الأكاديمي';
   static const String universityIdHeader = 'الرقم الجامعي';
   static const String remainingHoursHeader = 'الساعات المتبقية';
   static const String gpaHeader = 'المعدل';
   static const String actionTypeHeader = 'نوع الإجراء';
+  static const String reasonHeader = 'سبب الطلب';
   static const String courseNameHeader = 'اسم المقرر';
   static const String courseCodeHeader = 'رمز المقرر';
   static const String addSectionHeader = 'رقم الشعبة المراد إضافتها';
@@ -55,13 +60,13 @@ class ExcelExportService {
   ];
 
   static const List<String> _headers = [
-    'اسم الطالب',
+    studentNameHeader,
     universityIdHeader,
     remainingHoursHeader,
     gpaHeader,
-    'الشطر',
-    'القسم',
-    'المرشد الأكاديمي',
+    shatrHeader,
+    departmentHeader,
+    advisorNameHeader,
     'رقم الجوال',
     'تصنيف أولوية التخرج',
     'ذوي إعاقة',
@@ -72,7 +77,7 @@ class ExcelExportService {
     deleteSectionHeader,
     currentSectionHeader,
     requestedSectionHeader,
-    'سبب الطلب',
+    reasonHeader,
     advisorStatusHeader,
     advisorNotesHeader,
     advisorOtherReasonHeader,
@@ -113,6 +118,10 @@ class ExcelExportService {
   /// فهرس عمود "الساعات المتبقية" (صفر-فهرسة) - قيمته تُكتَب رقمًا صحيحًا
   /// فعليًا (`IntCellValue`) لا نصًا، حتى يصح الفرز الرقمي لاحقًا لو فرزه
   /// المرشد يدويًا داخل إكسل (سليمان صراحةً 2026-08-27).
+  /// عدد أعمدة ملف المرشد الكلي - يُستخدم خارجيًا (AdvisorZipService) لبناء
+  /// مراجع خلايا صريحة تغطي كل الأعمدة بلا تكرار رقم 25 حرفيًا في مكانين.
+  static int get columnCount => _headers.length;
+
   static const int remainingHoursColumnIndex = 2;
 
   /// فهرس عمود "المعدل" (صفر-فهرسة) - يُكتَب رقمًا عشريًا فعليًا
@@ -130,6 +139,20 @@ class ExcelExportService {
   /// فهرس عمود "رقم الجوال" - يُخفى بملف المرشد (سليمان صراحةً 2026-08-25:
   /// التواصل مع الطالب يكون عبر القنوات الرسمية فقط، لا هاتفيًا مباشرة).
   static const int phoneColumnIndex = 7;
+
+  /// فهرس عمود "تصنيف أولوية التخرج" (صفر-فهرسة) - يُحسَب تلقائيًا للصفوف
+  /// العادية من بيانات الطلبة الأكاديمية، لكن صفوف النموذج الورقي (بلا بيانات
+  /// أكاديمية معروفة) يُختار له قائمة منسدلة يدويًا (نعم/لا)، انظر
+  /// [AdvisorZipService.buildAdvisorFiles].
+  static const int expectedGraduateColumnIndex = 8;
+
+  /// فهرس عمود "ذوي إعاقة" (صفر-فهرسة) - قائمة منسدلة يدوية بصفوف النموذج
+  /// الورقي تحديدًا (نعم/لا).
+  static const int disabilityColumnIndex = 9;
+
+  /// فهرس عمود "نوع الإجراء" (صفر-فهرسة) - قائمة منسدلة يدوية بصفوف النموذج
+  /// الورقي تحديدًا (إضافة/حذف/تعديل) لمنع أخطاء إملائية حرة بكتابته يدويًا.
+  static const int actionTypeColumnIndex = 10;
 
   /// فهرس عمود "رمز المقرر" - اسم المقرر وحده كافٍ عمليًا للمرشد.
   static const int courseCodeColumnIndex = 12;
@@ -161,17 +184,26 @@ class ExcelExportService {
     borderColorHex: ExcelColor.fromHexString('FFB9C4BF'),
   );
 
-  static CellStyle _headerStyle() => CellStyle(
+  static CellStyle _headerStyle({int? fontSize, Border? border}) => CellStyle(
     bold: true,
+    fontSize: fontSize,
     fontColorHex: ExcelColor.white,
     backgroundColorHex: ExcelColor.fromHexString('FF154B36'),
     horizontalAlign: HorizontalAlign.Center,
     verticalAlign: VerticalAlign.Center,
     textWrapping: TextWrapping.WrapText,
-    leftBorder: _thinGrayBorder,
-    rightBorder: _thinGrayBorder,
-    topBorder: _thinGrayBorder,
-    bottomBorder: _thinGrayBorder,
+    leftBorder: border ?? _thinGrayBorder,
+    rightBorder: border ?? _thinGrayBorder,
+    topBorder: border ?? _thinGrayBorder,
+    bottomBorder: border ?? _thinGrayBorder,
+  );
+
+  /// حدّ أثقل (أسمك وأغمق) من الحدّ الرفيع المعتاد - يُستخدم لإبراز صف
+  /// العناوين المكرَّر بقسم النموذج الورقي بصريًا أكثر عن صف العناوين
+  /// الأصلي، بطلب سليمان صراحةً (2026-09-02).
+  static final _thickGoldBorder = Border(
+    borderStyle: BorderStyle.Medium,
+    borderColorHex: ExcelColor.fromHexString('FFFCE8B2'),
   );
 
   static CellStyle _rowStyle({required bool alternate, bool wrapText = false, String? backgroundColorHex}) => CellStyle(
@@ -241,6 +273,52 @@ class ExcelExportService {
     verticalAlign: VerticalAlign.Center,
   );
 
+  /// عدد الصفوف الفارغة المفتوحة للتحرير الكامل المضافة بنهاية ملف المرشد
+  /// لتسجيل حالات النموذج الورقي يدويًا (توجيه إداري استثنائي خلال أيام
+  /// الحذف والإضافة الثلاثة - سليمان صراحةً 2026-09-01/2026-09-02: بعض
+  /// الطلبة واجهوا صعوبة بالتقديم عبر Microsoft Forms فسُمح لهم بنموذج ورقي
+  /// بديل، وتبيّن أن بعض المرشدين استخدموه فعليًا منذ اليوم الأول (الأحد)
+  /// لا اليوم الأخير فقط - تُدخَل بياناته يدويًا هنا من قبل المرشد، بصرف
+  /// النظر عن اليوم الذي استُلمت فيه). راجع [ExcelProtectionService.protect]
+  /// حيث تُفتَح كل أعمدة هذه الصفوف تحديدًا (بخلاف بقية الملف المقفل إلا
+  /// ثلاثة أعمدة).
+  static const int paperFormExtraRowCount = 20;
+
+  /// عنوان صف الفاصل الذي يسبق صفوف النموذج الورقي الفارغة - نفس أسلوب عنوان
+  /// اليوم لكن بنص توضيحي صريح ولون مميّز ثابت (لا يدور مع ألوان الأيام).
+  static const String paperFormSectionTitle =
+      'حالات النموذج الورقي (تُكتب هنا يدويًا) - أي حالة عولجت ورقيًا بأي يوم من أيام الحذف والإضافة';
+  static const String _paperFormColorHex = 'FFE8D5F5';
+
+  /// نص التعليمات فوق صفوف النموذج الورقي - يشرح طريقة التعبئة اليدوية مع
+  /// تحذير صريح بشأن الرقم الجامعي (سليمان صراحةً 2026-09-01: أي خطأ فيه
+  /// يمنع مطابقة الحالة لاحقًا بالنظام).
+  /// خيارات القائمة المنسدلة لعمود "نوع الإجراء" بصفوف النموذج الورقي فقط.
+  static const List<String> paperFormActionTypeOptions = ['إضافة', 'حذف', 'تعديل'];
+
+  /// خيارات القائمة المنسدلة لعمود "ذوي إعاقة" بصفوف النموذج الورقي فقط.
+  static const List<String> paperFormYesNoOptions = ['نعم', 'لا'];
+
+  /// خيارات القائمة المنسدلة لعمود "تصنيف أولوية التخرج" بصفوف النموذج
+  /// الورقي - نفس التصنيفات الفعلية المستخدَمة تلقائيًا بالصفوف العادية
+  /// (انظر منطق GraduationTier أعلاه: 30 ساعة فأقل = متوقع تخرجه، 31-32 =
+  /// قريب من التخرج)، بدل نعم/لا فقط (سليمان صراحةً 2026-09-02).
+  static const List<String> paperFormGraduationPriorityOptions = [
+    'متوقع تخرجه',
+    'قريب من التخرج',
+    'نعم',
+    'لا',
+  ];
+
+  static const String paperFormInstructionsText =
+      'تعليمات تعبئة حالات النموذج الورقي: هذه الصفوف مفتوحة بالكامل للتحرير (خلافًا لبقية '
+      'الملف)، وتُستخدَم لأي حالة وصلتك ورقيًا سواء اليوم أو بأي يوم سابق من أيام الحذف '
+      'والإضافة (لا يشترط أن تكون من اليوم الأخير). اكتب بيانات كل حالة كما لو كانت صفًا عاديًا: اسم '
+      'الطالب، الرقم الجامعي، المقرر، نوع الإجراء (إضافة/حذف/تعديل)، والشعبة المطلوبة. '
+      '⚠️ تنبيه مهم: تأكد تمامًا من كتابة الرقم الجامعي بشكل صحيح ودقيق دون أي خطأ - أي '
+      'خطأ فيه يمنع مطابقة الحالة بالنظام لاحقًا. اترك أي صف فارغًا لم تحتجه. لتحديد حالة '
+      'الإنجاز والملاحظات استخدم نفس القوائم المنسدلة المستخدَمة ببقية الملف.';
+
   /// يبني ملف Excel حقيقي (.xlsx) لتذاكر قسم واحد ويرجّع بايتاته مع
   /// [DepartmentWorkbookResult.totalDataRowCount] (كل الصفوف الفعلية تحت
   /// العناوين، شاملةً صفوف عنوان اليوم والفواصل الفارغة - لازم لضبط نطاق
@@ -249,9 +327,12 @@ class ExcelExportService {
   /// [includeInstructions] يضيف صفًا مدمَجًا أعلى العناوين بشرح موجز لكيفية
   /// استخدام قائمة "حالة الإنجاز" المنسدلة - يُستخدم فقط لملف المرشد نفسه
   /// (لا لملفات أخرى تُبنى بنفس الدالة كالتصعيد/ذوي الإعاقة).
+  /// [includePaperFormRows] يضيف بنهاية الملف [paperFormExtraRowCount] صفًا
+  /// فارغًا مخصَّصًا لحالات النموذج الورقي - يُستخدم فقط لملف المرشد نفسه.
   static Future<DepartmentWorkbookResult> buildDepartmentWorkbook(
     List<Map<String, dynamic>> tickets, {
     bool includeInstructions = false,
+    bool includePaperFormRows = false,
   }) async {
     final academicLookup = await _loadAcademicLookup();
     final workbook = Excel.createExcel();
@@ -463,6 +544,11 @@ class ExcelExportService {
         final rowIndex = dataRowIndex + headerRowIndex + 1;
         final titleText = spec.day.isEmpty ? 'حالات سابقة (بلا تاريخ رفع مسجَّل)' : spec.day;
         sheet.appendRow([TextCellValue(titleText)]);
+        // ارتفاع صف ثابت صراحةً - بدونه يعتمد الاحتواء التلقائي لإكسل الذي
+        // يتصرّف بشكل غير متسق بين صفوف عناوين الأيام (يظهر بعضها بخط واضح
+        // وبعضها مضغوطًا بخط صغير جدًا رغم تطابق التنسيق البرمجي، سليمان
+        // صراحةً 2026-09-02، بلقطة شاشة فعلية توضح التفاوت).
+        sheet.setRowHeight(rowIndex, 28);
         final titleStyle = _dayTitleStyle(colorHex);
         for (var c = 0; c < _headers.length; c++) {
           sheet.cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: rowIndex)).cellStyle = titleStyle;
@@ -473,9 +559,108 @@ class ExcelExportService {
       dataRowIndex++;
     }
 
+    int? paperFormFirstRow;
+    int? paperFormLastRow;
+    if (includePaperFormRows) {
+      if (currentDay != null) {
+        sheet.appendRow([]); // فاصل فارغ عن آخر مجموعة يوم عادية
+        dataRowIndex++;
+      }
+
+      // صف عنوان القسم - نفس أسلوب عنوان اليوم بلون ثابت مميّز (لا يدور مع
+      // ألوان الأيام)، بخط أكبر (16) والتفاف نص مُفعَّل وارتفاع صف كافٍ حتى
+      // يظهر النص كاملاً وواضحًا بعدة أسطر بدل الانحشار بسطر واحد مقصوص
+      // (سليمان صراحةً 2026-09-02، بلقطة شاشة فعلية توضح القصّ).
+      var rowIndex = dataRowIndex + headerRowIndex + 1;
+      sheet.appendRow([TextCellValue(paperFormSectionTitle)]);
+      sheet.merge(
+        CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: rowIndex),
+        CellIndex.indexByColumnRow(columnIndex: _headers.length - 1, rowIndex: rowIndex),
+      );
+      sheet.setRowHeight(rowIndex, 80);
+      final sectionTitleStyle = CellStyle(
+        bold: true,
+        fontSize: 20,
+        backgroundColorHex: ExcelColor.fromHexString(_paperFormColorHex),
+        horizontalAlign: HorizontalAlign.Center,
+        verticalAlign: VerticalAlign.Center,
+        textWrapping: TextWrapping.WrapText,
+      );
+      for (var c = 0; c < _headers.length; c++) {
+        sheet.cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: rowIndex)).cellStyle = sectionTitleStyle;
+      }
+      dataRowIndex++;
+
+      // شريط تعليمات مدمَج - نفس تنسيق شريط التعليمات أعلى الملف تمامًا
+      // (نفس الألوان والخط الغامق) لكن بخط أكبر لإبرازه، بطلب سليمان صراحةً
+      // (2026-09-02: "لازم تكون مثل التعليمات اللي فوق بالتنسيق بخط كبير").
+      // يشرح طريقة التعبئة مع تحذير صريح بشأن الرقم الجامعي.
+      // العمود 0 لا 1 - خلاف شريط التعليمات الأعلى (يبدأ فعليًا من B لأن ذلك
+      // لا يمسّ صفوف بيانات حقيقية): لو بدأ من العمود 1 هنا فهو بالضبط عمود
+      // "الرقم الجامعي"، فيقرأ ProcessedFileParserService النص الطويل خطأً
+      // كأنه رقم جامعي طالب (خلل حقيقي مؤكَّد، سليمان صراحةً 2026-09-02).
+      rowIndex = dataRowIndex + headerRowIndex + 1;
+      sheet.appendRow([TextCellValue(paperFormInstructionsText)]);
+      sheet.merge(
+        CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: rowIndex),
+        CellIndex.indexByColumnRow(columnIndex: 14, rowIndex: rowIndex),
+      );
+      sheet.setRowHeight(rowIndex, 130);
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: rowIndex)).cellStyle = CellStyle(
+        bold: true,
+        fontSize: 14,
+        fontColorHex: ExcelColor.fromHexString('FF154B36'),
+        backgroundColorHex: ExcelColor.fromHexString('FFFCE8B2'),
+        horizontalAlign: HorizontalAlign.Center,
+        verticalAlign: VerticalAlign.Center,
+        textWrapping: TextWrapping.WrapText,
+      );
+      dataRowIndex++;
+
+      // صف عناوين أعمدة مكرَّر - نفس صف العناوين الأصلي (صف 2 بالملف) يُعاد
+      // وضعه هنا مباشرة قبل صفوف الإدخال اليدوي، حتى يرى المرشد اسم كل عمود
+      // بلا حاجة للتمرير لأعلى الملف (سليمان صراحةً 2026-09-02).
+      rowIndex = dataRowIndex + headerRowIndex + 1;
+      sheet.appendRow(_headers.map((h) => TextCellValue(h)).toList());
+      sheet.setRowHeight(rowIndex, 60);
+      final repeatedHeaderStyle = _headerStyle(fontSize: 13, border: _thickGoldBorder);
+      for (var c = 0; c < _headers.length; c++) {
+        sheet.cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: rowIndex)).cellStyle = repeatedHeaderStyle;
+      }
+      dataRowIndex++;
+
+      // الشطر/القسم/المرشد موحَّدة أصلاً عبر كل صفوف ملف مرشد واحد (انظر
+      // توثيق [shatrColumnIndex]) - تُعبَّأ تلقائيًا هنا من أول تذكرة بدل
+      // تركها فارغة، فتبقى مقفلة كبقية الملف ولا يحتاج المرشد كتابتها يدويًا
+      // (وهي أعمدة مخفية عنه أصلاً فلن يقدر على رؤيتها ليكتبها لو تُركت له).
+      final firstTicket = tickets.isNotEmpty ? tickets.first : const <String, dynamic>{};
+      final paperFormRowTemplate = List<dynamic>.filled(_headers.length, '');
+      // null لا نص فارغ - عمودا الساعات/المعدل يُتوقَّعان رقمًا أو null فقط
+      // بـ_cellValueFor (تحويل `'' as int` يرمي استثناءً، انظر تعريفها).
+      paperFormRowTemplate[remainingHoursColumnIndex] = null;
+      paperFormRowTemplate[gpaColumnIndex] = null;
+      paperFormRowTemplate[shatrColumnIndex] = firstTicket['shatr'] ?? '';
+      paperFormRowTemplate[departmentColumnIndex] = firstTicket['department'] ?? '';
+      paperFormRowTemplate[advisorNameColumnIndex] = firstTicket['advisor'] ?? '';
+
+      paperFormFirstRow = dataRowIndex + headerRowIndex + 1;
+      for (var i = 0; i < paperFormExtraRowCount; i++) {
+        _appendStyledRow(sheet, List.of(paperFormRowTemplate), dataRowIndex, headerRowIndex);
+        final r = dataRowIndex + headerRowIndex + 1;
+        final style = _rowStyle(alternate: false, backgroundColorHex: _paperFormColorHex);
+        for (var c = 0; c < _headers.length; c++) {
+          sheet.cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r)).cellStyle = style;
+        }
+        dataRowIndex++;
+      }
+      paperFormLastRow = dataRowIndex + headerRowIndex;
+    }
+
     return DepartmentWorkbookResult(
       bytes: Uint8List.fromList(workbook.encode()!),
       totalDataRowCount: dataRowIndex,
+      paperFormFirstRow: paperFormFirstRow,
+      paperFormLastRow: paperFormLastRow,
     );
   }
 
@@ -541,7 +726,20 @@ enum GraduationTier { expected, near, normal }
 class DepartmentWorkbookResult {
   final Uint8List bytes;
   final int totalDataRowCount;
-  const DepartmentWorkbookResult({required this.bytes, required this.totalDataRowCount});
+
+  /// أول/آخر رقم صف (1-فهرسة، صيغة OOXML) لصفوف النموذج الورقي الفارغة -
+  /// null إن لم تُطلَب ([ExcelExportService.buildDepartmentWorkbook] بمعامل
+  /// includePaperFormRows: false). تُستخدم لفتح كل أعمدة هذا النطاق تحديدًا
+  /// عند الحماية، انظر [ExcelProtectionService.protect].
+  final int? paperFormFirstRow;
+  final int? paperFormLastRow;
+
+  const DepartmentWorkbookResult({
+    required this.bytes,
+    required this.totalDataRowCount,
+    this.paperFormFirstRow,
+    this.paperFormLastRow,
+  });
 }
 
 /// صف مبنى مؤقتًا قبل الكتابة الفعلية بالشيت - يُرتَّب أولًا حسب [day] (يوم

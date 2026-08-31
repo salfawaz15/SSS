@@ -46,7 +46,17 @@ class ProcessedFileParserService {
     final courseCodeCol = columnIndex[ExcelExportService.courseCodeHeader];
     final addSectionCol = columnIndex[ExcelExportService.addSectionHeader];
     final deleteSectionCol = columnIndex[ExcelExportService.deleteSectionHeader];
+    final currentSectionCol = columnIndex[ExcelExportService.currentSectionHeader];
     final requestedSectionCol = columnIndex[ExcelExportService.requestedSectionHeader];
+    // أعمدة إضافية لا تلزم لمطابقة/تحديث تذكرة موجودة (المطابقة تعتمد فقط
+    // على المفتاح: رقم جامعي+نوع+مقرر+شعبة) لكنها ضرورية لإنشاء تذكرة جديدة
+    // فعليًا عند عدم وجود مطابقة - حالة صفوف النموذج الورقي تحديدًا (سليمان
+    // صراحةً 2026-09-01)، انظر FirestoreTicketService._mergeProcessedRowsIntoDocs.
+    final studentNameCol = columnIndex[ExcelExportService.studentNameHeader];
+    final shatrCol = columnIndex[ExcelExportService.shatrHeader];
+    final departmentCol = columnIndex[ExcelExportService.departmentHeader];
+    final advisorNameCol = columnIndex[ExcelExportService.advisorNameHeader];
+    final reasonCol = columnIndex[ExcelExportService.reasonHeader];
     final advisorStatusCol = columnIndex[ExcelExportService.advisorStatusHeader];
     final advisorNotesCol = columnIndex[ExcelExportService.advisorNotesHeader];
     final advisorOtherReasonCol = columnIndex[ExcelExportService.advisorOtherReasonHeader];
@@ -82,6 +92,11 @@ class ProcessedFileParserService {
 
       final universityId = _cellText(row, universityIdCol);
       if (universityId.isEmpty) continue;
+      // صف العناوين المكرَّر (يُضاف مباشرة قبل صفوف النموذج الورقي - انظر
+      // ExcelExportService.buildDepartmentWorkbook) حقله بعمود الرقم الجامعي
+      // يحمل نص العنوان نفسه حرفيًا - يُتجاهل صراحةً هنا حتى لا يُقرأ كأنه
+      // رقم جامعي طالب فعلي (خلل حقيقي مؤكَّد، سليمان صراحةً 2026-09-02).
+      if (universityId == ExcelExportService.universityIdHeader) continue;
 
       final actionType = _cellText(row, actionTypeCol);
       final courseName = _cellText(row, courseNameCol);
@@ -103,6 +118,22 @@ class ProcessedFileParserService {
         'action_type': actionType,
         'course': course,
         'section': section,
+        // حقول خام إضافية - غير مستخدَمة بمطابقة تذكرة موجودة (مفتاح المطابقة
+        // أعلاه فقط)، بل عند إنشاء تذكرة جديدة فعليًا لصف غير مطابَق (حالات
+        // النموذج الورقي تحديدًا)، انظر FirestoreTicketService._buildNewTicketFromUnmatchedRows.
+        'course_name': courseName,
+        'course_code': courseCode,
+        'required_section': actionType.contains('إضافة')
+            ? _cellText(row, addSectionCol)
+            : (actionType.contains('تعديل') ? _cellText(row, requestedSectionCol) : ''),
+        'current_section': actionType.contains('حذف')
+            ? _cellText(row, deleteSectionCol)
+            : (actionType.contains('تعديل') && currentSectionCol != null ? _cellText(row, currentSectionCol) : ''),
+        if (studentNameCol != null) 'name': _cellText(row, studentNameCol),
+        if (shatrCol != null) 'shatr': _cellText(row, shatrCol),
+        if (departmentCol != null) 'department': _cellText(row, departmentCol),
+        if (advisorNameCol != null) 'advisor': _cellText(row, advisorNameCol),
+        if (reasonCol != null) 'reason_detail': _cellText(row, reasonCol),
         'advisor_status': _cellText(row, advisorStatusCol),
         'advisor_notes': _cellText(row, advisorNotesCol),
         if (advisorOtherReasonCol != null) 'advisor_other_reason': _cellText(row, advisorOtherReasonCol),
