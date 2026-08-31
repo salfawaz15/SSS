@@ -23,9 +23,10 @@ import 'windows1256_decoder.dart';
 /// بمواعيد آخر شعبة صودفت، **حتى عبر فاصل صفحة** (رأس "المقر :" يتكرر كل صفحة
 /// بالملف بلا إعادة ضبط "آخر شعبة" - وإلا انقطع موعد شعبة حقيقي عبَرت صفحتين).
 ///
-/// الشطر لا يُستنتَج من محتوى الملف (خلافًا لقارئ PDF) لأن ملفات هذه المنظومة
-/// منفصلة أصلًا لكل شطر (اسم الملف يذكر "طلاب"/"طالبات") - يُمرَّر [shatr]
-/// صراحةً عند الاستدعاء.
+/// الشطر يُمرَّر افتراضيًا عبر [shatr] (يُستدَلّ عليه من اسم الملف عادةً، لأن
+/// أغلب ملفات هذه المنظومة منفصلة أصلًا لكل شطر)، لكنه يُحدَّث تلقائيًا من نص
+/// خانة "المقر" داخل الملف نفسه إن ذُكرت كلمة "طالبات"/"طلاب" - لدعم الملفات
+/// النادرة التي تدمج الشطرين معًا (انظر التعليق داخل [parseSectionsWithShatr]).
 class CsvScheduleParserService {
   static const List<String> _theoryActivity = ['نظري'];
   static const List<String> _practicalActivity = ['عملي'];
@@ -34,6 +35,13 @@ class CsvScheduleParserService {
     final text = Windows1256Decoder.decode(csvBytes);
     final activityRows = <_RawRow>[];
     _RawRow? lastRow;
+    // بعض الملفات تصدَّر بشطر واحد فقط لكل ملف (يُستدَلّ عليه من اسم الملف عبر
+    // [shatr] الممرَّر)، لكن أخرى ("...مستفيد شطرين...") تدمج الشطرين معًا
+    // بملف واحد - يُميَّز كل قسم بنص خانة "المقر :" المتكرر كل صفحة: "حويّة
+    // طالبات" للطالبات، و"حويّة" وحدها (بلا كلمة جندرية) للطلاب - سليمان
+    // صراحةً (2026-08-31، ملف حقيقي "دراسي مستفيد شطرين"). يبدأ بالشطر
+    // الممرَّر افتراضيًا ويُحدَّث كل مرة تُصادَف فيها خانة "المقر" جديدة.
+    Shatr? currentShatr = shatr;
 
     for (final line in const LineSplitter().convert(text)) {
       if (line.trim().isEmpty || !line.contains(';')) continue;
@@ -44,7 +52,18 @@ class CsvScheduleParserService {
       final cells = line.split(';').map((c) => c.trim().replaceAll('\u00A0', ' ')).toList();
       String at(int i) => i < cells.length ? cells[i] : '';
 
-      if (at(1).contains('المقر') || at(1) == 'الشعبة' || (at(1).isEmpty && at(13) == 'الأيام')) continue;
+      if (at(1).contains('المقر')) {
+        final label = at(3);
+        if (label.contains('طالبات')) {
+          currentShatr = Shatr.female;
+        } else if (label.contains('طلاب')) {
+          currentShatr = Shatr.male;
+        } else if (label.isNotEmpty) {
+          currentShatr = Shatr.male;
+        }
+        continue;
+      }
+      if (at(1) == 'الشعبة' || (at(1).isEmpty && at(13) == 'الأيام')) continue;
       if (cells.every((c) => c.isEmpty)) continue;
 
       final section = at(1);
@@ -74,7 +93,7 @@ class CsvScheduleParserService {
           registered: int.tryParse(at(12)) ?? 0,
           maxCapacity: int.tryParse(at(10)) ?? 0,
           beneficiary: at(21),
-          shatr: shatr,
+          shatr: currentShatr,
         );
         activityRows.add(row);
         lastRow = row;
