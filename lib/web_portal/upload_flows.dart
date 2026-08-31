@@ -1375,9 +1375,16 @@ Future<void> runUploadCourses({
     final female = buildForShatr(Shatr.female);
 
     if (male.ownRecords.isEmpty && female.ownRecords.isEmpty) {
+      final sampleBeneficiaries = sections
+          .map((s) => s.beneficiary)
+          .where((b) => b.trim().isNotEmpty)
+          .take(5)
+          .map((b) => '"$b"')
+          .join(' | ');
       throw Exception(
         'لم يُعثر على أي شعبة "المستفيد" منها كلية إدارة الأعمال ضمن ${sections.length} سطر بالملف. '
-        'تأكد أن الملف يحوي عمود "المستفيد" فعليًا وأنه يذكر "إدارة الأعمال" ضمن نصّه.',
+        'تأكد أن الملف يحوي عمود "المستفيد" فعليًا وأنه يذكر "إدارة الأعمال" ضمن نصّه.\n'
+        'عيّنة مما قُرئ فعليًا من عمود المستفيد: ${sampleBeneficiaries.isEmpty ? '(كل القيم فارغة)' : sampleBeneficiaries}',
       );
     }
 
