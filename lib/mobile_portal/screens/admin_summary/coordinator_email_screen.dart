@@ -27,10 +27,7 @@ import '../../widgets/portal_app_bar_logo.dart';
 /// نفس منطق البحث المتسامح عن بريد المنسّق (`normalizeDepartmentName`) الذي
 /// أُصلح بالموقع - القسم بالتذكرة قد يختلف بصورة الهمزة عن النص المخزَّن
 /// بشاشة "بيانات منسقي الأقسام".
-/// وضع اختبار مؤقّت (نفس فكرة admin_workspace_screen.dart) - يوجّه الإرسال
-/// لبريد سليمان بدل بريد المنسّق الحقيقي أثناء اختبار الرسالتين الجديدتين.
-/// يُزال (يعود null) فور انتهاء الاختبار.
-const String? _testEmailOverride = 'tualfawaz@gmail.com';
+const String? _testEmailOverride = null;
 
 class CoordinatorEmailScreen extends StatefulWidget {
   const CoordinatorEmailScreen({super.key});

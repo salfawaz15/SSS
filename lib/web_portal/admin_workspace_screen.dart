@@ -45,11 +45,7 @@ import 'ticket_action_stats_panel.dart';
 /// شاشة الإدارة في بوابة الويب (كل الصلاحيات): رفع ملف Microsoft Forms،
 /// لوحة متابعة تعرض حجم الإنجاز، تنزيل ملف أي قسم، والتقرير الشامل
 /// (Excel/PDF/طباعة). لا علاقة لها بتطبيق الأندرويد.
-/// وضع اختبار مؤقّت: يوجّه إرسال حالات "جديدة/معالَجة" لبريد سليمان بدل
-/// بريد المنسّق الحقيقي، ليختبر محتوى الرسالتين بنفسه قبل إطلاقهما فعليًا
-/// - يُزال هذا السطر (يعود null) فور انتهاء الاختبار (سليمان صراحةً
-/// 2026-08-31).
-const String? _testEmailOverride = 'tualfawaz@gmail.com';
+const String? _testEmailOverride = null;
 
 class AdminWorkspaceScreen extends StatefulWidget {
   const AdminWorkspaceScreen({super.key});
