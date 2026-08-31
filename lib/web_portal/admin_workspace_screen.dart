@@ -1261,6 +1261,7 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
       final advisors = TicketActionStatsService.buildAdvisorCaseStats(tickets);
       final deptRows = TicketActionStatsService.aggregateByDepartmentShatr(advisors);
       final actionTypeStats = TicketActionStatsService.buildActionTypeCaseStats(tickets);
+      final departmentDistribution = TicketActionStatsService.build(tickets).byDepartmentShatr;
       final now = DateTime.now();
       final weekday = _arabicWeekdays[now.weekday] ?? '';
       final bytes = await ReportPdfService.buildDailyPerformanceReport(
@@ -1271,6 +1272,7 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
         // (يظهر أصلاً كـ"تاريخ الإصدار" تلقائيًا) - فقط اسم يوم الأسبوع الجديد فعليًا.
         subtitle: 'كلية إدارة الأعمال - يوم $weekday',
         actionTypeStats: actionTypeStats,
+        departmentDistribution: departmentDistribution,
       );
       downloadBytes(bytes, 'تقرير_الأداء_${now.toString().substring(0, 10)}.pdf');
       if (mounted) {

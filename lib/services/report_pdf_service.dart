@@ -6,6 +6,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import '../utils/name_display.dart';
+import 'excel_parser_service.dart';
 import 'pdf_brand_kit.dart';
 import 'report_data_service.dart';
 import 'report_filter_service.dart';
@@ -920,6 +921,7 @@ class ReportPdfService {
     required String title,
     String? subtitle,
     Map<String, ActionTypeCaseCounts> actionTypeStats = const {},
+    Map<String, Map<String, int>> departmentDistribution = const {},
   }) async {
     final (regularBytes, boldBytes) = await _loadFontBytes();
     final logoBytes = await _loadLogoBytes();
@@ -980,11 +982,13 @@ class ReportPdfService {
               pw.Expanded(child: _topAdvisorsTable('شطر الطالبات', femaleAdvisors.take(3).toList())),
             ],
           ),
+          if (departmentDistribution.isNotEmpty) ...[
+            pw.SizedBox(height: 10),
+            pw.Text('توزيع الحالات حسب القسم', style: pw.TextStyle(fontSize: 11.5, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 5),
+            _departmentDistributionTable(departmentDistribution),
+          ],
           pw.SizedBox(height: 10),
-          pw.Text('مقارنة شاملة بكل الأقسام والشطرين (الأعلى إنجازًا أولاً)', style: pw.TextStyle(fontSize: 11.5, fontWeight: pw.FontWeight.bold)),
-          pw.SizedBox(height: 5),
-          _deptComparisonTable(deptRows.where((d) => d.total > 0).toList()),
-          pw.SizedBox(height: 12),
           pw.Center(
             child: pw.Text(
               'وحدة الإرشاد الأكاديمي والخريجين',
@@ -998,37 +1002,58 @@ class ReportPdfService {
     return doc.save();
   }
 
-  /// "عدد الحالات الكاملة" (إجمالي إضافة+حذف+تعديل) + تفصيل منجز/مصعَّد/لم
-  /// يُعمل عليه تحت كل نوع إجراء - بطلب سليمان صراحةً (2026-08-30) بعد سؤاله
-  /// عن معنى الأرقام بلوحة الإدارة. صف واحد مضغوط حتى يبقى التقرير بصفحة واحدة.
+  /// "عدد الحالات الكاملة" (إجمالي إضافة+حذف+تعديل) + منجز/لم يُعمل عليه فقط
+  /// تحت كل نوع إجراء (بلا إحصائية التصعيد - سليمان صراحةً 2026-08-31: غير
+  /// مطلوبة بهذا التقرير). بروز بصري كبير (بطلب سليمان) بخلاف صف الأرقام
+  /// المضغوط السابق - بطاقات أكبر بخط أوضح.
   static pw.Widget _actionTypeCaseSummaryRow(Map<String, ActionTypeCaseCounts> stats) {
     const order = ['إضافة', 'حذف', 'تعديل'];
     final types = order.where(stats.containsKey).toList();
     final totalCases = types.fold<int>(0, (sum, t) => sum + stats[t]!.total);
 
-    pw.Widget cell(String text, PdfColor color) {
+    pw.Widget totalCard() {
       return pw.Expanded(
         child: pw.Container(
-          padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-          decoration: pw.BoxDecoration(
-            border: pw.Border(top: pw.BorderSide(color: color, width: 2)),
-            color: const PdfColor.fromInt(0xFFF8FAF9),
-            borderRadius: pw.BorderRadius.circular(4),
+          padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          decoration: pw.BoxDecoration(color: _greenDark, borderRadius: pw.BorderRadius.circular(8)),
+          child: pw.Column(
+            children: [
+              pw.Text('عدد الحالات الكاملة', style: pw.TextStyle(fontSize: 10, color: PdfColors.white)),
+              pw.SizedBox(height: 3),
+              pw.Text('$totalCases', style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold, color: PdfColors.white)),
+            ],
           ),
-          child: pw.Text(text, style: pw.TextStyle(fontSize: 7.5, color: PdfColors.grey800), textAlign: pw.TextAlign.center),
+        ),
+      );
+    }
+
+    pw.Widget typeCard(String type) {
+      final c = stats[type]!;
+      return pw.Expanded(
+        child: pw.Container(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          decoration: pw.BoxDecoration(
+            border: pw.Border(top: pw.BorderSide(color: _gold, width: 3)),
+            color: const PdfColor.fromInt(0xFFF8FAF9),
+            borderRadius: pw.BorderRadius.circular(8),
+          ),
+          child: pw.Column(
+            children: [
+              pw.Text('$type: ${c.total}', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.grey900)),
+              pw.SizedBox(height: 4),
+              pw.Text('منجز ${c.completed} · لم يُعمل عليه ${c.notStarted}', style: const pw.TextStyle(fontSize: 9.5, color: PdfColors.grey800)),
+            ],
+          ),
         ),
       );
     }
 
     return pw.Row(
       children: [
-        cell('عدد الحالات الكاملة: $totalCases', _greenDark),
+        totalCard(),
         for (final t in types) ...[
-          pw.SizedBox(width: 6),
-          cell(
-            '$t: ${stats[t]!.total} (منجز ${stats[t]!.completed} · مصعَّد ${stats[t]!.escalatedToCoordinator} · لم يُعمل عليه ${stats[t]!.notStarted})',
-            _gold,
-          ),
+          pw.SizedBox(width: 8),
+          typeCard(t),
         ],
       ],
     );
@@ -1080,26 +1105,30 @@ class ReportPdfService {
     );
   }
 
-  static pw.Widget _deptComparisonTable(List<DeptShatrPerformance> rows) {
-    if (rows.isEmpty) {
-      return pw.Text('لا توجد بيانات', style: const pw.TextStyle(fontSize: 10));
-    }
-    final headers = ['القسم', 'الشطر', 'إجمالي الحالات', 'باشرها المرشد', 'لم يُباشَر إطلاقًا', 'نسبة الإنجاز'];
-    final tableRows = rows.map((d) {
+  /// جدول "توزيع الحالات حسب القسم" - نفس بنية الجدول المعروض بلوحة الإدارة
+  /// (`_DepartmentTable` بـticket_action_stats_panel.dart، سليمان صراحةً
+  /// 2026-08-31 طلب نسخه بتقرير الأداء اليومي): كل قسم × (إضافة/حذف/تعديل) ×
+  /// (طلاب/طالبات). مضغوط عمدًا حتى يبقى التقرير بصفحة واحدة.
+  static pw.Widget _departmentDistributionTable(Map<String, Map<String, int>> byDepartmentShatr) {
+    int count(String dept, String shatr, String type) => byDepartmentShatr['$shatr|$dept']?[type] ?? 0;
+
+    final headers = ['القسم', 'إضافة (طلاب)', 'إضافة (طالبات)', 'حذف (طلاب)', 'حذف (طالبات)', 'تعديل (طلاب)', 'تعديل (طالبات)'];
+    final rows = ExcelParserService.departments.map((dept) {
       return [
-        d.department.replaceFirst('قسم ', ''),
-        d.shatr,
-        '${d.total}',
-        '${d.completed}',
-        '${d.notStarted}',
-        '${(d.completionRate * 100).toStringAsFixed(0)}%',
+        dept.replaceFirst('قسم ', ''),
+        '${count(dept, ExcelParserService.shatrMale, 'إضافة')}',
+        '${count(dept, ExcelParserService.shatrFemale, 'إضافة')}',
+        '${count(dept, ExcelParserService.shatrMale, 'حذف')}',
+        '${count(dept, ExcelParserService.shatrFemale, 'حذف')}',
+        '${count(dept, ExcelParserService.shatrMale, 'تعديل')}',
+        '${count(dept, ExcelParserService.shatrFemale, 'تعديل')}',
       ];
     }).toList();
-    final (rtlHeaders, rtlRows) = _rtlTable(headers, tableRows);
+    final (rtlHeaders, rtlRows) = _rtlTable(headers, rows);
     return pw.TableHelper.fromTextArray(
       headers: rtlHeaders,
       data: rtlRows,
-      headerStyle: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 8.5),
+      headerStyle: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 8),
       headerDecoration: pw.BoxDecoration(color: _greenDark),
       cellStyle: const pw.TextStyle(fontSize: 8),
       cellAlignment: pw.Alignment.center,
