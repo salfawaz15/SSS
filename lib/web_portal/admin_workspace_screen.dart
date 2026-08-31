@@ -170,11 +170,19 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
   /// بطلب تكليف من يراه مناسبًا لاستكمالها - بطلب سليمان صراحةً (2026-08-31).
   Future<void> _downloadDelinquentAdvisors(
     String key,
-    List<Map<String, dynamic>> tickets,
+    List<Map<String, dynamic>> allTickets,
+    String shatr,
     String department,
   ) async {
     final delinquentKey = 'delinquent|$key';
-    final delinquentTickets = ReportFilterService.delinquentAdvisorTickets(tickets);
+    // الإنجاز يُحسَب عبر كل تذاكر المرشد بالنظام بالكامل لا فقط تذاكر هذا
+    // القسم (وإلا لو أُسندت له حالة واحدة خطأً بقسم آخر فقد يظهر مقصّرًا رغم
+    // إنجازه الفعلي بقسمه الصحيح) - ثم يُقتصَر الملف على تذاكر هذا القسم/
+    // الشطر فقط (سليمان صراحةً 2026-08-31، حساسية إرسال بريد مساءلة لرئيس قسم).
+    final globallyDelinquent = ReportFilterService.delinquentAdvisorTickets(allTickets);
+    final delinquentTickets = globallyDelinquent
+        .where((t) => (t['shatr'] ?? '') == shatr && (t['department'] ?? '') == department)
+        .toList();
     if (delinquentTickets.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -710,7 +718,7 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
                         return PortalScaffold(
                           title: 'تنزيل ملفات الحالات',
                           navItems: buildAdminNavItems(context, current: 'downloads'),
-                          body: _buildDownloadsList(groups, snapshot.hasData),
+                          body: _buildDownloadsList(groups, snapshot.hasData, tickets),
                         );
                       },
                     ),
@@ -788,7 +796,14 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
     if (!hasData) {
       return const Center(child: CircularProgressIndicator());
     }
-    final groups = ExcelParserService.groupByShatrAndDepartment(tickets);
+    // أسماء الأقسام الفعلية كما تُخزَّن بالتذاكر (بلا بادئة "قسم" التي تحملها
+    // [ExcelParserService.departments] فقط) - تُستخرَج من البيانات الحقيقية
+    // مباشرة بدل قائمة ثابتة، تجنّبًا لأي اختلاف صياغة بينهما.
+    final departments = tickets.map((t) => (t['department'] ?? '').toString()).where((d) => d.isNotEmpty).toSet().toList()
+      ..sort();
+    // الإنجاز والقسم الصحيح لكل مرشد يُتحقَّقان عالميًا عبر كل التذاكر (انظر
+    // توثيق الدالة) - حساسية الموضوع عالية لأن الجدول يُرسَل لرؤساء الأقسام.
+    final verifiedByGroup = ReportFilterService.delinquentAdvisorNamesByGroupVerified(tickets, _roster);
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -800,11 +815,9 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
               DataColumn(label: Text('شطر الطلاب')),
               DataColumn(label: Text('شطر الطالبات')),
             ],
-            rows: ExcelParserService.departments.map((department) {
-              final maleTickets = groups['${ExcelParserService.shatrMale}|$department'] ?? const [];
-              final femaleTickets = groups['${ExcelParserService.shatrFemale}|$department'] ?? const [];
-              final maleNames = ReportFilterService.delinquentAdvisorNames(maleTickets);
-              final femaleNames = ReportFilterService.delinquentAdvisorNames(femaleTickets);
+            rows: departments.map((department) {
+              final maleNames = verifiedByGroup['${ExcelParserService.shatrMale}|$department'] ?? const <String>[];
+              final femaleNames = verifiedByGroup['${ExcelParserService.shatrFemale}|$department'] ?? const <String>[];
               return DataRow(cells: [
                 DataCell(Text(department)),
                 DataCell(SizedBox(
@@ -823,7 +836,11 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
     );
   }
 
-  Widget _buildDownloadsList(Map<String, List<Map<String, dynamic>>> groups, bool hasData) {
+  Widget _buildDownloadsList(
+    Map<String, List<Map<String, dynamic>>> groups,
+    bool hasData,
+    List<Map<String, dynamic>> allTickets,
+  ) {
     if (!hasData) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -832,11 +849,15 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
         child: Text('لا توجد بيانات مرفوعة بعد', style: TextStyle(color: Colors.grey.shade600)),
       );
     }
+    // يُحسَب مرة واحدة عبر كل تذاكر النظام - الإنجاز والقسم الصحيح لكل مرشد
+    // يُتحقَّقان عالميًا لا داخل هذا القسم فقط (انظر توثيق الدالة).
+    final verifiedDelinquentByGroup = ReportFilterService.delinquentAdvisorNamesByGroupVerified(allTickets, _roster);
     return ListView(
       padding: const EdgeInsets.all(16),
       children: groups.entries.map((e) {
         final key = e.key;
         final parts = key.split('|');
+        final shatr = parts[0];
         final department = parts.length > 1 ? parts[1] : '';
         final isDownloading = _downloadingKeys.contains(key);
         final isDownloadingDisability = _downloadingKeys.contains('disability|$key');
@@ -846,7 +867,7 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
         final isUploadingProcessed = _downloadingKeys.contains('upload|$key');
         final isDownloadingDelinquent = _downloadingKeys.contains('delinquent|$key');
         final hasDisabilityCases = DisabilityFileService.filterDisabilityTickets(e.value).isNotEmpty;
-        final delinquentNames = ReportFilterService.delinquentAdvisorNames(e.value);
+        final delinquentNames = verifiedDelinquentByGroup[key] ?? const <String>[];
         return Card(
           margin: const EdgeInsets.only(bottom: 10),
           child: ListTile(
@@ -932,7 +953,7 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
                   isLoading: isDownloadingDelinquent,
                   onPressed: (delinquentNames.isEmpty || isDownloadingDelinquent)
                       ? null
-                      : () => _downloadDelinquentAdvisors(key, e.value, department),
+                      : () => _downloadDelinquentAdvisors(key, allTickets, shatr, department),
                 ),
               ],
             ),

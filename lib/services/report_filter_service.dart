@@ -1,3 +1,5 @@
+import '../data/academic_department_names.dart';
+import '../models/advisor_roster_entry.dart';
 import 'advisor_name_matching.dart';
 import 'excel_parser_service.dart';
 import 'report_data_service.dart';
@@ -147,5 +149,43 @@ class ReportFilterService {
     }
     final list = names.toList()..sort();
     return list;
+  }
+
+  /// خريطة "شطر|قسم" (بحسب بيانات كل تذكرة كما هي فعليًا) -> أسماء المرشدين
+  /// الذين لم يُنجزوا أي حالة إطلاقًا **عبر كل تذاكرهم بالنظام بالكامل** (لا
+  /// فقط تذاكر هذا القسم تحديدًا - وإلا لو أُسندت له حالة واحدة خطأً بقسم آخر
+  /// فقد يظهر مقصّرًا رغم إنجازه الفعلي بقسمه الصحيح)، مع تحذير صريح يُلحَق
+  /// بأي اسم قسمه المسجَّل بقائمة مرشدي القسم الرسمية (roster) يخالف قسم هذه
+  /// التذكرة أو غير موجود بالروستر إطلاقًا - للمراجعة اليدوية الإلزامية قبل
+  /// إرسال أي بريد مساءلة. حساسية الموضوع عالية (سليمان صراحةً 2026-08-31):
+  /// حالة حقيقية ظهرت فيها "زكية...العوفي" (مسجَّلة بقسم الاقتصاد والتمويل
+  /// بالروستر) تحت قسم النظم بسبب خطأ إدخال اسم المرشد بنموذج Microsoft Forms
+  /// لتذكرة طالبة واحدة بذلك القسم - القائمة تُرسَل مباشرة لرؤساء الأقسام.
+  static Map<String, List<String>> delinquentAdvisorNamesByGroupVerified(
+    List<Map<String, dynamic>> allTickets,
+    List<AdvisorRosterEntry> roster,
+  ) {
+    final delinquentTickets = delinquentAdvisorTickets(allTickets);
+    final rosterByNormalizedName = <String, AdvisorRosterEntry>{
+      for (final r in roster) normalizeAdvisorNameForMatch(r.name): r,
+    };
+    final result = <String, Set<String>>{};
+    for (final t in delinquentTickets) {
+      final advisor = (t['advisor'] ?? '').toString().trim();
+      if (advisor.isEmpty) continue;
+      final shatr = (t['shatr'] ?? '').toString();
+      final department = (t['department'] ?? '').toString();
+      final rosterEntry = rosterByNormalizedName[normalizeAdvisorNameForMatch(advisor)];
+      String label;
+      if (rosterEntry == null) {
+        label = '$advisor ⚠️ غير مسجَّل بقائمة المرشدين - تحقّق يدويًا';
+      } else if (normalizeDepartmentName(rosterEntry.department) != normalizeDepartmentName(department)) {
+        label = '$advisor ⚠️ قسمه المسجَّل فعليًا: ${rosterEntry.department} - تحقّق يدويًا';
+      } else {
+        label = advisor;
+      }
+      result.putIfAbsent('$shatr|$department', () => {}).add(label);
+    }
+    return {for (final e in result.entries) e.key: (e.value.toList()..sort())};
   }
 }
