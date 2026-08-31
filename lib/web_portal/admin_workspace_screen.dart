@@ -11,6 +11,7 @@ import '../data/academic_department_names.dart';
 import '../models/advisor_roster_entry.dart';
 import '../models/coordinator.dart';
 import '../models/college_roster_member.dart';
+import '../services/advisor_department_resolver.dart';
 import '../services/advisor_roster_service.dart';
 import '../services/college_roster_repository.dart';
 import '../services/advisor_zip_service.dart';
@@ -142,7 +143,7 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
 
   Future<void> _downloadDepartment(
     String key,
-    List<Map<String, dynamic>> tickets,
+    List<Map<String, dynamic>> allTickets,
   ) async {
     setState(() => _downloadingKeys.add(key));
     try {
@@ -152,6 +153,13 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
       // تلقائيًا على بقية المرشدين خلال فترة الحذف والإضافة. نستخدم القائمة
       // المحمَّلة مسبقًا في initState بدل إعادة جلبها من Firestore عند كل
       // ضغطة - كان هذا الجلب المتكرر يُعلّق الزر لو تأخّرت الشبكة لحظة النقر.
+      //
+      // تُعاد التذاكر بقسم المرشد الحقيقي (لا قسم الطالب بالتذكرة) قبل بناء
+      // الملف - وإلا فأي تذكرة بها اسم مرشد من قسم آخر (خطأ إدخال بنموذج
+      // Microsoft Forms أو إشراف عابر للأقسام) يذهب ملف ذلك المرشد لمنسّق قسم
+      // لا علاقة له به، ويغيب تمامًا عن ملفات قسمه الحقيقي (سليمان صراحةً
+      // 2026-08-31: حالات مؤكَّدة - عدنان يعقوب، براء الحازمي، زكية العوفي).
+      final tickets = groupTicketsByAdvisorRealDepartment(allTickets, _collegeRoster)[key] ?? const [];
       final zipBytes = await AdvisorZipService.buildZip(tickets, roster: _roster);
 
       final parts = key.split('|');
@@ -189,12 +197,13 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
     final delinquentKey = 'delinquent|$key';
     // الإنجاز يُحسَب عبر كل تذاكر المرشد بالنظام بالكامل لا فقط تذاكر هذا
     // القسم (وإلا لو أُسندت له حالة واحدة خطأً بقسم آخر فقد يظهر مقصّرًا رغم
-    // إنجازه الفعلي بقسمه الصحيح) - ثم يُقتصَر الملف على تذاكر هذا القسم/
-    // الشطر فقط (سليمان صراحةً 2026-08-31، حساسية إرسال بريد مساءلة لرئيس قسم).
+    // إنجازه الفعلي بقسمه الصحيح) - ثم يُقتصَر الملف على قسم المرشد الحقيقي
+    // (لا قسم الطالب بالتذكرة) لهذا القسم/الشطر تحديدًا (سليمان صراحةً
+    // 2026-08-31: حساسية إرسال بريد مساءلة لرئيس قسم - يجب أن يصل لرئيس
+    // القسم الصحيح فعلاً لا قسم طالب أحد حالاته).
     final globallyDelinquent = ReportFilterService.delinquentAdvisorTickets(allTickets);
-    final delinquentTickets = globallyDelinquent
-        .where((t) => (t['shatr'] ?? '') == shatr && (t['department'] ?? '') == department)
-        .toList();
+    final delinquentTickets =
+        groupTicketsByAdvisorRealDepartment(globallyDelinquent, _collegeRoster)['$shatr|$department'] ?? const [];
     if (delinquentTickets.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -944,7 +953,7 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
                   color: AppColors.green,
                   icon: Icons.download,
                   isLoading: isDownloading,
-                  onPressed: isDownloading ? null : () => _downloadDepartment(key, e.value),
+                  onPressed: isDownloading ? null : () => _downloadDepartment(key, allTickets),
                 ),
                 RoundIconButton(
                   tooltip: 'تنزيل ملف مرحلة المنسّق لهذا القسم (نيابةً عن المنسّق)',
