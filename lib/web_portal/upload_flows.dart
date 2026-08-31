@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../data/academic_department_names.dart';
 import '../data/advising_load_rules.dart';
 import '../data/course_catalog.dart';
 import '../data/faculty_sort_order.dart';
@@ -1348,7 +1349,7 @@ Future<void> runUploadCourses({
       if (proceedDespiteWarning != true) return;
     }
 
-    final ourSections = sections.where((s) => s.beneficiary.contains('كلية إدارة الأعمال')).toList();
+    final ourSections = sections.where((s) => isBusinessCollegeBeneficiary(s.beneficiary)).toList();
     final outsideCodes = CourseCatalog.outsideCollegeCourses.map(CourseCatalog.outsideCourseCode).toSet();
 
     ({
@@ -1376,7 +1377,7 @@ Future<void> runUploadCourses({
     if (male.ownRecords.isEmpty && female.ownRecords.isEmpty) {
       throw Exception(
         'لم يُعثر على أي شعبة "المستفيد" منها كلية إدارة الأعمال ضمن ${sections.length} سطر بالملف. '
-        'تأكد أن الملف يحوي عمود "المستفيد" فعليًا وأن نص الكلية مطابق.',
+        'تأكد أن الملف يحوي عمود "المستفيد" فعليًا وأنه يذكر "إدارة الأعمال" ضمن نصّه.',
       );
     }
 

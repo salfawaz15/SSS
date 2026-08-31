@@ -39,6 +39,16 @@ String _stripAttachedShatr(String s) =>
 /// دائمًا قبل المطابقة مع [_canonicalDepartments] (مفاتيحها كلها بلا "قسم").
 String _stripLeadingQism(String s) => s.trim().replaceFirst(RegExp(r'^قسم\s+'), '').trim();
 
+/// هل عمود "المستفيد" بجدول المقررات يتضمن كلية إدارة الأعمال؟ - مطابقة
+/// متسامحة (تتجاهل صور الهمزة والمسافات، ولا تشترط وجود كلمة "كلية") لأن
+/// عمود "المستفيد" أحيانًا يذكر عدة كليات مستفيدة معًا بصيغ مختلفة، وكلية
+/// إدارة الأعمال تكون دائمًا إحداها - سليمان صراحةً (2026-08-31): يكفي
+/// وجودها ضمن النص بغض النظر عمّا يُضاف معها من كليات أخرى.
+bool isBusinessCollegeBeneficiary(String beneficiary) {
+  final loose = _looseKey(beneficiary);
+  return loose.contains('ادارةالاعمال');
+}
+
 /// يوحّد صيغة اسم القسم إلى الصيغة الرسمية "قسم X" بغض النظر عن وجود كلمة
 /// "قسم"، اختلاف صور الهمزة، أو عبارة شطر ملتصقة بالنص.
 String normalizeDepartmentName(String raw) {
