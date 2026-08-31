@@ -81,20 +81,32 @@ class ReportFilterService {
     return rows;
   }
 
-  /// نفس تذاكر القسم لكن بعد استبعاد أي إجراء "أنجزه المرشد" فعليًا
-  /// (advisor_status = 'تم التنفيذ') - أي إبقاء فقط ما لم يباشره المرشد
-  /// إطلاقًا أو باشره بـ"لم يتم التنفيذ" ("حالات اليوم الثاني" التي تحتاج
-  /// تدخّل المنسّق - بطلب سليمان صراحةً 2026-08-31 لإرسالها منفصلة عن ملف
-  /// مرحلة المنسّق الكامل). تُستبعد التذاكر التي لم يتبقَّ لها أي إجراء
-  /// بعد الفلترة حتى لا تظهر أسطر فارغة بلا إجراءات بملف الإكسل.
+  /// هل كل إجراءات هذه التذكرة (الطالب) أنجزها المرشد فعليًا
+  /// (advisor_status = 'تم التنفيذ')؟ - معيار التصنيف المعتمَد لتقسيم بريد
+  /// المنسّق لرسالتين منفصلتين (بطلب سليمان صراحةً 2026-08-31): الحالة
+  /// كاملة بكل إجراءاتها الأصلية تُصنَّف كوحدة واحدة إما "جديدة" أو
+  /// "معالَجة" - لا تُقسَّم إجراءات نفس الطالب بين الرسالتين ولا يُحذف أي
+  /// إجراء من التذكرة نفسها (سليمان صراحةً: "لا يستبعد أي حالة تبقى كما هي"
+  /// بعد أن كانت أول نسخة تُبقي فقط الإجراءات غير المنجزة داخل كل تذكرة
+  /// وتحذف البقية، ما كان يعني فقدان إجراءات فعلية من الملف المُرسَل).
+  static bool _allActionsCompletedByAdvisor(Map<String, dynamic> ticket) {
+    final actions = (ticket['actions'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
+    if (actions.isEmpty) return false;
+    return actions.every((a) => isCompletedStatus((a['advisor_status'] ?? '').toString().trim()));
+  }
+
+  /// التذاكر (الطلاب) التي **لم يكتمل بعد** كل إجراءاتها من المرشد - أي
+  /// تبقّى إجراء واحد على الأقل فارغًا أو "لم يتم التنفيذ". تُرسَل التذكرة
+  /// **كاملة كما هي بكل إجراءاتها الأصلية** (لا فلترة على مستوى الإجراء
+  /// الواحد) ضمن بريد "حالات جديدة" ليعمّمها المنسّق على المرشدين.
   static List<Map<String, dynamic>> pendingAdvisorTickets(List<Map<String, dynamic>> tickets) {
-    final result = <Map<String, dynamic>>[];
-    for (final ticket in tickets) {
-      final actions = (ticket['actions'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
-      final remaining = actions.where((a) => !isCompletedStatus((a['advisor_status'] ?? '').toString().trim())).toList();
-      if (remaining.isEmpty) continue;
-      result.add({...ticket, 'actions': remaining});
-    }
-    return result;
+    return tickets.where((t) => !_allActionsCompletedByAdvisor(t)).toList();
+  }
+
+  /// عكس [pendingAdvisorTickets] تمامًا - التذاكر التي أنجز المرشد **كل**
+  /// إجراءاتها فعليًا، كاملة كما هي، لبريد "الحالات المعالجة من قبل
+  /// المرشدين" المنفصل.
+  static List<Map<String, dynamic>> completedAdvisorTickets(List<Map<String, dynamic>> tickets) {
+    return tickets.where(_allActionsCompletedByAdvisor).toList();
   }
 }

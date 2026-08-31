@@ -243,7 +243,11 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
     return null;
   }
 
-  Future<void> _emailStage2ToCoordinator(
+  /// يرسل فقط الحالات (الطلاب) التي أنجز المرشد **كل** إجراءاتها فعليًا -
+  /// عبر [ReportFilterService.completedAdvisorTickets]، كل حالة كاملة بكل
+  /// إجراءاتها الأصلية بلا تقسيم (سليمان صراحةً 2026-08-31: رسالتان منفصلتان
+  /// بمحتوى مختلف - هذه للحالات المعالَجة تحديدًا، لا خليط بالحالات الجديدة).
+  Future<void> _emailCompletedAdvisorCasesToCoordinator(
     String key,
     List<Map<String, dynamic>> tickets,
     String department,
@@ -268,26 +272,36 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
       return;
     }
 
+    final completedTickets = ReportFilterService.completedAdvisorTickets(tickets);
+    if (completedTickets.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('لا توجد حالات أنجزها المرشد بالكامل بهذا القسم بعد')),
+        );
+      }
+      return;
+    }
+
     setState(() => _emailingKeys.add(key));
     try {
-      final bytes = await EscalationFileService.buildStage2File(tickets);
+      final bytes = await EscalationFileService.buildStage2File(completedTickets);
       final parts = key.split('|');
       final shatrLabel = parts[0] == ExcelParserService.shatrMale ? 'male' : 'female';
       final success = await MailService.sendPrebuiltAttachment(
         toEmail: coordinator.email.trim(),
         toName: coordinator.name,
-        subject: 'حالات الحذف والإضافة - $department - ${parts[0]}',
+        subject: 'الحالات المعالجة من قبل المرشدين - $department - ${parts[0]}',
         bodyText:
             'السلام عليكم ورحمة الله وبركاته\n'
-            'مرفق لكم حالات الحذف والإضافة لتعميمها على المرشدين الأكاديميين\n'
+            'مرفق لكم الحالات التي تم معالجتها من قبل المرشدين الأكاديميين\n'
             'وحدة الإرشاد الأكاديمي والخريجين',
         xlsxBytes: bytes,
-        attachmentFilename: '${department}_${shatrLabel}_مرحلة_المنسق.xlsx',
+        attachmentFilename: '${department}_${shatrLabel}_حالات_معالَجة.xlsx',
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(success ? 'تم إرسال البريد لمنسّق/ة "$department" بنجاح' : 'تعذّر إرسال البريد - حاول مرة أخرى'),
+            content: Text(success ? 'تم إرسال الحالات المعالَجة لمنسّق/ة "$department" بنجاح' : 'تعذّر إرسال البريد - حاول مرة أخرى'),
             backgroundColor: success ? null : Colors.red.shade700,
           ),
         );
@@ -303,11 +317,11 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
     }
   }
 
-  /// نفس [_emailStage2ToCoordinator] لكن يرسل فقط "حالات اليوم الثاني" -
-  /// الإجراءات التي لم يُنجزها المرشد الأكاديمي (فارغة أو "لم يتم التنفيذ")
-  /// عبر [ReportFilterService.pendingAdvisorTickets]، لا كل حالات القسم -
-  /// بطلب سليمان صراحةً (2026-08-31) بعد سؤاله عن كيفية إرسال حالات اليوم
-  /// الثاني تحديدًا للمنسّق بدل الملف الكامل بكل الحالات.
+  /// يرسل فقط الحالات (الطلاب) التي **لم يكتمل بعد** أيٌّ من إجراءاتها من
+  /// المرشد - عبر [ReportFilterService.pendingAdvisorTickets]، كل حالة
+  /// كاملة بكل إجراءاتها الأصلية بلا تقسيم أو حذف أي إجراء منها - بطلب
+  /// سليمان صراحةً (2026-08-31): رسالة "حالات جديدة" لتعميمها على المرشدين،
+  /// منفصلة عن رسالة الحالات المعالَجة أعلاه.
   Future<void> _emailPendingAdvisorCasesToCoordinator(
     String key,
     List<Map<String, dynamic>> tickets,
@@ -338,7 +352,7 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
     if (pendingTickets.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('لا توجد حالات لم يُنجزها المرشد بهذا القسم - كلها مكتملة')),
+          const SnackBar(content: Text('لا توجد حالات جديدة بهذا القسم - كلها مكتملة من المرشدين')),
         );
       }
       return;
@@ -352,18 +366,18 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
       final success = await MailService.sendPrebuiltAttachment(
         toEmail: coordinator.email.trim(),
         toName: coordinator.name,
-        subject: 'حالات اليوم الثاني (لم يُنجزها المرشد) - $department - ${parts[0]}',
+        subject: 'حالات جديدة للمرشدين - $department - ${parts[0]}',
         bodyText:
             'السلام عليكم ورحمة الله وبركاته\n'
-            'مرفق لكم حالات اليوم الثاني - وهي فقط الحالات التي لم يباشرها المرشد الأكاديمي بعد\n'
+            'مرفق لكم حالات المرشدين لإرسالها إلى المرشدين الأكاديميين لمباشرتها\n'
             'وحدة الإرشاد الأكاديمي والخريجين',
         xlsxBytes: bytes,
-        attachmentFilename: '${department}_${shatrLabel}_حالات_اليوم_الثاني.xlsx',
+        attachmentFilename: '${department}_${shatrLabel}_حالات_جديدة.xlsx',
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(success ? 'تم إرسال حالات اليوم الثاني لمنسّق/ة "$department" بنجاح' : 'تعذّر إرسال البريد - حاول مرة أخرى'),
+            content: Text(success ? 'تم إرسال الحالات الجديدة لمنسّق/ة "$department" بنجاح' : 'تعذّر إرسال البريد - حاول مرة أخرى'),
             backgroundColor: success ? null : Colors.red.shade700,
           ),
         );
@@ -769,14 +783,14 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
                   onPressed: isDownloadingStage2 ? null : () => _downloadStage2OnBehalf(key, e.value),
                 ),
                 RoundIconButton(
-                  tooltip: 'إرسال ملف مرحلة المنسّق الكامل (كل الحالات) بالبريد لمنسّق/ة القسم',
+                  tooltip: 'إرسال الحالات المعالَجة من المرشدين بالكامل بالبريد لمنسّق/ة القسم',
                   color: Colors.teal,
                   icon: Icons.mail_outline,
                   isLoading: isEmailing,
-                  onPressed: isEmailing ? null : () => _emailStage2ToCoordinator(key, e.value, department),
+                  onPressed: isEmailing ? null : () => _emailCompletedAdvisorCasesToCoordinator(key, e.value, department),
                 ),
                 RoundIconButton(
-                  tooltip: 'إرسال حالات اليوم الثاني فقط (لم يُنجزها المرشد) بالبريد لمنسّق/ة القسم',
+                  tooltip: 'إرسال الحالات الجديدة (لم يُنجزها المرشد بعد) بالبريد لمنسّق/ة القسم',
                   color: Colors.deepOrange,
                   icon: Icons.mark_email_unread_outlined,
                   isLoading: isEmailingPending,
