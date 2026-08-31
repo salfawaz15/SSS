@@ -22,6 +22,7 @@ import '../services/mail_service.dart';
 import '../services/processed_file_parser_service.dart';
 import '../services/report_data_service.dart';
 import '../services/report_excel_service.dart';
+import '../services/report_filter_service.dart';
 import '../services/report_pdf_service.dart';
 import '../services/ticket_action_stats_service.dart';
 import '../services/stage_snapshot_service.dart';
@@ -299,6 +300,82 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
       }
     } finally {
       if (mounted) setState(() => _emailingKeys.remove(key));
+    }
+  }
+
+  /// نفس [_emailStage2ToCoordinator] لكن يرسل فقط "حالات اليوم الثاني" -
+  /// الإجراءات التي لم يُنجزها المرشد الأكاديمي (فارغة أو "لم يتم التنفيذ")
+  /// عبر [ReportFilterService.pendingAdvisorTickets]، لا كل حالات القسم -
+  /// بطلب سليمان صراحةً (2026-08-31) بعد سؤاله عن كيفية إرسال حالات اليوم
+  /// الثاني تحديدًا للمنسّق بدل الملف الكامل بكل الحالات.
+  Future<void> _emailPendingAdvisorCasesToCoordinator(
+    String key,
+    List<Map<String, dynamic>> tickets,
+    String department,
+  ) async {
+    final shatr = key.split('|')[0];
+    final coordinator = _findCoordinator(shatr, department);
+    if (coordinator == null || coordinator.email.trim().isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('لا يوجد بريد محفوظ لمنسّق قسم "$department" - أضفه أولاً من شاشة "بيانات منسقي الأقسام"'),
+            backgroundColor: Colors.orange.shade800,
+            action: SnackBarAction(
+              label: 'الذهاب للشاشة',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const CoordinatorsContactsScreen()),
+              ),
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    final pendingKey = 'pending|$key';
+    final pendingTickets = ReportFilterService.pendingAdvisorTickets(tickets);
+    if (pendingTickets.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('لا توجد حالات لم يُنجزها المرشد بهذا القسم - كلها مكتملة')),
+        );
+      }
+      return;
+    }
+
+    setState(() => _emailingKeys.add(pendingKey));
+    try {
+      final bytes = await EscalationFileService.buildStage2File(pendingTickets);
+      final parts = key.split('|');
+      final shatrLabel = parts[0] == ExcelParserService.shatrMale ? 'male' : 'female';
+      final success = await MailService.sendPrebuiltAttachment(
+        toEmail: coordinator.email.trim(),
+        toName: coordinator.name,
+        subject: 'حالات اليوم الثاني (لم يُنجزها المرشد) - $department - ${parts[0]}',
+        bodyText:
+            'السلام عليكم ورحمة الله وبركاته\n'
+            'مرفق لكم حالات اليوم الثاني - وهي فقط الحالات التي لم يباشرها المرشد الأكاديمي بعد\n'
+            'وحدة الإرشاد الأكاديمي والخريجين',
+        xlsxBytes: bytes,
+        attachmentFilename: '${department}_${shatrLabel}_حالات_اليوم_الثاني.xlsx',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(success ? 'تم إرسال حالات اليوم الثاني لمنسّق/ة "$department" بنجاح' : 'تعذّر إرسال البريد - حاول مرة أخرى'),
+            backgroundColor: success ? null : Colors.red.shade700,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تعذّر إرسال البريد: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _emailingKeys.remove(pendingKey));
     }
   }
 
@@ -647,6 +724,7 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
         final isDownloadingDisability = _downloadingKeys.contains('disability|$key');
         final isDownloadingStage2 = _downloadingKeys.contains('stage2dl|$key');
         final isEmailing = _emailingKeys.contains(key);
+        final isEmailingPending = _emailingKeys.contains('pending|$key');
         final isUploadingProcessed = _downloadingKeys.contains('upload|$key');
         final hasDisabilityCases = DisabilityFileService.filterDisabilityTickets(e.value).isNotEmpty;
         return Card(
@@ -691,11 +769,18 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
                   onPressed: isDownloadingStage2 ? null : () => _downloadStage2OnBehalf(key, e.value),
                 ),
                 RoundIconButton(
-                  tooltip: 'إرسال ملف مرحلة المنسّق بالبريد لمنسّق/ة القسم',
+                  tooltip: 'إرسال ملف مرحلة المنسّق الكامل (كل الحالات) بالبريد لمنسّق/ة القسم',
                   color: Colors.teal,
                   icon: Icons.mail_outline,
                   isLoading: isEmailing,
                   onPressed: isEmailing ? null : () => _emailStage2ToCoordinator(key, e.value, department),
+                ),
+                RoundIconButton(
+                  tooltip: 'إرسال حالات اليوم الثاني فقط (لم يُنجزها المرشد) بالبريد لمنسّق/ة القسم',
+                  color: Colors.deepOrange,
+                  icon: Icons.mark_email_unread_outlined,
+                  isLoading: isEmailingPending,
+                  onPressed: isEmailingPending ? null : () => _emailPendingAdvisorCasesToCoordinator(key, e.value, department),
                 ),
                 RoundIconButton(
                   tooltip: 'رفع ملف معالج لهذا القسم (نيابةً عن المنسّق)',

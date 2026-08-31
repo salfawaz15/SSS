@@ -80,4 +80,21 @@ class ReportFilterService {
     }
     return rows;
   }
+
+  /// نفس تذاكر القسم لكن بعد استبعاد أي إجراء "أنجزه المرشد" فعليًا
+  /// (advisor_status = 'تم التنفيذ') - أي إبقاء فقط ما لم يباشره المرشد
+  /// إطلاقًا أو باشره بـ"لم يتم التنفيذ" ("حالات اليوم الثاني" التي تحتاج
+  /// تدخّل المنسّق - بطلب سليمان صراحةً 2026-08-31 لإرسالها منفصلة عن ملف
+  /// مرحلة المنسّق الكامل). تُستبعد التذاكر التي لم يتبقَّ لها أي إجراء
+  /// بعد الفلترة حتى لا تظهر أسطر فارغة بلا إجراءات بملف الإكسل.
+  static List<Map<String, dynamic>> pendingAdvisorTickets(List<Map<String, dynamic>> tickets) {
+    final result = <Map<String, dynamic>>[];
+    for (final ticket in tickets) {
+      final actions = (ticket['actions'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
+      final remaining = actions.where((a) => !isCompletedStatus((a['advisor_status'] ?? '').toString().trim())).toList();
+      if (remaining.isEmpty) continue;
+      result.add({...ticket, 'actions': remaining});
+    }
+    return result;
+  }
 }
