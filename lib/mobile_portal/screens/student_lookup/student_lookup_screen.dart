@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:printing/printing.dart';
 
 import '../../../models/advising_case_record.dart';
 import '../../../services/advising_case_analyzer.dart';
 import '../../../services/advising_report_repository.dart';
 import '../../../services/course_schedule_repository.dart' show Shatr;
+import '../../../services/student_status_card_pdf_service.dart';
+import '../../../services/student_status_card_service.dart';
 import '../../../utils/name_display.dart';
 import '../../theme/portal_theme.dart';
 import '../../widgets/mobile_empty_state.dart';
@@ -120,11 +123,32 @@ class _StudentLookupTabState extends State<StudentLookupTab> {
   }
 }
 
-/// بطاقة معاينة طالب واحد - كل بياناته دفعة واحدة (لا إجراء، لا تصدير) بنفس
-/// منطق تلوين النطاق المعتمَد بشاشة "بحث عن مرشد" بالموقع.
-class _StudentCard extends StatelessWidget {
+/// بطاقة معاينة طالب واحد - كل بياناته دفعة واحدة، بالإضافة إلى طلبه
+/// المقدَّم (إضافة/حذف/تعديل) وملاحظة المرشد/ة عليه (`tickets/{studentId}`)
+/// وزر تنزيل/مشاركة PDF بنفس تصميم "بطاقة حالة طالب/ة" بالموقع - بطلب
+/// سليمان صراحةً (2026-08-31) لتكون متاحة من تطبيق الجوّال أيضًا. نفس منطق
+/// تلوين النطاق المعتمَد بشاشة "بحث عن مرشد" بالموقع.
+class _StudentCard extends StatefulWidget {
   final AdvisingCaseRecord record;
   const _StudentCard({required this.record});
+
+  @override
+  State<_StudentCard> createState() => _StudentCardState();
+}
+
+class _StudentCardState extends State<_StudentCard> {
+  late final Future<StudentTicket?> _ticketFuture = StudentStatusCardService.fetchTicket(widget.record.studentId);
+  bool _exporting = false;
+
+  Future<void> _downloadPdf(StudentTicket? ticket) async {
+    setState(() => _exporting = true);
+    try {
+      final bytes = await StudentStatusCardPdfService.build(StudentStatusCardData(record: widget.record, ticket: ticket));
+      await Printing.sharePdf(bytes: bytes, filename: 'بطاقة_حالة_${widget.record.studentId}.pdf');
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
 
   static Color _rangeColor(GpaStatus status) => switch (status) {
         GpaStatus.excellent => const Color(0xFF1B5E20),
@@ -137,6 +161,7 @@ class _StudentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final record = widget.record;
     final status = gpaStatusOf(record.gpa);
     final isDismissed = record.isAcademicallyDismissed;
     final isWithdrawn = record.enrollmentStatus.contains('منقطع');
@@ -200,6 +225,31 @@ class _StudentCard extends StatelessWidget {
               ),
             ],
           ),
+          const SizedBox(height: AppSpacing.sm),
+          FutureBuilder<StudentTicket?>(
+            future: _ticketFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: AppSpacing.sm),
+                  child: SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                );
+              }
+              final ticket = snapshot.data;
+              return _RequestAndNoteSection(ticket: ticket);
+            },
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: _exporting ? null : () async => _downloadPdf(await _ticketFuture),
+              icon: _exporting
+                  ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.picture_as_pdf_outlined, size: 16),
+              label: const Text('تنزيل PDF / مشاركة'),
+            ),
+          ),
         ],
       ),
     );
@@ -215,6 +265,77 @@ class _StudentCard extends StatelessWidget {
           ],
         ),
       );
+}
+
+/// الطلب المقدَّم (إضافة/حذف/تعديل) + ملاحظة المرشد/ة على الحالة - نفس
+/// المحتوى المعروض ببطاقة "بطاقة حالة طالب/ة" بالموقع، مصدره `tickets`.
+class _RequestAndNoteSection extends StatelessWidget {
+  final StudentTicket? ticket;
+  const _RequestAndNoteSection({required this.ticket});
+
+  @override
+  Widget build(BuildContext context) {
+    final actions = ticket?.actions ?? const [];
+    final decision = ticket?.advisorDecision;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (actions.isNotEmpty) ...[
+          Text('الطلب المقدَّم (${actions.length})', style: AppTextStyles.caption(color: AppColors.gold).copyWith(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 4),
+          for (final a in actions)
+            Container(
+              margin: const EdgeInsets.only(bottom: 6),
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(AppRadius.sm)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(child: Text(a.courseName, style: AppTextStyles.caption(color: Colors.black87).copyWith(fontWeight: FontWeight.w600))),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(color: AppColors.goldLight, borderRadius: BorderRadius.circular(6)),
+                        child: Text(a.actionType, style: AppTextStyles.caption(color: AppColors.greenDark).copyWith(fontWeight: FontWeight.w700, fontSize: 10.5)),
+                      ),
+                    ],
+                  ),
+                  if (a.reason.trim().isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(a.reason, style: AppTextStyles.caption(color: Colors.black45)),
+                  ],
+                ],
+              ),
+            ),
+          const SizedBox(height: 4),
+        ],
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: const Color(0xFFEEF2F0),
+            borderRadius: BorderRadius.circular(AppRadius.sm),
+            border: const Border(right: BorderSide(color: AppColors.gold, width: 2.5)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('ملاحظة المرشد/ة على الحالة', style: AppTextStyles.caption(color: AppColors.greenDark).copyWith(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 4),
+              Text(
+                decision == null || decision.advisorNotes.trim().isEmpty
+                    ? 'لم يكتب المرشد/ة أي ملاحظة بعد - الطلب لم يُفتَح من قِبله/ا.'
+                    : '"${decision.advisorNotes.trim()}"',
+                style: AppTextStyles.caption(color: decision == null ? Colors.black45 : Colors.black87),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _StatChip extends StatelessWidget {

@@ -14,6 +14,7 @@ import '../../widgets/mobile_loading_state.dart';
 import '../../widgets/mobile_status_row.dart';
 import '../../widgets/mobile_workflow_summary_card.dart';
 import '../../widgets/portal_app_bar_logo.dart';
+import '../student_lookup/student_lookup_screen.dart';
 import 'admin_summary_data_controller.dart';
 import 'coordinator_email_screen.dart';
 
@@ -34,16 +35,19 @@ class AdminSummaryScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         appBar: AppBar(
           leadingWidth: kPortalAppBarLeadingWidth,
           leading: const PortalAppBarLogo(),
           title: const Text('لوحة الإدارة'),
           bottom: const TabBar(
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
             tabs: [
               Tab(text: 'الحذف والإضافة'),
               Tab(text: 'الإرشاد'),
+              Tab(text: 'بحث عن طالب/ة'),
             ],
           ),
         ),
@@ -51,6 +55,7 @@ class AdminSummaryScreen extends StatelessWidget {
           children: [
             _DeleteAddTab(),
             _AdvisingTab(),
+            StudentLookupTab(),
           ],
         ),
       ),

@@ -100,9 +100,17 @@ class StudentStatusCardService {
     }
     if (record == null) return null;
 
-    final ticketDoc = await FirebaseFirestore.instance.collection('tickets').doc(id).get();
-    final ticket = ticketDoc.exists ? StudentTicket.fromJson(ticketDoc.data()!) : null;
-
+    final ticket = await fetchTicket(id);
     return StudentStatusCardData(record: record, ticket: ticket);
+  }
+
+  /// يجلب طلب طالب واحد فقط من `tickets/{studentId}` بلا إعادة مسح تقرير
+  /// "كل الكليات" - يُستخدَم حين يكون سجل الطالب (`AdvisingCaseRecord`)
+  /// متوفرًا فعلاً من مصدر آخر (مثال: شاشة "بحث عن طالب/ة" بتطبيق الجوّال).
+  static Future<StudentTicket?> fetchTicket(String studentId) async {
+    final id = studentId.trim();
+    if (id.isEmpty) return null;
+    final doc = await FirebaseFirestore.instance.collection('tickets').doc(id).get();
+    return doc.exists ? StudentTicket.fromJson(doc.data()!) : null;
   }
 }
