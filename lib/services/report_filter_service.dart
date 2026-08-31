@@ -1,5 +1,5 @@
 import '../data/academic_department_names.dart';
-import '../models/advisor_roster_entry.dart';
+import '../models/college_roster_member.dart';
 import 'advisor_name_matching.dart';
 import 'excel_parser_service.dart';
 import 'report_data_service.dart';
@@ -155,19 +155,32 @@ class ReportFilterService {
   /// الذين لم يُنجزوا أي حالة إطلاقًا **عبر كل تذاكرهم بالنظام بالكامل** (لا
   /// فقط تذاكر هذا القسم تحديدًا - وإلا لو أُسندت له حالة واحدة خطأً بقسم آخر
   /// فقد يظهر مقصّرًا رغم إنجازه الفعلي بقسمه الصحيح)، مع تحذير صريح يُلحَق
-  /// بأي اسم قسمه المسجَّل بقائمة مرشدي القسم الرسمية (roster) يخالف قسم هذه
-  /// التذكرة أو غير موجود بالروستر إطلاقًا - للمراجعة اليدوية الإلزامية قبل
-  /// إرسال أي بريد مساءلة. حساسية الموضوع عالية (سليمان صراحةً 2026-08-31):
-  /// حالة حقيقية ظهرت فيها "زكية...العوفي" (مسجَّلة بقسم الاقتصاد والتمويل
-  /// بالروستر) تحت قسم النظم بسبب خطأ إدخال اسم المرشد بنموذج Microsoft Forms
-  /// لتذكرة طالبة واحدة بذلك القسم - القائمة تُرسَل مباشرة لرؤساء الأقسام.
+  /// بأي اسم قسمه المسجَّل بالقائمة الرسمية الشاملة لمنسوبي الكلية
+  /// (collegeRoster، من ملف العمادة المعتمد) يخالف قسم هذه التذكرة - للمراجعة
+  /// اليدوية الإلزامية قبل إرسال أي بريد مساءلة. **لا** تُستخدَم قائمة
+  /// advisor_roster لهذا الغرض لأنها غير شاملة أصلاً (مخصَّصة فقط لتوزيع عبء
+  /// منسّق/مرشد في إجازة) - سليمان صراحةً (2026-08-31): استخدامها سابقًا هنا
+  /// أنتج تحذيرات "غير مسجَّل" خاطئة لأعضاء حقيقيين غير مُدرَجين فيها أصلاً.
+  /// حساسية الموضوع عالية لأن القائمة تُرسَل مباشرة لرؤساء الأقسام: حالة
+  /// حقيقية ظهرت فيها "زكية...العوفي" (مسجَّلة بقسم الاقتصاد والتمويل فعليًا)
+  /// تحت قسم النظم بسبب خطأ إدخال اسم المرشد بنموذج Microsoft Forms لتذكرة
+  /// طالبة واحدة بذلك القسم.
+  // حالات انتداب حقيقية موثَّقة صراحةً (سليمان صراحةً 2026-08-31 عن هاتين
+  // الحالتين تحديدًا): مسجَّلتان/مسجَّل رسميًا بقسم لكن يعملان فعليًا بقسم
+  // آخر - لا تُعتبَران خطأ إدخال ولا تستحقان تحذيرًا رغم مخالفة القسم الرسمي
+  // بملف منسوبي الكلية. أي تطابق جزئي بالاسم كافٍ (أسماء مختصرة هنا عمدًا).
+  static const _knownSecondments = {
+    'حنان عامر': 'قسم الاقتصاد و التمويل',
+    'طارق حلمي': 'قسم نظم المعلومات الادارية',
+  };
+
   static Map<String, List<String>> delinquentAdvisorNamesByGroupVerified(
     List<Map<String, dynamic>> allTickets,
-    List<AdvisorRosterEntry> roster,
+    List<CollegeRosterMember> collegeRoster,
   ) {
     final delinquentTickets = delinquentAdvisorTickets(allTickets);
-    final rosterByNormalizedName = <String, AdvisorRosterEntry>{
-      for (final r in roster) normalizeAdvisorNameForMatch(r.name): r,
+    final rosterByNormalizedName = <String, CollegeRosterMember>{
+      for (final r in collegeRoster) normalizeAdvisorNameForMatch(r.name): r,
     };
     final result = <String, Set<String>>{};
     for (final t in delinquentTickets) {
@@ -175,12 +188,24 @@ class ReportFilterService {
       if (advisor.isEmpty) continue;
       final shatr = (t['shatr'] ?? '').toString();
       final department = (t['department'] ?? '').toString();
-      final rosterEntry = rosterByNormalizedName[normalizeAdvisorNameForMatch(advisor)];
+      final normalizedAdvisor = normalizeAdvisorNameForMatch(advisor);
+      final rosterEntry = rosterByNormalizedName[normalizedAdvisor];
+      String? secondmentDepartment;
+      for (final entry in _knownSecondments.entries) {
+        if (normalizedAdvisor.contains(normalizeAdvisorNameForMatch(entry.key))) {
+          secondmentDepartment = entry.value;
+          break;
+        }
+      }
       String label;
-      if (rosterEntry == null) {
-        label = '$advisor ⚠️ غير مسجَّل بقائمة المرشدين - تحقّق يدويًا';
+      if (secondmentDepartment != null) {
+        label = normalizeDepartmentName(secondmentDepartment) == normalizeDepartmentName(department)
+            ? advisor
+            : '$advisor ⚠️ قسمه بعد الانتداب: $secondmentDepartment - تحقّق يدويًا';
+      } else if (rosterEntry == null) {
+        label = '$advisor ⚠️ غير موجود بملف منسوبي الكلية - تحقّق يدويًا';
       } else if (normalizeDepartmentName(rosterEntry.department) != normalizeDepartmentName(department)) {
-        label = '$advisor ⚠️ قسمه المسجَّل فعليًا: ${rosterEntry.department} - تحقّق يدويًا';
+        label = '$advisor ⚠️ قسمه الفعلي بملف منسوبي الكلية: ${rosterEntry.department} - تحقّق يدويًا';
       } else {
         label = advisor;
       }

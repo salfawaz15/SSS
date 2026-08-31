@@ -10,7 +10,9 @@ import 'package:url_launcher/url_launcher.dart';
 import '../data/academic_department_names.dart';
 import '../models/advisor_roster_entry.dart';
 import '../models/coordinator.dart';
+import '../models/college_roster_member.dart';
 import '../services/advisor_roster_service.dart';
+import '../services/college_roster_repository.dart';
 import '../services/advisor_zip_service.dart';
 import '../services/app_update_service.dart';
 import '../services/disability_file_service.dart';
@@ -61,6 +63,13 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
   /// مُحمَّلة مرة واحدة عند فتح اللوحة - تُستخدم في لوحة متابعة الإنجاز حتى
   /// لا يظهر منسّق قسم كأن لديه حالات معلَّقة بعد أن تفرَّغ منها فعليًا.
   List<AdvisorRosterEntry> _roster = [];
+  // القائمة الرسمية الشاملة لكل منسوبي الكلية (من ملف العمادة المعتمد) - مصدر
+  // التحقق من القسم الحقيقي لأي عضو عند حصر "الأعضاء المقصّرين"، بخلاف
+  // advisor_roster أعلاه الذي **ليس شاملاً** (مخصَّص فقط لتوزيع عبء منسّق/
+  // مرشد في إجازة) - استخدامه للتحقق من القسم أنتج تحذيرات خاطئة كثيرة لأعضاء
+  // حقيقيين غير مُدرَجين فيه أصلاً (سليمان صراحةً 2026-08-31: "فهد" ظهر
+  // "غير مسجَّل" رغم كونه مرشدًا حقيقيًا).
+  List<CollegeRosterMember> _collegeRoster = [];
   // بريد/اسم منسّقي الأقسام الحقيقيين (`coordinator_contacts` بـFirestore) -
   // لإرسال ملف "مرحلة المنسّق" بالبريد مباشرة بضغطة واحدة، بدل الاعتماد على
   // حساب الدخول الداخلي الوهمي بالبوابة (`PortalAccounts.coordinatorEmail`
@@ -79,6 +88,9 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
     });
     AdvisorRosterService.loadAll().then((r) {
       if (mounted) setState(() => _roster = r);
+    });
+    CollegeRosterRepository.load().then((r) {
+      if (mounted) setState(() => _collegeRoster = r);
     });
     FirestoreCoordinatorService.watchAll().first.then((c) {
       if (mounted) setState(() => _coordinatorContacts = c);
@@ -805,7 +817,7 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
       ..sort();
     // الإنجاز والقسم الصحيح لكل مرشد يُتحقَّقان عالميًا عبر كل التذاكر (انظر
     // توثيق الدالة) - حساسية الموضوع عالية لأن الجدول يُرسَل لرؤساء الأقسام.
-    final verifiedByGroup = ReportFilterService.delinquentAdvisorNamesByGroupVerified(tickets, _roster);
+    final verifiedByGroup = ReportFilterService.delinquentAdvisorNamesByGroupVerified(tickets, _collegeRoster);
     // بديل [DataTable] عمدًا - صفوفه ذات ارتفاع ثابت يقصّ أي خلية بها أكثر من
     // اسمين فيتراكب النص مع الصف التالي بصريًا (سليمان صراحةً 2026-08-31:
     // "غير واضح"). [Table] العادي يتمدد تلقائيًا بارتفاع كل صف حسب محتواه.
@@ -869,7 +881,7 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
     }
     // يُحسَب مرة واحدة عبر كل تذاكر النظام - الإنجاز والقسم الصحيح لكل مرشد
     // يُتحقَّقان عالميًا لا داخل هذا القسم فقط (انظر توثيق الدالة).
-    final verifiedDelinquentByGroup = ReportFilterService.delinquentAdvisorNamesByGroupVerified(allTickets, _roster);
+    final verifiedDelinquentByGroup = ReportFilterService.delinquentAdvisorNamesByGroupVerified(allTickets, _collegeRoster);
     return ListView(
       padding: const EdgeInsets.all(16),
       children: groups.entries.map((e) {
