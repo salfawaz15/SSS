@@ -3,7 +3,10 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../../data/academic_department_names.dart';
+import '../../../models/advisor_roster_entry.dart';
 import '../../../models/coordinator.dart';
+import '../../../services/advisor_roster_service.dart';
+import '../../../services/advisor_zip_service.dart';
 import '../../../services/escalation_file_service.dart';
 import '../../../services/excel_parser_service.dart';
 import '../../../services/firestore_coordinator_service.dart';
@@ -38,6 +41,7 @@ class CoordinatorEmailScreen extends StatefulWidget {
 
 class _CoordinatorEmailScreenState extends State<CoordinatorEmailScreen> {
   Map<String, Coordinator> _coordinatorContacts = {};
+  List<AdvisorRosterEntry> _roster = [];
   final Set<String> _sendingKeys = {};
 
   @override
@@ -45,6 +49,9 @@ class _CoordinatorEmailScreenState extends State<CoordinatorEmailScreen> {
     super.initState();
     FirestoreCoordinatorService.watchAll().first.then((c) {
       if (mounted) setState(() => _coordinatorContacts = c);
+    });
+    AdvisorRosterService.loadAll().then((r) {
+      if (mounted) setState(() => _roster = r);
     });
   }
 
@@ -122,19 +129,23 @@ class _CoordinatorEmailScreenState extends State<CoordinatorEmailScreen> {
   /// ([ReportFilterService.pendingAdvisorTickets]) - بطلب سليمان صراحةً
   /// (2026-08-31) بعد اكتشاف أن زر البريد بالموقع يفشل دائمًا بسبب قيود
   /// CORS، فنُقلت نفس الميزة هنا للتطبيق (المسار الفعلي العامل).
+  /// المرفق ملف مضغوط بداخله ملف Excel منفصل لكل مرشد بالقسم (نفس منطق
+  /// [AdvisorZipService.buildZip] المستخدَم بزر "تنزيل ملفات المرشدين")
+  /// لا ملف واحد مدمَج - بطلب سليمان صراحةً (2026-08-31): المنسّق يحتاج
+  /// توزيع كل ملف على مرشده مباشرة بلا فرزها يدويًا أولاً.
   Future<void> _sendPendingAdvisorCases(String key, List<Map<String, dynamic>> tickets, String shatr, String department) {
     final shatrLabel = shatr == ExcelParserService.shatrMale ? 'male' : 'female';
     return _send(
       key: 'pending|$key',
       coordinator: _findCoordinator(shatr, department),
       missingLabel: 'منسّق قسم "$department"',
-      buildFile: () => EscalationFileService.buildStage2File(ReportFilterService.pendingAdvisorTickets(tickets)),
+      buildFile: () => AdvisorZipService.buildZip(ReportFilterService.pendingAdvisorTickets(tickets), roster: _roster),
       subject: 'حالات جديدة للمرشدين - $department - $shatr',
       bodyText:
           'السلام عليكم ورحمة الله وبركاته\n'
-          'مرفق لكم حالات المرشدين لإرسالها إلى المرشدين الأكاديميين لمباشرتها\n'
+          'مرفق لكم ملف مضغوط بداخله ملف مستقل لكل مرشد أكاديمي بالقسم، لتوزيعها عليهم لمباشرتها\n'
           'وحدة الإرشاد الأكاديمي والخريجين',
-      attachmentFilename: '${department}_${shatrLabel}_حالات_جديدة.xlsx',
+      attachmentFilename: '${department}_${shatrLabel}_حالات_جديدة.zip',
     );
   }
 

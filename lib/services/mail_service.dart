@@ -24,7 +24,12 @@ class MailService {
     required String bodyText,
     required Uint8List xlsxBytes,
     required String attachmentFilename,
+    String? attachmentContentType,
   }) async {
+    final contentType = attachmentContentType ??
+        (attachmentFilename.toLowerCase().endsWith('.zip')
+            ? 'application/zip'
+            : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     final body = {
       'personalizations': [
         {
@@ -45,7 +50,7 @@ class MailService {
         {
           'content': base64Encode(xlsxBytes),
           'filename': attachmentFilename,
-          'type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'type': contentType,
           'disposition': 'attachment',
         },
       ],
