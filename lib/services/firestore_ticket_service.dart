@@ -144,7 +144,7 @@ class FirestoreTicketService {
     String course,
     String section,
   ) {
-    return '$universityId|$actionType|$course|$section';
+    return '${universityId.trim()}|${actionType.trim()}|${course.trim()}|${section.trim()}';
   }
 
   // خلل حقيقي مُصحَّح (سليمان 2026-08-20): ExcelParserService يكتب
