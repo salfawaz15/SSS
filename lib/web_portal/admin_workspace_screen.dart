@@ -164,6 +164,48 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
   /// نفس ملف ذوي الإعاقة المتاح للمنسّق من حسابه بالضبط (ملف Excel واحد
   /// بجميع حالات القسم) - متاح أيضًا من لوحة الإدارة مباشرة، حتى تستطيع
   /// الإدارة تنزيله وإرساله بنفسها لأمين القسم لو تأخر المنسّق أو غاب.
+  /// يُنزّل ملفًا مضغوطًا بحالات الأعضاء الذين **لم ينجزوا ولو حالة واحدة**
+  /// بهذا القسم/الشطر فقط (عبر [ReportFilterService.delinquentAdvisorTickets])
+  /// - ملف منفصل محمي لكل عضو داخل الضغط نفسه، ليُرسَل لرئيس القسم مرفقًا
+  /// بطلب تكليف من يراه مناسبًا لاستكمالها - بطلب سليمان صراحةً (2026-08-31).
+  Future<void> _downloadDelinquentAdvisors(
+    String key,
+    List<Map<String, dynamic>> tickets,
+    String department,
+  ) async {
+    final delinquentKey = 'delinquent|$key';
+    final delinquentTickets = ReportFilterService.delinquentAdvisorTickets(tickets);
+    if (delinquentTickets.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('لا يوجد أعضاء مقصّرون بهذا القسم - كل عضو أنجز جزءًا من حالاته على الأقل')),
+        );
+      }
+      return;
+    }
+
+    setState(() => _downloadingKeys.add(delinquentKey));
+    try {
+      final zipBytes = await AdvisorZipService.buildZip(delinquentTickets, roster: _roster);
+      final parts = key.split('|');
+      final shatrLabel = parts[0] == ExcelParserService.shatrMale ? 'male' : 'female';
+      downloadBytes(zipBytes, '${department}_${shatrLabel}_أعضاء_مقصّرون.zip');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تم تنزيل ملف الأعضاء المقصّرين بنجاح')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تعذّر إنشاء الملف: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _downloadingKeys.remove(delinquentKey));
+    }
+  }
+
   Future<void> _downloadDisability(
     String key,
     List<Map<String, dynamic>> tickets,
@@ -742,7 +784,9 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
         final isEmailing = _emailingKeys.contains(key);
         final isEmailingPending = _emailingKeys.contains('pending|$key');
         final isUploadingProcessed = _downloadingKeys.contains('upload|$key');
+        final isDownloadingDelinquent = _downloadingKeys.contains('delinquent|$key');
         final hasDisabilityCases = DisabilityFileService.filterDisabilityTickets(e.value).isNotEmpty;
+        final delinquentNames = ReportFilterService.delinquentAdvisorNames(e.value);
         return Card(
           margin: const EdgeInsets.only(bottom: 10),
           child: ListTile(
@@ -751,7 +795,21 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
               child: const Icon(Icons.apartment_outlined, color: AppColors.green),
             ),
             title: Text(department.isEmpty ? '(بدون قسم)' : department),
-            subtitle: Text('${parts[0]} - عدد الحالات: ${e.value.length}'),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('${parts[0]} - عدد الحالات: ${e.value.length}'),
+                if (delinquentNames.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      'أعضاء لم ينجزوا أي حالة (${delinquentNames.length}): ${delinquentNames.join('، ')}',
+                      style: TextStyle(color: Colors.red.shade700, fontSize: 12),
+                    ),
+                  ),
+              ],
+            ),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -806,6 +864,15 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
                   onPressed: isUploadingProcessed
                       ? null
                       : () => _pickAndUploadProcessedFileOnBehalf(parts[0], department),
+                ),
+                RoundIconButton(
+                  tooltip: 'تنزيل ملف الأعضاء الذين لم ينجزوا أي حالة (لإرساله لرئيس القسم)',
+                  color: Colors.red.shade700,
+                  icon: Icons.person_off_outlined,
+                  isLoading: isDownloadingDelinquent,
+                  onPressed: (delinquentNames.isEmpty || isDownloadingDelinquent)
+                      ? null
+                      : () => _downloadDelinquentAdvisors(key, e.value, department),
                 ),
               ],
             ),

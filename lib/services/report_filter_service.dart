@@ -112,4 +112,35 @@ class ReportFilterService {
     }
     return result;
   }
+
+  /// كل تذاكر المرشدين الذين لم ينجزوا **ولو إجراء واحد** ضمن التذاكر
+  /// الممرَّرة (صفر advisor_status = 'تم التنفيذ' عبر كل تذاكر المرشد
+  /// بالكامل) - أساس قائمة "الأعضاء المقصّرون" وملف حالاتهم المُرسَل
+  /// لرئيس القسم بطلب سليمان صراحةً (2026-08-31).
+  static List<Map<String, dynamic>> delinquentAdvisorTickets(List<Map<String, dynamic>> tickets) {
+    final advisorsWithProgress = <String>{};
+    for (final ticket in tickets) {
+      final actions = (ticket['actions'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
+      final hasCompleted = actions.any((a) => isCompletedStatus((a['advisor_status'] ?? '').toString().trim()));
+      if (!hasCompleted) continue;
+      final advisor = (ticket['advisor'] ?? '').toString().trim();
+      if (advisor.isNotEmpty) advisorsWithProgress.add(advisor);
+    }
+    return tickets.where((t) {
+      final advisor = (t['advisor'] ?? '').toString().trim();
+      return advisor.isNotEmpty && !advisorsWithProgress.contains(advisor);
+    }).toList();
+  }
+
+  /// أسماء المرشدين المقصّرين الفريدة (مرتّبة أبجديًا) - لعرضها بقائمة قصيرة
+  /// بواجهة لوحة الإدارة بجانب زر تنزيل ملفاتهم.
+  static List<String> delinquentAdvisorNames(List<Map<String, dynamic>> tickets) {
+    final names = <String>{};
+    for (final t in delinquentAdvisorTickets(tickets)) {
+      final advisor = (t['advisor'] ?? '').toString().trim();
+      if (advisor.isNotEmpty) names.add(advisor);
+    }
+    final list = names.toList()..sort();
+    return list;
+  }
 }
