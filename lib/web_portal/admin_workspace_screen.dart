@@ -45,6 +45,12 @@ import 'ticket_action_stats_panel.dart';
 /// شاشة الإدارة في بوابة الويب (كل الصلاحيات): رفع ملف Microsoft Forms،
 /// لوحة متابعة تعرض حجم الإنجاز، تنزيل ملف أي قسم، والتقرير الشامل
 /// (Excel/PDF/طباعة). لا علاقة لها بتطبيق الأندرويد.
+/// وضع اختبار مؤقّت: يوجّه إرسال حالات "جديدة/معالَجة" لبريد سليمان بدل
+/// بريد المنسّق الحقيقي، ليختبر محتوى الرسالتين بنفسه قبل إطلاقهما فعليًا
+/// - يُزال هذا السطر (يعود null) فور انتهاء الاختبار (سليمان صراحةً
+/// 2026-08-31).
+const String? _testEmailOverride = 'tualfawaz@gmail.com';
+
 class AdminWorkspaceScreen extends StatefulWidget {
   const AdminWorkspaceScreen({super.key});
 
@@ -288,7 +294,7 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
       final parts = key.split('|');
       final shatrLabel = parts[0] == ExcelParserService.shatrMale ? 'male' : 'female';
       final success = await MailService.sendPrebuiltAttachment(
-        toEmail: coordinator.email.trim(),
+        toEmail: _testEmailOverride ?? coordinator.email.trim(),
         toName: coordinator.name,
         subject: 'الحالات المعالجة من قبل المرشدين - $department - ${parts[0]}',
         bodyText:
@@ -364,7 +370,7 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
       final parts = key.split('|');
       final shatrLabel = parts[0] == ExcelParserService.shatrMale ? 'male' : 'female';
       final success = await MailService.sendPrebuiltAttachment(
-        toEmail: coordinator.email.trim(),
+        toEmail: _testEmailOverride ?? coordinator.email.trim(),
         toName: coordinator.name,
         subject: 'حالات جديدة للمرشدين - $department - ${parts[0]}',
         bodyText:
