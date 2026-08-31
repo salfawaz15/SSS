@@ -124,7 +124,7 @@ class StudentStatusCardPdfService {
                                           pw.Expanded(child: pw.Text(a.courseName, style: pw.TextStyle(font: boldFont, fontSize: 9))),
                                           pw.Container(
                                             padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                            decoration: pw.BoxDecoration(color: _gold, borderRadius: pw.BorderRadius.circular(999)),
+                                            decoration: pw.BoxDecoration(color: _gold, borderRadius: pw.BorderRadius.circular(4)),
                                             child: pw.Text(a.actionType, style: pw.TextStyle(fontSize: 7.5, color: PdfBrandKit.greenDark)),
                                           ),
                                         ],
