@@ -792,6 +792,8 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
   /// جدول شامل واحد بكل الأقسام الخمسة وشطريها يعرض أسماء الأعضاء الذين لم
   /// ينجزوا أي حالة إطلاقًا - لتسهيل حصر الأسماء وإرسالها لرؤساء الأقسام
   /// دفعة واحدة بدل مراجعة كل بطاقة قسم على حدة (بطلب سليمان صراحةً 2026-08-31).
+  String _joinNamesOrDash(List<String>? names) => (names == null || names.isEmpty) ? '-' : names.join('\n');
+
   Widget _buildDelinquentAdvisorsTable(List<Map<String, dynamic>> tickets, bool hasData) {
     if (!hasData) {
       return const Center(child: CircularProgressIndicator());
@@ -804,32 +806,48 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
     // الإنجاز والقسم الصحيح لكل مرشد يُتحقَّقان عالميًا عبر كل التذاكر (انظر
     // توثيق الدالة) - حساسية الموضوع عالية لأن الجدول يُرسَل لرؤساء الأقسام.
     final verifiedByGroup = ReportFilterService.delinquentAdvisorNamesByGroupVerified(tickets, _roster);
+    // بديل [DataTable] عمدًا - صفوفه ذات ارتفاع ثابت يقصّ أي خلية بها أكثر من
+    // اسمين فيتراكب النص مع الصف التالي بصريًا (سليمان صراحةً 2026-08-31:
+    // "غير واضح"). [Table] العادي يتمدد تلقائيًا بارتفاع كل صف حسب محتواه.
+    Widget cellText(String text, {bool isHeader = false}) => Padding(
+          padding: const EdgeInsets.all(10),
+          child: Text(
+            text,
+            style: isHeader ? const TextStyle(fontWeight: FontWeight.bold) : null,
+          ),
+        );
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
-          child: DataTable(
-            columns: const [
-              DataColumn(label: Text('القسم')),
-              DataColumn(label: Text('شطر الطلاب')),
-              DataColumn(label: Text('شطر الطالبات')),
-            ],
-            rows: departments.map((department) {
-              final maleNames = verifiedByGroup['${ExcelParserService.shatrMale}|$department'] ?? const <String>[];
-              final femaleNames = verifiedByGroup['${ExcelParserService.shatrFemale}|$department'] ?? const <String>[];
-              return DataRow(cells: [
-                DataCell(Text(department)),
-                DataCell(SizedBox(
-                  width: 280,
-                  child: Text(maleNames.isEmpty ? '-' : maleNames.join('\n')),
-                )),
-                DataCell(SizedBox(
-                  width: 280,
-                  child: Text(femaleNames.isEmpty ? '-' : femaleNames.join('\n')),
-                )),
-              ]);
-            }).toList(),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 900),
+            child: Table(
+              border: TableBorder.all(color: Colors.grey.shade300),
+              defaultVerticalAlignment: TableCellVerticalAlignment.top,
+              columnWidths: const {
+                0: FixedColumnWidth(160),
+                1: FlexColumnWidth(),
+                2: FlexColumnWidth(),
+              },
+              children: [
+                TableRow(
+                  decoration: BoxDecoration(color: AppColors.green.withValues(alpha: 0.08)),
+                  children: [
+                    cellText('القسم', isHeader: true),
+                    cellText('شطر الطلاب', isHeader: true),
+                    cellText('شطر الطالبات', isHeader: true),
+                  ],
+                ),
+                for (final department in departments)
+                  TableRow(children: [
+                    cellText(department),
+                    cellText(_joinNamesOrDash(verifiedByGroup['${ExcelParserService.shatrMale}|$department'])),
+                    cellText(_joinNamesOrDash(verifiedByGroup['${ExcelParserService.shatrFemale}|$department'])),
+                  ]),
+              ],
+            ),
           ),
         ),
       ],
