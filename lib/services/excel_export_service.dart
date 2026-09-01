@@ -261,18 +261,6 @@ class ExcelExportService {
     return lookup;
   }
 
-  /// ألوان دورية لصفوف عنوان اليوم (فاتحة، تسمح بقراءة نص أسود عليها) -
-  /// تتكرر لو تجاوزت الدورة 3 أيام (سليمان صراحةً 2026-08-28).
-  static const List<String> _dayHeaderColors = ['FFFDEBD3', 'FFD6EAF8', 'FFD5F5E3'];
-
-  static CellStyle _dayTitleStyle(String colorHex) => CellStyle(
-    bold: true,
-    fontSize: 13,
-    backgroundColorHex: ExcelColor.fromHexString(colorHex),
-    horizontalAlign: HorizontalAlign.Right,
-    verticalAlign: VerticalAlign.Center,
-  );
-
   /// عدد الصفوف الفارغة المفتوحة للتحرير الكامل المضافة بنهاية ملف المرشد
   /// لتسجيل حالات النموذج الورقي يدويًا (توجيه إداري استثنائي خلال أيام
   /// الحذف والإضافة الثلاثة - سليمان صراحةً 2026-09-01/2026-09-02: بعض
@@ -516,11 +504,14 @@ class ExcelExportService {
       }
     }
 
-    // اليوم أولًا (المتراكم الأقدم أعلى الملف)، ثم نفس الترتيب السابق داخل كل
-    // يوم (سليمان صراحةً 2026-08-28: فاصل يومي واضح بدل التداخل الكامل).
+    // تقسيم الأيام أُزيل نهائيًا (كان معتمَدًا سابقًا 2026-08-28) - سليمان
+    // صراحةً 2026-09-02: عنوان "تاريخ الرفع" لا يعكس بالضرورة تاريخ تقديم
+    // الطالب الفعلي (حالة رُفعت لأول مرة يوم الاثنين ضمن رفعة تراكمية تبقى
+    // مصنَّفة "الاثنين" للأبد حتى لو كانت ردًا حقيقيًا وصل يوم الثلاثاء)،
+    // فكان يُضلِّل المرشد ظنًا منه أن قسم يوم معيّن لا يحوي حالات جديدة رغم
+    // وجودها فعليًا تحت عنوان يوم آخر. السلوك الآن: ترتيب واحد متواصل حسب
+    // أولوية التخرّج (الساعات المتبقية) فقط، بلا أي فصل بعناوين تواريخ.
     rowSpecs.sort((a, b) {
-      final byDay = a.day.compareTo(b.day);
-      if (byDay != 0) return byDay;
       final byHours = a.hoursSortKey.compareTo(b.hoursSortKey);
       if (byHours != 0) return byHours;
       final byId = a.studentId.compareTo(b.studentId);
@@ -529,32 +520,7 @@ class ExcelExportService {
     });
 
     var dataRowIndex = 0; // صفر-فهرسة بين صفوف البيانات (بدون العناوين/التعليمات)
-    String? currentDay;
-    var dayColorCursor = 0;
     for (final spec in rowSpecs) {
-      if (spec.day != currentDay) {
-        if (currentDay != null) {
-          // صف فارغ كامل يفصل عن مجموعة اليوم السابق (بلا لون).
-          sheet.appendRow([]);
-          dataRowIndex++;
-        }
-        currentDay = spec.day;
-        final colorHex = _dayHeaderColors[dayColorCursor % _dayHeaderColors.length];
-        dayColorCursor++;
-        final rowIndex = dataRowIndex + headerRowIndex + 1;
-        final titleText = spec.day.isEmpty ? 'حالات سابقة (بلا تاريخ رفع مسجَّل)' : spec.day;
-        sheet.appendRow([TextCellValue(titleText)]);
-        // ارتفاع صف ثابت صراحةً - بدونه يعتمد الاحتواء التلقائي لإكسل الذي
-        // يتصرّف بشكل غير متسق بين صفوف عناوين الأيام (يظهر بعضها بخط واضح
-        // وبعضها مضغوطًا بخط صغير جدًا رغم تطابق التنسيق البرمجي، سليمان
-        // صراحةً 2026-09-02، بلقطة شاشة فعلية توضح التفاوت).
-        sheet.setRowHeight(rowIndex, 28);
-        final titleStyle = _dayTitleStyle(colorHex);
-        for (var c = 0; c < _headers.length; c++) {
-          sheet.cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: rowIndex)).cellStyle = titleStyle;
-        }
-        dataRowIndex++;
-      }
       _appendStyledRow(sheet, spec.values, dataRowIndex, headerRowIndex, tier: spec.tier);
       dataRowIndex++;
     }
@@ -562,8 +528,8 @@ class ExcelExportService {
     int? paperFormFirstRow;
     int? paperFormLastRow;
     if (includePaperFormRows) {
-      if (currentDay != null) {
-        sheet.appendRow([]); // فاصل فارغ عن آخر مجموعة يوم عادية
+      if (rowSpecs.isNotEmpty) {
+        sheet.appendRow([]); // فاصل فارغ عن صفوف البيانات العادية
         dataRowIndex++;
       }
 
