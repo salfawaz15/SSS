@@ -16,6 +16,11 @@ class StudentTicketAction {
   final String reason;
   final String advisorStatus;
   final String advisorNotes;
+  // سجل كل قرار فعلي اتُّخذ على هذا الإجراء بتاريخه (تاريخ + الحقول التي
+  // تغيّرت حينها) - يُبنى في FirestoreTicketService._mergeProcessedRowsIntoDocs
+  // بدل استبدال القرار السابق صامتًا، حتى تُعرض ببطاقة حالة الطالب/ة كل
+  // استجابة سابقة من المرشد/المنسّق لا آخر استجابة فقط.
+  final List<Map<String, dynamic>> history;
 
   const StudentTicketAction({
     required this.actionType,
@@ -26,6 +31,7 @@ class StudentTicketAction {
     required this.reason,
     required this.advisorStatus,
     required this.advisorNotes,
+    this.history = const [],
   });
 
   factory StudentTicketAction.fromJson(Map<String, dynamic> json) => StudentTicketAction(
@@ -37,6 +43,9 @@ class StudentTicketAction {
         reason: (json['reason'] ?? '').toString(),
         advisorStatus: (json['advisor_status'] ?? '').toString(),
         advisorNotes: (json['advisor_notes'] ?? '').toString(),
+        history: ((json['history'] as List?) ?? [])
+            .map((h) => Map<String, dynamic>.from(h as Map))
+            .toList(),
       );
 }
 
@@ -44,15 +53,29 @@ class StudentTicketAction {
 class StudentTicket {
   final String uploadedDate;
   final List<StudentTicketAction> actions;
+  // سجل كل مرة ظهر فيها رقم الطالب/ة الجامعي باستجابة Forms (تقديم أول +
+  // أي إعادة تقديم لاحقة بنفس الرقم كانت تُتجاهل بالكامل سابقًا) - تاريخ كل
+  // تقديم + لقطة الإجراءات المطلوبة فيه، يُبنى في
+  // FirestoreTicketService.addNewTickets/replaceAllTickets (سليمان صراحةً
+  // 2026-09-02).
+  final List<Map<String, dynamic>> submissionLog;
 
-  const StudentTicket({required this.uploadedDate, required this.actions});
+  const StudentTicket({required this.uploadedDate, required this.actions, this.submissionLog = const []});
 
   factory StudentTicket.fromJson(Map<String, dynamic> json) => StudentTicket(
         uploadedDate: (json['uploaded_date'] ?? '').toString(),
         actions: ((json['actions'] as List?) ?? [])
             .map((a) => StudentTicketAction.fromJson(Map<String, dynamic>.from(a as Map)))
             .toList(),
+        submissionLog: ((json['submission_log'] as List?) ?? [])
+            .map((s) => Map<String, dynamic>.from(s as Map))
+            .toList(),
       );
+
+  /// عدد مرات التقديم الفعلية - يعتمد على submission_log إن وُجد (التذاكر
+  /// الجديدة بعد 2026-09-02)، وإلا يُقدَّر بواحدة فقط لتذاكر أقدم لا تحمل
+  /// هذا الحقل أصلًا (لا يمكن معرفة تعدد تقديمها القديم بأثر رجعي).
+  int get submissionCount => submissionLog.isEmpty ? 1 : submissionLog.length;
 
   /// أول إجراء له قرار مرشد صريح (موافقة/رفض) إن وُجد - يُمثِّل "ملاحظة
   /// المرشد على الحالة" في البطاقة. null يعني لم تُتّخذ أي إجراء بعد.

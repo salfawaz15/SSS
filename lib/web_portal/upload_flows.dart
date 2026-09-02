@@ -437,11 +437,13 @@ Future<void> runUploadHealth({
 /// اسم الملف لا يحدّد حالة القيد (منتظم/مفصول أكاديميًا/منقطع عن الدراسة) -
 /// نفس أسلوب [_shatrLabelFromFreeText] لكن للحالة، تُستخدَم فقط لملفات CSV
 /// الستة (عمود "الوضع في الفصل" بها فارغ دومًا فعليًا، بخلاف ملف الإكسل
-/// القديم الذي يقرأ الحالة من عموده مباشرة).
+/// القديم الذي يقرأ الحالة من عموده مباشرة). اسم ملف "منتظم" المُنزَّل فعليًا
+/// من المنظومة الداخلية يحمل كلمة "مقيدين/مقيدات" لا "منتظم" حرفيًا.
 String? _enrollmentStatusFromFreeText(String raw) {
   if (raw.contains('مفصول')) return 'مفصول أكاديميًا';
   if (raw.contains('منقطع')) return 'منقطع عن الدراسة';
   if (raw.contains('منتظم')) return 'منتظم';
+  if (raw.contains('مقيدين') || raw.contains('مقيدات')) return 'منتظم';
   return null;
 }
 
@@ -988,12 +990,18 @@ Future<void> runUploadForms({
       }
     } else {
       var skippedNoId = 0;
+      var resubmitted = 0;
       final addedCount = await FirestoreTicketService.addNewTickets(
         tickets,
         onSkippedNoId: (n) => skippedNoId = n,
+        onResubmitted: (n) => resubmitted = n,
       );
       message = 'تمت إضافة $addedCount حالة جديدة (من أصل ${tickets.length} في الملف - '
-          'الباقي موجود مسبقًا وتم تجاهله حفاظًا على عمل المرشدين/المنسّقين)';
+          'الباقي موجود مسبقًا وتم الإبقاء على تذكرته وعمل المرشد/المنسّق عليها كما هو)';
+      if (resubmitted > 0) {
+        message += ' - $resubmitted حالة أعادت التقديم برقمها الجامعي نفسه، '
+            'تم تسجيل تقديمها الجديد بسجل بطاقة حالة الطالب/ة دون التأثير على تذكرته الحالية.';
+      }
       if (skippedNoId > 0) {
         message += ' - تنبيه: تم تجاهل $skippedNoId حالة بلا رقم جامعي صالح '
             '(غالبًا بريد الطالب لم يُسجَّل بحساب جامعي حقيقي عند تعبئة النموذج).';

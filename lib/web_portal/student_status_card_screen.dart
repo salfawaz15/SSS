@@ -284,6 +284,27 @@ class _StudentStatusCardScreenState extends State<StudentStatusCardScreen> {
               return narrow ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: panels) : Row(crossAxisAlignment: CrossAxisAlignment.start, children: panels);
             }),
           ),
+          if (ticket != null && ticket.submissionCount > 1)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(22, 0, 22, 14),
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: DashTokens.pageBg,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: DashTokens.border),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('سجل التقديم (${ticket.submissionCount} مرات)',
+                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.gold.withValues(alpha: 0.9), letterSpacing: .3)),
+                    const SizedBox(height: 8),
+                    for (final entry in ticket.submissionLog) _submissionLogTile(entry),
+                  ],
+                ),
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.fromLTRB(22, 0, 22, 22),
             child: Container(
@@ -358,6 +379,48 @@ class _StudentStatusCardScreenState extends State<StudentStatusCardScreen> {
             const SizedBox(height: 3),
             Text(a.reason, style: const TextStyle(fontSize: 10.5, color: DashTokens.textMuted)),
           ],
+          if (a.history.length > 1) ...[
+            const SizedBox(height: 6),
+            for (final h in a.history)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Text(
+                  '${(h['date'] ?? '').toString()} — ${(h['advisor_status'] ?? h['coordinator_status'] ?? h['college_status'] ?? '').toString()}',
+                  style: const TextStyle(fontSize: 10, color: DashTokens.textMuted),
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _submissionLogTile(Map<String, dynamic> entry) {
+    final date = (entry['date'] ?? '').toString();
+    final actions = (entry['actions'] as List?) ?? [];
+    final summary = actions.isEmpty
+        ? 'بلا إجراءات محدَّدة'
+        : actions
+            .map((a) => (a as Map)['action_type'] ?? '')
+            .where((s) => s.toString().isNotEmpty)
+            .join('، ');
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            margin: const EdgeInsets.only(top: 5, left: 8),
+            width: 6,
+            height: 6,
+            decoration: const BoxDecoration(color: AppColors.gold, shape: BoxShape.circle),
+          ),
+          Expanded(
+            child: Text.rich(TextSpan(children: [
+              TextSpan(text: date.isEmpty ? '—' : date, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+              TextSpan(text: '  $summary', style: const TextStyle(fontSize: 11.5, color: DashTokens.textMuted)),
+            ])),
+          ),
         ],
       ),
     );

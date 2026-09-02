@@ -58,6 +58,7 @@ class FirestoreTicketService {
     await clearAll();
 
     final uploadedDate = _todayDateKey();
+    final submittedAt = DateTime.now().toIso8601String();
     final batch = FirebaseFirestore.instance.batch();
     var skipped = 0;
     for (final t in tickets) {
@@ -66,7 +67,13 @@ class FirestoreTicketService {
         skipped++;
         continue;
       }
-      batch.set(_col.doc(id), {...t, 'uploaded_date': uploadedDate});
+      batch.set(_col.doc(id), {
+        ...t,
+        'uploaded_date': uploadedDate,
+        'submission_log': [
+          {'date': uploadedDate, 'submitted_at': submittedAt, 'actions': t['actions'] ?? []},
+        ],
+      });
     }
     await batch.commit();
     return skipped;
@@ -74,14 +81,21 @@ class FirestoreTicketService {
 
   /// يضيف فقط التذاكر الجديدة (رفعات اليوم الثاني/الثالث من نفس الدورة) دون
   /// مسح أي شيء - تصدير Microsoft Forms تراكمي (يحتوي كل الطلبات منذ الفتح
-  /// الأول)، فأي رقم جامعي موجود مسبقًا يُتجاهل تمامًا حفاظًا على أي عمل
-  /// أنجزه المرشد/المنسّق عليه، ويُضاف فقط من هو جديد فعليًا. يرجّع عدد
-  /// التذاكر الجديدة المُضافة فعليًا (للتنبيه في واجهة الرفع).
+  /// الأول). أي رقم جامعي موجود مسبقًا **لا يُنشئ تذكرة جديدة ولا يمسّ عمل
+  /// المرشد/المنسّق** على تذكرته الحالية، لكنه لم يعد يُتجاهَل بصمت كليًا:
+  /// يُسجَّل ظهوره كتقديم إضافي بحقل `submission_log` (تاريخ + لقطة من
+  /// الإجراءات المطلوبة بهذا التقديم تحديدًا) - بطلب سليمان صراحةً
+  /// (2026-09-02: طلاب يراسلون يؤكدون تقديمهم عبر Forms ولا تظهر استجابتهم؛
+  /// السبب أن التقديم الثاني لنفس الرقم كان يُبتلَع بالكامل بلا أثر - الآن
+  /// يظهر بسجل البطاقة تاريخ كل تقديم وما طُلب فيه). يرجّع عدد التذاكر
+  /// الجديدة المُضافة فعليًا (للتنبيه في واجهة الرفع).
   /// [skippedNoId] عدد الحالات التي لها رقم جامعي فارغ (بريد "anonymous" -
   /// راجع ملاحظة [replaceAllTickets]) فتُستبعَد قبل حتى مقارنتها بالموجود.
+  /// [onResubmitted] عدد الحالات التي أعادت التقديم برقم موجود مسبقًا.
   static Future<int> addNewTickets(
     List<Map<String, dynamic>> tickets, {
     void Function(int)? onSkippedNoId,
+    void Function(int)? onResubmitted,
   }) async {
     final existingSnap = await _col.get();
     final existingIds = existingSnap.docs.map((d) => d.id).toSet();
@@ -89,16 +103,38 @@ class FirestoreTicketService {
     final withValidId = tickets.where((t) => (t['university_id'] ?? '').toString().isNotEmpty).toList();
     onSkippedNoId?.call(tickets.length - withValidId.length);
 
-    final newTickets = withValidId.where((t) {
+    final newTickets = <Map<String, dynamic>>[];
+    final resubmitted = <Map<String, dynamic>>[];
+    for (final t in withValidId) {
       final id = (t['university_id'] ?? '').toString();
-      return !existingIds.contains(id);
-    }).toList();
+      if (existingIds.contains(id)) {
+        resubmitted.add(t);
+      } else {
+        newTickets.add(t);
+      }
+    }
+    onResubmitted?.call(resubmitted.length);
 
     final uploadedDate = _todayDateKey();
+    final submittedAt = DateTime.now().toIso8601String();
     final batch = FirebaseFirestore.instance.batch();
     for (final t in newTickets) {
       final id = (t['university_id'] ?? '').toString();
-      batch.set(_col.doc(id), {...t, 'uploaded_date': uploadedDate});
+      batch.set(_col.doc(id), {
+        ...t,
+        'uploaded_date': uploadedDate,
+        'submission_log': [
+          {'date': uploadedDate, 'submitted_at': submittedAt, 'actions': t['actions'] ?? []},
+        ],
+      });
+    }
+    for (final t in resubmitted) {
+      final id = (t['university_id'] ?? '').toString();
+      batch.update(_col.doc(id), {
+        'submission_log': FieldValue.arrayUnion([
+          {'date': uploadedDate, 'submitted_at': submittedAt, 'actions': t['actions'] ?? []},
+        ]),
+      });
     }
     await batch.commit();
 
@@ -311,9 +347,22 @@ class FirestoreTicketService {
       // البيانات المرفوعة فعليًا بصمت بلا أي أثر (خلل جذري، سليمان
       // 2026-08-09). يُحدَّث كل حقل فقط لو أُدخِلت له قيمة فعلية بالملف
       // المرفوع (بلا مسح حقل جهة أخرى لم تُملَأ بهذا الملف تحديدًا).
+      final changedFields = <String, String>{};
       for (final field in ['advisor_status', 'advisor_notes', 'advisor_other_reason', 'coordinator_status', 'coordinator_notes', 'college_status', 'college_notes']) {
         final value = (row[field] ?? '').toString();
-        if (value.isNotEmpty) existingAction[field] = value;
+        if (value.isNotEmpty) {
+          changedFields[field] = value;
+          existingAction[field] = value;
+        }
+      }
+      // سجل تراكمي لكل قرار فعلي على هذا الإجراء بتاريخه - بدل الاستبدال
+      // الصامت لقرار سابق (كان القرار القديم يختفي كليًا عند كل رفعة لاحقة)،
+      // حتى تظهر ببطاقة حالة الطالب/ة كل استجابة/قرار وتاريخه (سليمان
+      // صراحةً 2026-09-02).
+      if (changedFields.isNotEmpty) {
+        final history = List<Map<String, dynamic>>.from((existingAction['history'] as List?) ?? []);
+        history.add({'date': _todayDateKey(), ...changedFields});
+        existingAction['history'] = history;
       }
       matched++;
       final ownerId = actionOwnerDocId[key];

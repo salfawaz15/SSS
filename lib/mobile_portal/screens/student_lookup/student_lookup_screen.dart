@@ -150,6 +150,28 @@ class _StudentCardState extends State<_StudentCard> {
     }
   }
 
+  // معاينة منبثقة بنفس تصميم "بطاقة حالة طالب/ة" بالموقع (تدرّج أخضر +
+  // شارة حالة) قبل التنزيل الفعلي - بطلب سليمان صراحةً (2026-09-02): أراد
+  // شكل بطاقة الموقع نفسها بالتطبيق، كمعاينة تظهر عند الضغط على "تنزيل" فقط
+  // بدل استبدال شكل القائمة الحالي بالكامل.
+  Future<void> _showCardPreview(StudentTicket? ticket) async {
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => _StatusCardPreviewSheet(
+        record: widget.record,
+        ticket: ticket,
+        exporting: _exporting,
+        onDownload: () async {
+          await _downloadPdf(ticket);
+          if (sheetContext.mounted) Navigator.of(sheetContext).pop();
+        },
+      ),
+    );
+  }
+
   static Color _rangeColor(GpaStatus status) => switch (status) {
         GpaStatus.excellent => const Color(0xFF1B5E20),
         GpaStatus.veryGood => const Color(0xFF7CB342),
@@ -243,7 +265,7 @@ class _StudentCardState extends State<_StudentCard> {
           Align(
             alignment: Alignment.centerLeft,
             child: TextButton.icon(
-              onPressed: _exporting ? null : () async => _downloadPdf(await _ticketFuture),
+              onPressed: _exporting ? null : () async => _showCardPreview(await _ticketFuture),
               icon: _exporting
                   ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
                   : const Icon(Icons.picture_as_pdf_outlined, size: 16),
@@ -277,10 +299,28 @@ class _RequestAndNoteSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final actions = ticket?.actions ?? const [];
     final decision = ticket?.advisorDecision;
+    final submissionLog = ticket?.submissionLog ?? const [];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (ticket != null && ticket!.submissionCount > 1) ...[
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(AppRadius.sm)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('سجل التقديم (${ticket!.submissionCount} مرات)',
+                    style: AppTextStyles.caption(color: AppColors.gold).copyWith(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 4),
+                for (final entry in submissionLog) _submissionLogLine(entry),
+              ],
+            ),
+          ),
+        ],
         if (actions.isNotEmpty) ...[
           Text('الطلب المقدَّم (${actions.length})', style: AppTextStyles.caption(color: AppColors.gold).copyWith(fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
@@ -305,6 +345,14 @@ class _RequestAndNoteSection extends StatelessWidget {
                   if (a.reason.trim().isNotEmpty) ...[
                     const SizedBox(height: 2),
                     Text(a.reason, style: AppTextStyles.caption(color: Colors.black45)),
+                  ],
+                  if (a.history.length > 1) ...[
+                    const SizedBox(height: 4),
+                    for (final h in a.history)
+                      Text(
+                        '${(h['date'] ?? '').toString()} — ${(h['advisor_status'] ?? h['coordinator_status'] ?? h['college_status'] ?? '').toString()}',
+                        style: AppTextStyles.caption(color: Colors.black38).copyWith(fontSize: 10),
+                      ),
                   ],
                 ],
               ),
@@ -334,6 +382,163 @@ class _RequestAndNoteSection extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _submissionLogLine(Map<String, dynamic> entry) {
+    final date = (entry['date'] ?? '').toString();
+    final actions = (entry['actions'] as List?) ?? [];
+    final summary = actions.isEmpty
+        ? 'بلا إجراءات محدَّدة'
+        : actions
+            .map((a) => (a as Map)['action_type'] ?? '')
+            .where((s) => s.toString().isNotEmpty)
+            .join('، ');
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Text.rich(TextSpan(children: [
+        TextSpan(text: date.isEmpty ? '—' : date, style: AppTextStyles.caption(color: Colors.black87).copyWith(fontWeight: FontWeight.w700)),
+        TextSpan(text: '  $summary', style: AppTextStyles.caption(color: Colors.black45)),
+      ])),
+    );
+  }
+}
+
+/// معاينة منبثقة بنفس هوية "بطاقة حالة طالب/ة" بالموقع (تدرّج أخضر + شارة
+/// حالة + لوحتا تقرير المرشد/الطلب المقدَّم) - تظهر فقط عند الضغط على زر
+/// "تنزيل" بدل استبدال شكل القائمة المدمَجة الحالي بالكامل (سليمان صراحةً
+/// 2026-09-02). نفس منطق تلوين الحالة المعتمَد بـ`student_status_card_screen.dart`.
+class _StatusCardPreviewSheet extends StatelessWidget {
+  final AdvisingCaseRecord record;
+  final StudentTicket? ticket;
+  final bool exporting;
+  final VoidCallback onDownload;
+
+  const _StatusCardPreviewSheet({
+    required this.record,
+    required this.ticket,
+    required this.exporting,
+    required this.onDownload,
+  });
+
+  (String, Color, Color) get _statusStyle {
+    const ok = Color(0xFF1C7A4E);
+    const okBg = Color(0xFFE7F4EC);
+    const pending = Color(0xFF96731A);
+    const pendingBg = Color(0xFFFBF2DE);
+    const warn = AppColors.errorRed;
+    const warnBg = Color(0xFFFBEAE9);
+
+    if (ticket == null || ticket!.actions.isEmpty) return ('لا يوجد طلب مقدَّم', Colors.black45, AppColors.background);
+    final decision = ticket!.advisorDecision;
+    if (decision == null) return ('بانتظار المرشد/ة', pending, pendingBg);
+    if (decision.advisorStatus.contains('رفض')) return ('مرفوض — يحتاج متابعة', warn, warnBg);
+    if (decision.advisorStatus.isNotEmpty) return ('تمت الموافقة', ok, okBg);
+    return ('بانتظار المرشد/ة', pending, pendingBg);
+  }
+
+  String get _narrative {
+    if (ticket == null || ticket!.actions.isEmpty) return 'لا يوجد أي طلب إضافة/حذف/تعديل مقدَّم من هذا/هذه الطالب/ة.';
+    final decision = ticket!.advisorDecision;
+    if (decision == null) return 'لم تُتّخذ أي إجراء بعد على الطلب المرفوع بتاريخ ${ticket!.uploadedDate.isEmpty ? '—' : ticket!.uploadedDate}.';
+    if (decision.advisorStatus.contains('رفض')) return 'رفض المرشد/ة الطلب — راجع/ي ملاحظته/ا أدناه لمعرفة السبب.';
+    return 'وافق المرشد/ة على الطلب.';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final (statusLabel, statusFg, statusBg) = _statusStyle;
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.85,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      expand: false,
+      builder: (context, scrollController) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.lg)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: ListView(
+          controller: scrollController,
+          padding: EdgeInsets.zero,
+          children: [
+            Container(
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(colors: [AppColors.green, AppColors.greenDark], begin: Alignment.topRight, end: Alignment.bottomLeft),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(displayName(record.studentName), style: AppTextStyles.h3(color: Colors.white)),
+                        const SizedBox(height: 6),
+                        Text('${record.department} · ${record.shatr}', style: const TextStyle(color: Color(0xFFCFE0D6), fontSize: 12)),
+                        const SizedBox(height: 2),
+                        Text(
+                          'المرشد/ة: ${record.hasAdvisor ? displayName(record.advisorNameRaw) : 'غير محدَّد'}',
+                          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.12),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(record.studentId, style: const TextStyle(color: Colors.white, fontSize: 12)),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+              color: AppColors.background,
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(color: statusBg, borderRadius: BorderRadius.circular(999)),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Container(width: 6, height: 6, decoration: BoxDecoration(color: statusFg, shape: BoxShape.circle)),
+                      const SizedBox(width: 5),
+                      Text(statusLabel, style: TextStyle(color: statusFg, fontSize: 11.5, fontWeight: FontWeight.w700)),
+                    ]),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(_narrative, style: AppTextStyles.caption(color: Colors.black54))),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(18),
+              child: _RequestAndNoteSection(ticket: ticket),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: exporting ? null : onDownload,
+                  style: FilledButton.styleFrom(backgroundColor: AppColors.greenDark),
+                  icon: exporting
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.picture_as_pdf_outlined, size: 18),
+                  label: const Text('تنزيل PDF / مشاركة'),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
