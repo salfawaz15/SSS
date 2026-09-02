@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
@@ -2417,6 +2418,8 @@ class _MetricCard extends StatelessWidget {
 
   const _MetricCard({this.icon, this.iconBuilder, required this.label, required this.tone}) : value = null;
 
+  const _MetricCard.withValue({this.icon, this.iconBuilder, required this.label, required this.tone, required this.value});
+
   @override
   Widget build(BuildContext context) {
     final accent = tone.color;
@@ -2526,16 +2529,54 @@ class _MetricsSection extends StatelessWidget {
     // Material جاهزة تطابق "UserRoundCheck" حرفيًا بلا استخدام درع/سماعة/
     // بطاقة هوية (كلها استُبعِدت صراحةً)، و"school" (قبعة تخرّج فعلية)
     // للخريجين.
-    final metrics = [
-      const _MetricCard(icon: Icons.groups_outlined, label: 'الطلبة المستفيدون', tone: _MetricTone.green),
-      _MetricCard(
-        iconBuilder: (size) => _PersonCheckIcon(size: size),
-        label: 'المرشدون الأكاديميون',
-        tone: _MetricTone.darkGreen,
-      ),
-      const _MetricCard(icon: Icons.school_outlined, label: 'الخريجون', tone: _MetricTone.gold),
-      const _MetricCard(icon: Icons.volunteer_activism_outlined, label: 'الخدمات والمبادرات', tone: _MetricTone.softGold),
-    ];
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      // الطلبة المستفيدون والمرشدون الأكاديميون مصدرهما public_stats/summary
+      // نفسه المستخدم فعليًا بلوحة إحصائيات الجوال (mobile_home_screen.dart)
+      // - يُحدَّث تلقائيًا مع كل حركة تذاكر. الخريجون والخدمات والمبادرات
+      // ليس لهما مصدر بيانات فعلي بالمشروع بعد فتبقيان "—" (بقرار سليمان
+      // الصريح 2026-09-02).
+      stream: FirebaseFirestore.instance.collection('public_stats').doc('summary').snapshots(),
+      builder: (context, snapshot) {
+        final data = snapshot.data?.data();
+        final studentsServed = data?['students_served'] as int?;
+        final advisorsCount = data?['advisors_count'] as int?;
+        final metrics = [
+          studentsServed == null || studentsServed == 0
+              ? const _MetricCard(icon: Icons.groups_outlined, label: 'الطلبة المستفيدون', tone: _MetricTone.green)
+              : _MetricCard.withValue(
+                  icon: Icons.groups_outlined,
+                  label: 'الطلبة المستفيدون',
+                  tone: _MetricTone.green,
+                  value: studentsServed,
+                ),
+          advisorsCount == null || advisorsCount == 0
+              ? _MetricCard(
+                  iconBuilder: (size) => _PersonCheckIcon(size: size),
+                  label: 'المرشدون الأكاديميون',
+                  tone: _MetricTone.darkGreen,
+                )
+              : _MetricCard.withValue(
+                  iconBuilder: (size) => _PersonCheckIcon(size: size),
+                  label: 'المرشدون الأكاديميون',
+                  tone: _MetricTone.darkGreen,
+                  value: advisorsCount,
+                ),
+          const _MetricCard(icon: Icons.school_outlined, label: 'الخريجون', tone: _MetricTone.gold),
+          const _MetricCard(icon: Icons.volunteer_activism_outlined, label: 'الخدمات والمبادرات', tone: _MetricTone.softGold),
+        ];
+        return _MetricsGrid(metrics: metrics);
+      },
+    );
+  }
+}
+
+class _MetricsGrid extends StatelessWidget {
+  const _MetricsGrid({required this.metrics});
+
+  final List<_MetricCard> metrics;
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
       color: Colors.white,
