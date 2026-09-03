@@ -337,7 +337,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
       final bytes = await EscalationFileService.buildStage2File(tickets);
       final parts = key.split('|');
       final shatrLabel = parts[0] == ExcelParserService.shatrMale ? 'male' : 'female';
-      downloadBytes(bytes, '${parts.length > 1 ? parts[1] : 'قسم'}_${shatrLabel}_مرحلة_المنسق.xlsx');
+      downloadBytes(bytes, '${parts.length > 1 ? parts[1] : 'قسم'}_${shatrLabel}_فرز_حسب_حالة_الإنجاز.xlsx');
       if (parts.length > 1) {
         unawaited(StageDownloadService.recordCoordinatorDownload(shatr: parts[0], department: parts[1]));
       }
@@ -351,15 +351,18 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     }
   }
 
-  /// تنزيل ملف "مرحلة منسّق الكلية" لشطر كامل (الأقسام الخمسة مدمجة).
+  /// تنزيل ملفات "مرحلة منسّق الكلية" لشطر كامل - 5 ملفات منفصلة (واحد لكل
+  /// قسم) مضغوطة بـZIP بدل ملف مدمج واحد (سليمان صراحةً 2026-09-03)، نفس
+  /// تجزئة [EscalationFileService.buildStage3DepartmentFiles] المستخدَمة
+  /// بشاشة منسّق/ة الكلية الفعلية.
   Future<void> _downloadStage3(String shatr, List<Map<String, dynamic>> shatrTickets) async {
     final key = 'stage3|$shatr';
     setState(() => _stageKeys.add(key));
     try {
-      final bytes = await EscalationFileService.buildStage3File(shatrTickets);
+      final zipBytes = await EscalationFileService.buildStage3DepartmentZip(shatrTickets);
       final shatrLabel = shatr == ExcelParserService.shatrMale ? 'male' : 'female';
-      downloadBytes(bytes, 'منسق_الكلية_$shatrLabel.xlsx');
-      if (mounted) _showSuccessSnackBar('تم تنزيل ملف منسّق الكلية بنجاح');
+      downloadBytes(zipBytes, 'منسق_الكلية_$shatrLabel.zip');
+      if (mounted) _showSuccessSnackBar('تم تنزيل ملفات منسّق الكلية بنجاح');
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذّر إنشاء ملف منسّق الكلية: $e')));

@@ -1143,12 +1143,12 @@ Future<void> runDownloadAllStage2Zip({
       final shatrLabel = shatr == ExcelParserService.shatrMale ? 'male' : 'female';
 
       final bytes = await EscalationFileService.buildStage2File(entry.value);
-      final safeName = '${department.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')}_${shatrLabel}_مرحلة_المنسق';
+      final safeName = '${department.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')}_${shatrLabel}_فرز_حسب_حالة_الإنجاز';
       archive.addFile(ArchiveFile('$safeName.xlsx', bytes.length, bytes));
     }
 
     final zipBytes = Uint8List.fromList(ZipEncoder().encode(archive) ?? <int>[]);
-    await downloadBytes(zipBytes, 'ملفات_منسقي_الأقسام_مرحلة_المنسق.zip');
+    await downloadBytes(zipBytes, 'ملفات_منسقي_الأقسام_فرز_حسب_حالة_الإنجاز.zip');
 
     if (!context.mounted) return;
     onMessage('تم تنزيل ${groups.length} ملفًا (مرحلة منسّق القسم) بنجاح');
@@ -1160,9 +1160,12 @@ Future<void> runDownloadAllStage2Zip({
   }
 }
 
-/// تنزيل ملفَي "مرحلة منسّق الكلية" (شطر الطلاب وشطر الطالبات) دفعة واحدة
-/// بملف مضغوط واحد - يكمل بقية أزرار "أستطيع أفعل كل شيء من هذا الشريط"
-/// (سليمان صراحةً 2026-08-25).
+/// تنزيل ملفات "مرحلة منسّق الكلية" لكلا الشطرين دفعة واحدة بملف مضغوط واحد
+/// - يكمل بقية أزرار "أستطيع أفعل كل شيء من هذا الشريط" (سليمان صراحةً
+/// 2026-08-25). كل شطر الآن 5 ملفات منفصلة (واحد لكل قسم) بدل ملف مدمج واحد
+/// - بطلب سليمان صراحةً (2026-09-03)، نفس تجزئة
+/// [EscalationFileService.buildStage3DepartmentFiles] المستخدَمة بشاشة
+/// منسّق/ة الكلية الفعلية.
 Future<void> runDownloadAllStage3Zip({
   required BuildContext context,
   required ValueChanged<bool> setDownloading,
@@ -1176,19 +1179,24 @@ Future<void> runDownloadAllStage3Zip({
     }
 
     final archive = Archive();
+    var fileCount = 0;
     for (final shatr in [ExcelParserService.shatrMale, ExcelParserService.shatrFemale]) {
       final shatrTickets = tickets.where((t) => t['shatr'] == shatr).toList();
       if (shatrTickets.isEmpty) continue;
       final shatrLabel = shatr == ExcelParserService.shatrMale ? 'male' : 'female';
-      final bytes = await EscalationFileService.buildStage3File(shatrTickets);
-      archive.addFile(ArchiveFile('منسق_الكلية_$shatrLabel.xlsx', bytes.length, bytes));
+      final departmentFiles = await EscalationFileService.buildStage3DepartmentFiles(shatrTickets);
+      for (final entry in departmentFiles.entries) {
+        final departmentName = entry.key.replaceAll('.xlsx', '');
+        archive.addFile(ArchiveFile('منسق_الكلية_${departmentName}_$shatrLabel.xlsx', entry.value.length, entry.value));
+        fileCount++;
+      }
     }
 
     final zipBytes = Uint8List.fromList(ZipEncoder().encode(archive) ?? <int>[]);
     await downloadBytes(zipBytes, 'ملفات_منسقي_الكلية.zip');
 
     if (!context.mounted) return;
-    onMessage('تم تنزيل ملفي منسّق الكلية بنجاح');
+    onMessage('تم تنزيل $fileCount ملفًا (مرحلة منسّق الكلية) بنجاح');
   } catch (e) {
     if (!context.mounted) return;
     showUploadErrorDialog(context, 'تعذّر تنزيل الملفات', '$e');
