@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:excel/excel.dart';
 
+import '../data/faculty_sort_order.dart';
 import 'advising_report_repository.dart';
 import 'course_schedule_repository.dart' show Shatr;
 
@@ -321,6 +322,13 @@ class ExcelExportService {
     List<Map<String, dynamic>> tickets, {
     bool includeInstructions = false,
     bool includePaperFormRows = false,
+    // يُفعَّل فقط لملف منسّق الكلية (المرحلة 3) الذي يدمج الأقسام الخمسة معًا
+    // - بطلب سليمان صراحةً (2026-09-03): يسهُل عليه العمل قسمًا كاملاً
+    // ثم التالي بدل تشتت حالات نفس القسم بين أرجاء الملف. يضيف ترتيب القسم
+    // (بنفس ترتيب FacultySortOrder المعتمَد بكل الموقع) كمعيار فرز أول، قبل
+    // حالة إنجاز المرشد/أولوية التخرج - لا يُستخدم بملف المرشد أو ملف منسّق
+    // القسم (كل منهما أصلاً قسم واحد فلا فائدة من التجميع).
+    bool groupByDepartment = false,
   }) async {
     final academicLookup = await _loadAcademicLookup();
     final workbook = Excel.createExcel();
@@ -408,6 +416,7 @@ class ExcelExportService {
         tier = GraduationTier.normal;
         expectedGraduateLabel = (t['expected_graduate'] == true) ? 'نعم' : 'لا';
       }
+      final departmentRank = FacultySortOrder.departmentRank((t['department'] ?? '').toString());
       final baseInfo = [
         t['name'] ?? '',
         studentId,
@@ -429,6 +438,7 @@ class ExcelExportService {
           studentId: studentId,
           actionPriority: 99,
           tier: tier,
+          departmentRank: departmentRank,
           values: [
             ...baseInfo,
             '',
@@ -500,6 +510,8 @@ class ExcelExportService {
           actionPriority: isAdd ? 0 : (isDelete ? 1 : (isChange ? 2 : 98)),
           tier: tier,
           values: row,
+          advisorStatusPriority: advisorStatus.isEmpty ? 0 : (advisorStatus == 'لم يتم التنفيذ' ? 1 : 2),
+          departmentRank: departmentRank,
         ));
       }
     }
@@ -512,6 +524,15 @@ class ExcelExportService {
     // وجودها فعليًا تحت عنوان يوم آخر. السلوك الآن: ترتيب واحد متواصل حسب
     // أولوية التخرّج (الساعات المتبقية) فقط، بلا أي فصل بعناوين تواريخ.
     rowSpecs.sort((a, b) {
+      final byAdvisorStatus = a.advisorStatusPriority.compareTo(b.advisorStatusPriority);
+      if (byAdvisorStatus != 0) return byAdvisorStatus;
+      // ملف منسّق الكلية فقط (groupByDepartment): الإنجاز ثم القسم ثم أولوية
+      // التخرج - بطلب سليمان صراحةً (2026-09-03) ليعمل قسمًا كاملاً قبل
+      // الانتقال للتالي بدل تشتت حالات نفس القسم بأرجاء الملف المدمج.
+      if (groupByDepartment) {
+        final byDepartment = a.departmentRank.compareTo(b.departmentRank);
+        if (byDepartment != 0) return byDepartment;
+      }
       final byHours = a.hoursSortKey.compareTo(b.hoursSortKey);
       if (byHours != 0) return byHours;
       final byId = a.studentId.compareTo(b.studentId);
@@ -721,6 +742,15 @@ class _RowSpec {
   final int actionPriority;
   final GraduationTier tier;
   final List<dynamic> values;
+  // أولوية فرز حسب حالة إنجاز المرشد - 0="لم يُفتح إطلاقًا" (advisor_status
+  // فارغ)، 1="لم يتم التنفيذ"، 2="تم التنفيذ" - بطلب سليمان صراحةً
+  // (2026-09-02): منسّق القسم يحتاج رؤية الحالات غير المنجزة/غير المفتوحة
+  // أولًا بدل البحث عنها وسط ملف كامل مرتَّب فقط حسب الرقم الجامعي/التخرّج.
+  final int advisorStatusPriority;
+  // ترتيب القسم (FacultySortOrder.departmentRank) - يُستخدَم كمعيار فرز أول
+  // فقط حين groupByDepartment = true (ملف منسّق الكلية)، يُحسَب دائمًا بلا
+  // شرط لبساطة الكود.
+  final int departmentRank;
   const _RowSpec({
     required this.day,
     required this.hoursSortKey,
@@ -728,5 +758,7 @@ class _RowSpec {
     required this.actionPriority,
     required this.tier,
     required this.values,
+    this.advisorStatusPriority = 0,
+    this.departmentRank = 0,
   });
 }
