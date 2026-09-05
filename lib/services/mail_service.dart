@@ -91,7 +91,9 @@ class MailService {
       dropdowns: [
         DropdownColumn(
           columnIndex: ExcelExportService.coordinatorStatusColumnIndex,
-          options: ExcelProtectionService.statusOptions,
+          // خياران فقط - توحيد مع خياري المرشد وملفَي منسّق القسم/الكلية
+          // بصفحة "رفع وتنزيل الملفات" (سليمان صراحةً 2026-09-05).
+          options: ExcelProtectionService.advisorActionStatusOptions,
         ),
       ],
       unlockedColumnIndexes: [

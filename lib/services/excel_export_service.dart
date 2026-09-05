@@ -518,15 +518,14 @@ class ExcelExportService {
           actionPriority: isAdd ? 0 : (isDelete ? 1 : (isChange ? 2 : 98)),
           tier: tier,
           values: row,
-          // منسّق القسم يختار من [ExcelProtectionService.statusOptions]
-          // ("تم الإنجاز"/"جزئي"/"لم يتم") لا من خيارَي المرشد ("تم
-          // التنفيذ"/"لم يتم التنفيذ") - نصّان مختلفان تمامًا، الخلط بينهما
-          // بالنسخة الأولى (2026-09-05) جعل كل الحالات غير الفارغة (تم
-          // الإنجاز/جزئي/لم يتم) تقع بنفس الفئة "تم" خطأً.
+          // قائمة منسّق القسم/الكلية المنسدلة وُحِّدت مع خياري المرشد (سليمان
+          // صراحةً 2026-09-05): "تم التنفيذ"/"لم يتم التنفيذ" بدل الثلاثة
+          // القديمة ("تم الإنجاز"/"جزئي"/"لم يتم"). القيم القديمة تبقى ممكنة
+          // بتذاكر مُعالَجة قبل هذا التغيير فتُقبَل كلتا الصيغتين هنا.
           advisorStatusPriority: isCollegeStage
               ? (executionStatus.isEmpty
                   ? 2
-                  : (executionStatus == 'تم الإنجاز' ? 0 : 1))
+                  : ((executionStatus == 'تم التنفيذ' || executionStatus == 'تم الإنجاز') ? 0 : 1))
               : (executionStatus.isEmpty ? 0 : (executionStatus == 'لم يتم التنفيذ' ? 1 : 2)),
           departmentRank: departmentRank,
         ));

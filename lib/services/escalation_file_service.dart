@@ -54,7 +54,12 @@ class EscalationFileService {
       dropdowns: [
         DropdownColumn(
           columnIndex: statusColumnIndex,
-          options: ExcelProtectionService.statusOptions,
+          // خياران فقط (تم/لم يتم التنفيذ) لا الثلاثة القديمة (تم
+          // الإنجاز/جزئي/لم يتم) - توحيد مع خياري المرشد بطلب سليمان صراحةً
+          // (2026-09-05)، يشمل الآن منسّق القسم ومنسّق الكلية معًا. خيار
+          // "جزئي" يبقى مستخدَمًا بتقارير/إحصائيات أخرى بالموقع لحالات
+          // مُدخَلة سابقًا - لم تُعدَّل بعد (مرحلة لاحقة بطلب سليمان).
+          options: ExcelProtectionService.advisorActionStatusOptions,
         ),
       ],
       unlockedColumnIndexes: [
