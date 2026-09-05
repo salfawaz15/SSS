@@ -329,6 +329,13 @@ class ExcelExportService {
     // حالة إنجاز المرشد/أولوية التخرج - لا يُستخدم بملف المرشد أو ملف منسّق
     // القسم (كل منهما أصلاً قسم واحد فلا فائدة من التجميع).
     bool groupByDepartment = false,
+    // يُفعَّل فقط لملف منسّق الكلية (المرحلة 3) - بطلب سليمان صراحةً
+    // (2026-09-05): يغيّر مصدر ومعنى أولوية الفرز حسب الإنجاز من حالة
+    // المرشد (كما بملف منسّق القسم) إلى حالة منسّق القسم نفسه (المرحلة
+    // السابقة على منسّق الكلية مباشرة، فهذه الحالات مُصعَّدة أصلاً منه)،
+    // وبترتيب معكوس: "تم التنفيذ" أولًا، فـ"لم يتم التنفيذ"، و"لم يعمل
+    // عليها" (فارغ) أخيرًا - عكس ملف منسّق القسم الذي يضع غير المفتوح أولًا.
+    bool isCollegeStage = false,
   }) async {
     final academicLookup = await _loadAcademicLookup();
     final workbook = Excel.createExcel();
@@ -468,6 +475,7 @@ class ExcelExportService {
         final advisorNotes = (action['advisor_notes'] ?? '').toString();
         final advisorOtherReason = (action['advisor_other_reason'] ?? '').toString();
         final coordinatorStatus = (action['coordinator_status'] ?? '').toString();
+        final executionStatus = isCollegeStage ? coordinatorStatus : advisorStatus;
         final coordinatorNotes = (action['coordinator_notes'] ?? '').toString();
         final collegeStatus = (action['college_status'] ?? '').toString();
         final collegeNotes = (action['college_notes'] ?? '').toString();
@@ -510,7 +518,9 @@ class ExcelExportService {
           actionPriority: isAdd ? 0 : (isDelete ? 1 : (isChange ? 2 : 98)),
           tier: tier,
           values: row,
-          advisorStatusPriority: advisorStatus.isEmpty ? 0 : (advisorStatus == 'لم يتم التنفيذ' ? 1 : 2),
+          advisorStatusPriority: isCollegeStage
+              ? (executionStatus.isEmpty ? 2 : (executionStatus == 'لم يتم التنفيذ' ? 1 : 0))
+              : (executionStatus.isEmpty ? 0 : (executionStatus == 'لم يتم التنفيذ' ? 1 : 2)),
           departmentRank: departmentRank,
         ));
       }

@@ -351,18 +351,16 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     }
   }
 
-  /// تنزيل ملفات "مرحلة منسّق الكلية" لشطر كامل - 5 ملفات منفصلة (واحد لكل
-  /// قسم) مضغوطة بـZIP بدل ملف مدمج واحد (سليمان صراحةً 2026-09-03)، نفس
-  /// تجزئة [EscalationFileService.buildStage3DepartmentFiles] المستخدَمة
-  /// بشاشة منسّق/ة الكلية الفعلية.
+  /// تنزيل ملف "مرحلة منسّق الكلية" لشطر كامل (الأقسام الخمسة مدمجة) - عاد
+  /// ملفًا واحدًا بعد تجربة الانقسام لـ5 ملفات ZIP (سليمان صراحةً 2026-09-05).
   Future<void> _downloadStage3(String shatr, List<Map<String, dynamic>> shatrTickets) async {
     final key = 'stage3|$shatr';
     setState(() => _stageKeys.add(key));
     try {
-      final zipBytes = await EscalationFileService.buildStage3DepartmentZip(shatrTickets);
+      final bytes = await EscalationFileService.buildStage3File(shatrTickets);
       final shatrLabel = shatr == ExcelParserService.shatrMale ? 'male' : 'female';
-      downloadBytes(zipBytes, 'منسق_الكلية_$shatrLabel.zip');
-      if (mounted) _showSuccessSnackBar('تم تنزيل ملفات منسّق الكلية بنجاح');
+      downloadBytes(bytes, 'منسق_الكلية_$shatrLabel.xlsx');
+      if (mounted) _showSuccessSnackBar('تم تنزيل ملف منسّق الكلية بنجاح');
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تعذّر إنشاء ملف منسّق الكلية: $e')));

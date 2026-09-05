@@ -91,14 +91,13 @@ class _CollegeCoordinatorBodyState extends State<_CollegeCoordinatorBody> {
   MergeResult? _lastResult;
   String? _errorMessage;
 
-  // ملف واحد لكل قسم (5 ملفات مضغوطة بـZIP) بدل ملف مدمج واحد - بطلب سليمان
-  // صراحةً (2026-09-03): يسهُل على منسّق/ة الكلية العمل على قسم كامل في ملف
-  // مستقل بدل ملف ضخم يجمع الأقسام الخمسة معًا.
+  // ملف Excel واحد يدمج كل الأقسام - عاد بعد تجربة الانقسام لـ5 ملفات ZIP
+  // (سليمان صراحةً 2026-09-05).
   Future<void> _download(List<Map<String, dynamic>> tickets) async {
     setState(() => _isDownloading = true);
     try {
-      final bytes = await EscalationFileService.buildStage3DepartmentZip(tickets);
-      downloadBytes(bytes, 'مرحلة_منسق_الكلية_${widget.shatr}.zip');
+      final bytes = await EscalationFileService.buildStage3File(tickets);
+      downloadBytes(bytes, 'مرحلة_منسق_الكلية_${widget.shatr}.xlsx');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('تم تنزيل الملف بنجاح')),
@@ -478,7 +477,7 @@ class _CollegeCoordinatorBodyState extends State<_CollegeCoordinatorBody> {
             children: [
               _sectionHint(
                 icon: Icons.download,
-                text: 'يُنزّل ملف مضغوط (ZIP) يضم ملف Excel مستقل لكل قسم من أقسام هذا الشطر الخمسة، لمعالجة كل قسم على حدة ثم رفع كل ملف بعد تعديله.',
+                text: 'يُنزّل ملف Excel واحد يضم كل الحالات المتصعّدة من كل أقسام هذا الشطر، مفروزة حسب حالة منسّق القسم (تم التنفيذ ← لم يتم التنفيذ ← لم يعمل عليها)، لمعالجتها ثم رفعها لاحقًا.',
               ),
               const SizedBox(height: 8),
               ElevatedButton.icon(
@@ -490,7 +489,7 @@ class _CollegeCoordinatorBodyState extends State<_CollegeCoordinatorBody> {
                         child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                       )
                     : const Icon(Icons.download),
-                label: const Text('تنزيل ملفات الأقسام (ZIP)'),
+                label: const Text('تنزيل ملف كل الأقسام المدمج'),
               ),
               const SizedBox(height: 20),
               _sectionHint(
