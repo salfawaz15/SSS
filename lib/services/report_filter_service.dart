@@ -116,10 +116,16 @@ class ReportFilterService {
     return result;
   }
 
-  /// كل تذاكر المرشدين الذين لم ينجزوا **ولو إجراء واحد** ضمن التذاكر
-  /// الممرَّرة (صفر advisor_status = 'تم التنفيذ' عبر كل تذاكر المرشد
-  /// بالكامل) - أساس قائمة "الأعضاء المقصّرون" وملف حالاتهم المُرسَل
+  /// كل تذاكر المرشدين الذين **لم يباشروا ولو إجراء واحد إطلاقًا** ضمن
+  /// التذاكر الممرَّرة - أساس قائمة "الأعضاء المقصّرون" وملف حالاتهم المُرسَل
   /// لرئيس القسم بطلب سليمان صراحةً (2026-08-31).
+  ///
+  /// "المباشرة" هنا تعني أي استجابة فعلية من المرشد على الإجراء - سواء
+  /// "تم التنفيذ" أو "لم يتم التنفيذ" (برأي/سبب فعلي، كالشعبة المكتملة أو
+  /// تعارض الجدول) - كلاهما عمل حقيقي بنفس الدرجة؛ التقصير الفعلي هو عدم
+  /// الاستجابة إطلاقًا (`advisor_status` فارغ/غير موجود بكل إجراءاته) لا
+  /// نوع القرار المتَّخذ (سليمان صراحةً 2026-09-05: "تم التنفيذ أو لم يتم
+  /// التنفيذ = إنجاز؛ لم يعمل على أي حالة = لا يوجد إنجاز").
   static List<Map<String, dynamic>> delinquentAdvisorTickets(List<Map<String, dynamic>> tickets) {
     // مطابقة متسامحة بنفس منطق [normalizeAdvisorNameForMatch] (تتجاهل
     // الألقاب وصور الهمزة/التاء المربوطة) - وإلا يظهر مرشد أنجز فعليًا ضمن
@@ -140,7 +146,7 @@ class ReportFilterService {
       final actions = (ticket['actions'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
       final ticketAdvisor = (ticket['advisor'] ?? '').toString().trim();
       for (final a in actions) {
-        if (!isCompletedStatus((a['advisor_status'] ?? '').toString().trim())) continue;
+        if ((a['advisor_status'] ?? '').toString().trim().isEmpty) continue;
         final performer = (a['performed_by_advisor'] ?? '').toString().trim();
         final effectivePerformer = performer.isNotEmpty ? performer : ticketAdvisor;
         if (effectivePerformer.isNotEmpty) advisorsWithProgress.add(normalizeAdvisorNameForMatch(effectivePerformer));
