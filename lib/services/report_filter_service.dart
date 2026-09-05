@@ -167,16 +167,22 @@ class ReportFilterService {
   ) {
     final delinquentTickets = delinquentAdvisorTickets(allTickets);
     final regrouped = groupTicketsByAdvisorRealDepartment(delinquentTickets, collegeRoster);
-    final result = <String, Set<String>>{};
+    // مفتاح التجميع داخل كل قسم هو الاسم **المطبَّع** لا الخام - وإلا يظهر نفس
+    // الشخص أكثر من مرة فقط لأن إحدى تذاكره كُتبت بمسافة عادية والأخرى بمسافة
+    // غير قابلة للفصل (NBSP) من نموذج Microsoft Forms، رغم أن دالة المطابقة
+    // تعتبرهما نفس الشخص لأغراض حساب الإنجاز (سليمان صراحةً 2026-09-05: أسماء
+    // مكرَّرة ظهرت بالجدول رغم كونها لشخص واحد).
+    final result = <String, Map<String, String>>{};
     for (final entry in regrouped.entries) {
       for (final t in entry.value) {
         final advisor = (t['advisor'] ?? '').toString().trim();
         if (advisor.isEmpty) continue;
         final resolved = resolveAdvisorDepartment(advisor, collegeRoster);
         final label = resolved == null ? '$advisor ⚠️ غير موجود بملف منسوبي الكلية - تحقّق يدويًا' : advisor;
-        result.putIfAbsent(entry.key, () => {}).add(label);
+        final key = normalizeAdvisorNameForMatch(advisor);
+        result.putIfAbsent(entry.key, () => {}).putIfAbsent(key, () => label);
       }
     }
-    return {for (final e in result.entries) e.key: (e.value.toList()..sort())};
+    return {for (final e in result.entries) e.key: (e.value.values.toList()..sort())};
   }
 }

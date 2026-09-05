@@ -168,7 +168,13 @@ class AdvisorZipService {
       final workbookResult = await ExcelExportService.buildDepartmentWorkbook(
         advisorTickets,
         includeInstructions: true,
-        includePaperFormRows: true,
+        // أُلغي نهائيًا (سليمان صراحةً 2026-09-05): قسم "النموذج الورقي" كان
+        // يفتح صفوفًا حرة التحرير بلا أي حماية، وحقل اسم المرشد بها يُعبَّأ
+        // تلقائيًا باسم أول مرشد بالملف فقط - فإن استخدم مرشد آخر أحد هذه
+        // الصفوف بلا تصحيح ذلك الاسم يدويًا، تُحتسَب حالته خطأً على المرشد
+        // الأول (حالة فعلية: حالتا الطالبين ABDULLAH ALSUFYANI وYAZEED AL MANI
+        // احتُسبتا خطأً لـ"فهد مصلح منيف السعدي" بدل من أنجزهما فعليًا).
+        includePaperFormRows: false,
       );
       final withReasonsSheet = _addReasonsReferenceSheet(workbookResult.bytes);
       final dataRowCount = workbookResult.totalDataRowCount;
