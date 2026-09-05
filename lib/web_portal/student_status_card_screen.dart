@@ -53,7 +53,7 @@ class _StudentStatusCardScreenState extends State<StudentStatusCardScreen> {
       setState(() {
         _data = data;
         _loading = false;
-        if (data == null) _error = 'لم يُعثر على طالب/ة بهذا الرقم الجامعي ضمن تقرير "كل الكليات" المرفوع.';
+        if (data == null) _error = 'لم يُعثر على طالب/ة بهذا الرقم الجامعي ضمن أي من تقارير الإرشاد أو بيانات الطلبة الأكاديمية المرفوعة.';
       });
     } catch (e) {
       if (!mounted) return;
@@ -267,6 +267,14 @@ class _StudentStatusCardScreenState extends State<StudentStatusCardScreen> {
                     _kv('الحالة الصحية', r.healthCondition.isEmpty ? 'لا يوجد' : r.healthCondition),
                     _kv('حالة القيد', r.enrollmentStatus.isEmpty ? 'منتظم/ة' : r.enrollmentStatus),
                     _kv('المعدل التراكمي', r.gpa?.toStringAsFixed(2) ?? 'غير مسجَّل بالتقرير'),
+                    _kv('ساعات الخطة', r.planHours?.toString() ?? 'غير مسجَّل بالتقرير'),
+                    _kv('الساعات المتبقية', r.remainingHours?.toString() ?? 'غير مسجَّل بالتقرير'),
+                    _kv(
+                      'حالة التخرج',
+                      r.remainingHours == null
+                          ? 'غير مسجَّل بالتقرير'
+                          : (r.remainingHours! <= 0 ? 'استكمل الساعات المطلوبة' : 'متبقٍّ ${r.remainingHours} ساعة'),
+                    ),
                   ]),
                 ),
                 SizedBox(width: narrow ? 0 : 14, height: narrow ? 14 : 0),

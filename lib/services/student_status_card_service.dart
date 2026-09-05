@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/advising_case_record.dart';
+import 'advising_case_analyzer.dart';
 import 'advising_report_repository.dart';
 import 'course_schedule_repository.dart' show Shatr;
 
@@ -109,10 +110,26 @@ class StudentStatusCardService {
     final results = await Future.wait([
       AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.allColleges),
       AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.allColleges),
+      AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.base),
+      AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.base),
+      AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.basePrevious),
+      AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.basePrevious),
+      AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.health),
+      AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.health),
     ]);
+    final [
+      allCollegesMale,
+      allCollegesFemale,
+      baseMale,
+      baseFemale,
+      basePreviousMale,
+      basePreviousFemale,
+      healthMale,
+      healthFemale,
+    ] = results;
 
     AdvisingCaseRecord? record;
-    for (final list in results) {
+    for (final list in [allCollegesMale, allCollegesFemale]) {
       for (final r in list) {
         if (r.studentId == id) {
           record = r;
@@ -121,7 +138,38 @@ class StudentStatusCardService {
       }
       if (record != null) break;
     }
+
+    AdvisingCaseRecord? academic;
+    for (final list in [baseMale, baseFemale]) {
+      for (final r in list) {
+        if (r.studentId == id) {
+          academic = r;
+          break;
+        }
+      }
+      if (academic != null) break;
+    }
+
+    // إن لم يكن للطالب/ة سجل مرشد بعد (لم يُسنَد بملف المرشد) يُبنى سجل من
+    // بيانات الطلبة الأكاديمية وحدها بدل استبعاده كليًا من البطاقة.
+    record ??= academic;
     if (record == null) return null;
+
+    // يدمج كل مصادر بيانات الطالب/ة الأخرى بالرقم الجامعي - ملف المرشد
+    // ("كل الكليات") لا يحمل المعدل/الساعات/الحالة الصحية أصلاً، فتبقى "غير
+    // مسجَّلة" بالبطاقة رغم توفّرها فعليًا بمصادر أخرى لولا هذا الدمج (نفس
+    // الدوال التي تبني تقارير متابعة الإرشاد الأخرى - [AdvisingCaseAnalyzer]).
+    if (academic != null) {
+      record = AdvisingCaseAnalyzer.mergeAcademicData(
+        [record],
+        [academic],
+        [...basePreviousMale, ...basePreviousFemale],
+      ).first;
+    }
+    record = AdvisingCaseAnalyzer.mergeHealthConditions(
+      [record],
+      [...healthMale, ...healthFemale],
+    ).first;
 
     final ticket = await fetchTicket(id);
     return StudentStatusCardData(record: record, ticket: ticket);

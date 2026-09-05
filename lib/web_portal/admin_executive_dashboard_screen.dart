@@ -10,6 +10,7 @@ import '../services/support_case_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/name_display.dart';
 import 'admin_nav.dart';
+import 'digital_transformation_section.dart';
 import 'portal_header.dart';
 
 /// نسبة إنجاز صحيحة - تقريب عادي (round) لكن بسقف صارم: لا تظهر 100% إلا
@@ -770,6 +771,8 @@ class _FilterableDashboardContentState extends State<_FilterableDashboardContent
         deptCounts: _computeDeptCaseCounts(filtered),
         advisorCounts: _computeAdvisorCaseCounts(filtered),
       ),
+      const SizedBox(height: 16),
+      DigitalTransformationSection(tickets: filtered),
     ];
   }
 

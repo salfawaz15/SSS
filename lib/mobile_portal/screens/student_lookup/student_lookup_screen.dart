@@ -45,10 +45,21 @@ class _StudentLookupTabState extends State<StudentLookupTab> {
       AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.base),
       AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.basePrevious),
       AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.basePrevious),
+      AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.health),
+      AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.health),
     ]);
+    final allColleges = [...results[0], ...results[1]];
     final academic = [...results[2], ...results[3]];
     final academicPrevious = [...results[4], ...results[5]];
-    return AdvisingCaseAnalyzer.mergeAcademicData([...results[0], ...results[1]], academic, academicPrevious);
+    final health = [...results[6], ...results[7]];
+
+    // طالب/ة له/ا بيانات أكاديمية (معدل/ساعات) لكن بلا سجل مرشد بعد (لم
+    // يُسنَد بملف المرشد) - يُضاف كسجل مستقل بدل استبعاده كليًا من البحث.
+    final allCollegesIds = {for (final r in allColleges) r.studentId};
+    final academicOnly = academic.where((a) => !allCollegesIds.contains(a.studentId));
+
+    final merged = AdvisingCaseAnalyzer.mergeAcademicData(allColleges, academic, academicPrevious);
+    return AdvisingCaseAnalyzer.mergeHealthConditions([...merged, ...academicOnly], health);
   }
 
   static String _normalize(String s) => s

@@ -296,7 +296,7 @@ class _CoordinatorBodyState extends State<_CoordinatorBody> {
     setState(() => _isDownloadingStage2 = true);
     try {
       final bytes = await EscalationFileService.buildStage2File(tickets);
-      downloadBytes(bytes, '${widget.department}_مرحلة_المنسق.xlsx');
+      downloadBytes(bytes, '${widget.department}_${widget.shatr}_فرز_حسب_حالة_الإنجاز.xlsx');
       unawaited(StageDownloadService.recordCoordinatorDownload(shatr: widget.shatr, department: widget.department));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

@@ -279,7 +279,7 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
       final bytes = await EscalationFileService.buildStage2File(tickets);
       final parts = key.split('|');
       final shatrLabel = parts[0] == ExcelParserService.shatrMale ? 'male' : 'female';
-      downloadBytes(bytes, '${parts.length > 1 ? parts[1] : 'قسم'}_${shatrLabel}_مرحلة_المنسق.xlsx');
+      downloadBytes(bytes, '${parts.length > 1 ? parts[1] : 'قسم'}_${shatrLabel}_فرز_حسب_حالة_الإنجاز.xlsx');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('تم تنزيل ملف مرحلة المنسّق بنجاح')),
