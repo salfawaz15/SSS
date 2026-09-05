@@ -133,6 +133,16 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
     );
 
     if (confirmed == true) {
+      // أرشفة ملخّص الدورة المنتهية قبل مسحها نهائيًا (سليمان صراحةً
+      // 2026-09-05) - بلا هذا لا يبقى أي أثر تاريخي يُقارَن به الأداء بين
+      // الدورات. لا يُبتلَع أي خطأ هنا عمدًا: فشل الأرشفة يوقف التفريغ.
+      final ticketsSnapshot = await FirestoreTicketService.watchAllTickets().first;
+      if (ticketsSnapshot.isNotEmpty) {
+        await StageSnapshotService.freezeCycleEnd(
+          tickets: ticketsSnapshot,
+          generatedByEmail: FirebaseAuth.instance.currentUser?.email ?? '',
+        );
+      }
       await FirestoreTicketService.clearAll();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

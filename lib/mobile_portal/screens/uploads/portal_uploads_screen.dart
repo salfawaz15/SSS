@@ -1,9 +1,11 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../services/advising_report_repository.dart';
 import '../../../services/course_schedule_repository.dart';
 import '../../../services/firestore_ticket_service.dart';
+import '../../../services/stage_snapshot_service.dart';
 import '../../../web_portal/upload_flows.dart';
 import '../../theme/portal_theme.dart';
 import '../../widgets/portal_app_bar_logo.dart';
@@ -117,6 +119,15 @@ class _PortalUploadsScreenState extends State<PortalUploadsScreen> {
 
     setState(() => _clearingForms = true);
     try {
+      // أرشفة ملخّص الدورة المنتهية قبل مسحها نهائيًا (سليمان صراحةً
+      // 2026-09-05) - نفس منطق upload_hub_screen.dart بالموقع حرفيًا.
+      final ticketsSnapshot = await FirestoreTicketService.watchAllTickets().first;
+      if (ticketsSnapshot.isNotEmpty) {
+        await StageSnapshotService.freezeCycleEnd(
+          tickets: ticketsSnapshot,
+          generatedByEmail: FirebaseAuth.instance.currentUser?.email ?? '',
+        );
+      }
       await FirestoreTicketService.clearAll();
       _showMessage('تم إفراغ بيانات "الملف الأساسي" بنجاح');
     } finally {

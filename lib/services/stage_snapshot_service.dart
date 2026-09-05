@@ -1,7 +1,54 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/advisor_roster_entry.dart';
+import 'digital_transformation_stats_service.dart';
 import 'report_data_service.dart';
+import 'ticket_action_stats_service.dart';
+
+/// وثيقة أرشيف دورة حذف/إضافة كاملة منتهية (انظر [StageSnapshotService.freezeCycleEnd]).
+class CycleArchive {
+  final String id;
+  final DateTime? endedAt;
+  final String generatedByEmail;
+  final int totalTickets;
+  final int totalActions;
+  final Map<String, dynamic> overallCounts;
+  final List<Map<String, dynamic>> departmentBreakdown;
+  final Map<String, dynamic> digitalTransformation;
+  final Map<String, dynamic> actionTypeBreakdown;
+
+  const CycleArchive({
+    required this.id,
+    required this.endedAt,
+    required this.generatedByEmail,
+    required this.totalTickets,
+    required this.totalActions,
+    required this.overallCounts,
+    required this.departmentBreakdown,
+    required this.digitalTransformation,
+    required this.actionTypeBreakdown,
+  });
+
+  factory CycleArchive.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data() ?? {};
+    return CycleArchive(
+      id: doc.id,
+      endedAt: (data['ended_at'] as Timestamp?)?.toDate(),
+      generatedByEmail: (data['generated_by_email'] ?? '').toString(),
+      totalTickets: (data['total_tickets'] as num?)?.toInt() ?? 0,
+      totalActions: (data['total_actions'] as num?)?.toInt() ?? 0,
+      overallCounts: Map<String, dynamic>.from(data['overall_counts'] ?? {}),
+      departmentBreakdown: (data['department_breakdown'] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList(),
+      digitalTransformation: Map<String, dynamic>.from(data['digital_transformation'] ?? {}),
+      actionTypeBreakdown: Map<String, dynamic>.from(data['action_type_breakdown'] ?? {}),
+    );
+  }
+
+  int get completedCount => (overallCounts['completed'] as num?)?.toInt() ?? 0;
+  double get completionRate => totalActions == 0 ? 0 : completedCount / totalActions;
+}
 
 /// وثيقة تقرير مرحلي مجمَّدة - ثابتة تمامًا بعد إنشائها (لا تُعدَّل أو تُحذف،
 /// انظر firestore.rules) لتبقى توثيقًا تاريخيًا موثوقًا لما أنجزه كل مستوى
@@ -249,6 +296,66 @@ class StageSnapshotService {
       final list = s.docs.map(StageSnapshot.fromDoc).toList()
         ..sort((a, b) => (b.generatedAt ?? DateTime(0)).compareTo(a.generatedAt ?? DateTime(0)));
       return list;
+    });
+  }
+
+  static final CollectionReference<Map<String, dynamic>> _archiveCol =
+      FirebaseFirestore.instance.collection('cycle_archives');
+
+  /// يؤرشف ملخّصًا شاملًا لدورة حذف/إضافة كاملة (كل الأقسام والشطرين) - يُستدعى
+  /// مباشرة قبل `FirestoreTicketService.clearAll()` عند "تفريغ البيانات" لبدء
+  /// دورة جديدة، حتى لا تُفقَد أرقام الدورة المنتهية نهائيًا بلا أي أثر تاريخي
+  /// (بطلب سليمان صراحةً 2026-09-05: مقارنة الأداء بين الدورات). وثيقة واحدة
+  /// بمجموعة منفصلة `cycle_archives` (لا `stage_snapshots` - هذه بمستوى دورة
+  /// كاملة لا قسم/مرحلة واحدة)، ثابتة بعد إنشائها كبقية توثيق `StageSnapshot`.
+  static Future<void> freezeCycleEnd({
+    required List<Map<String, dynamic>> tickets,
+    required String generatedByEmail,
+  }) async {
+    final reportData = ReportDataService.build(tickets);
+    final digital = DigitalTransformationStatsService.build(tickets);
+    final actionStats = TicketActionStatsService.build(tickets);
+
+    final departmentBreakdown = reportData.departments
+        .where((d) => d.counts.total > 0)
+        .map((d) => {
+              'shatr': d.shatr,
+              'department': d.department,
+              ..._countsToMap(d.counts),
+            })
+        .toList();
+
+    final actionTypeBreakdown = {
+      for (final entry in actionStats.byActionType.entries)
+        entry.key: {
+          'total': entry.value.total,
+          ..._countsToMap(entry.value.statusCounts),
+        },
+    };
+
+    await _archiveCol.add({
+      'ended_at': FieldValue.serverTimestamp(),
+      'generated_by_email': generatedByEmail,
+      'total_tickets': actionStats.totalTickets,
+      'total_actions': actionStats.totalActions,
+      'overall_counts': _countsToMap(reportData.overall),
+      'department_breakdown': departmentBreakdown,
+      'digital_transformation': {
+        'forms_ticket_count': digital.formsTicketCount,
+        'paper_ticket_count': digital.paperTicketCount,
+        'digital_share_percent': digital.digitalSharePercent,
+      },
+      'action_type_breakdown': actionTypeBreakdown,
+    });
+  }
+
+  /// أحدث [limit] دورة مؤرشَفة (الأحدث أولًا) - لقسم "سجل الدورات السابقة"
+  /// بلوحة الإدارة التنفيذية.
+  static Stream<List<CycleArchive>> watchCycleArchives({int limit = 12}) {
+    return _archiveCol.snapshots().map((s) {
+      final list = s.docs.map(CycleArchive.fromDoc).toList()
+        ..sort((a, b) => (b.endedAt ?? DateTime(0)).compareTo(a.endedAt ?? DateTime(0)));
+      return list.take(limit).toList();
     });
   }
 }

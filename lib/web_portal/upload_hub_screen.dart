@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -21,6 +22,7 @@ import '../services/firestore_ticket_service.dart';
 import '../services/outside_course_repository.dart';
 import '../services/processed_file_parser_service.dart';
 import '../services/stage_download_service.dart';
+import '../services/stage_snapshot_service.dart';
 import '../services/web_download.dart';
 import '../theme/app_theme.dart';
 import 'admin_nav.dart';
@@ -262,6 +264,16 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
 
     setState(() => _clearingFormsFile = true);
     try {
+      // أرشفة ملخّص الدورة المنتهية قبل مسحها نهائيًا (سليمان صراحةً
+      // 2026-09-05) - نفس منطق admin_workspace_screen.dart، حتى يبقى أثر
+      // تاريخي بغض النظر عن أي زر استُخدم للتفريغ.
+      final ticketsSnapshot = await FirestoreTicketService.watchAllTickets().first;
+      if (ticketsSnapshot.isNotEmpty) {
+        await StageSnapshotService.freezeCycleEnd(
+          tickets: ticketsSnapshot,
+          generatedByEmail: FirebaseAuth.instance.currentUser?.email ?? '',
+        );
+      }
       await FirestoreTicketService.clearAll();
       if (!mounted) return;
       _showSuccessSnackBar('تم إفراغ بيانات "الملف الأساسي" بنجاح');

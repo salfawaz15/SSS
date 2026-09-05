@@ -10,6 +10,7 @@ import '../services/support_case_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/name_display.dart';
 import 'admin_nav.dart';
+import 'cycle_history_section.dart';
 import 'digital_transformation_section.dart';
 import 'portal_header.dart';
 
@@ -773,6 +774,8 @@ class _FilterableDashboardContentState extends State<_FilterableDashboardContent
       ),
       const SizedBox(height: 16),
       DigitalTransformationSection(tickets: filtered),
+      const SizedBox(height: 16),
+      const CycleHistorySection(),
     ];
   }
 

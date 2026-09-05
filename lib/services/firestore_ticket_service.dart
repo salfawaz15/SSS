@@ -428,6 +428,13 @@ class FirestoreTicketService {
   /// عن دمج خاطئ - مثلاً لو رفع المنسّق ملفًا معالجًا غير صحيح) دون حذف
   /// الحالات نفسها (يبقى بيانات الطلاب الأصلية من رفع الإدارة كما هي).
   /// يعدّل حقل actions فقط، فيتوافق مع صلاحية المنسّق في قواعد أمان Firestore.
+  ///
+  /// **إصلاح خلل حقيقي (اكتُشف 2026-09-05)**: كانت الدالة تصفّر حقولًا
+  /// (`status`/`notes`/`completed_by`) لم تعد الحقول الفعلية المستخدَمة منذ
+  /// إعادة تصميم بنية الإجراء لثلاثة أعمدة حالة مستقلة (`advisor_status`/
+  /// `coordinator_status`/`college_status` وما يرافقها من ملاحظات) - فكان
+  /// الزر لا يمسح شيئًا فعليًا يراه أي مستخدم بالملفات/التقارير، رغم ظهور
+  /// رسالة نجاح. `history` تبقى كما هي عمدًا (سجل تدقيق لا داعي لمسحه).
   static Future<void> resetDepartmentStatus({
     required String shatr,
     required String department,
@@ -444,9 +451,14 @@ class FirestoreTicketService {
       final actions = (doc.data()['actions'] as List?) ?? [];
       final resetActions = actions.map((a) {
         final action = Map<String, dynamic>.from(a as Map<String, dynamic>);
-        action['status'] = '';
-        action['notes'] = '';
-        action['completed_by'] = '';
+        action['advisor_status'] = '';
+        action['advisor_notes'] = '';
+        action['advisor_other_reason'] = '';
+        action['coordinator_status'] = '';
+        action['coordinator_notes'] = '';
+        action['college_status'] = '';
+        action['college_notes'] = '';
+        action['performed_by_advisor'] = '';
         return action;
       }).toList();
       batch.update(doc.reference, {'actions': resetActions});
