@@ -125,13 +125,26 @@ class ReportFilterService {
     // الألقاب وصور الهمزة/التاء المربوطة) - وإلا يظهر مرشد أنجز فعليًا ضمن
     // "المقصّرين" فقط لأن اسمه كُتب بصيغة مختلفة قليلًا بتذكرة أخرى (سليمان
     // صراحةً 2026-08-31: هتان عبدالعزيز راجح الشريف أنجز فعليًا وظهر خطأً).
+    //
+    // الإنجاز يُنسَب لمن باشره فعليًا (`action['performed_by_advisor']` -
+    // اسم المرشد بعمود ملفه المرفوع لحظة تحديث الحالة) لا لـ`ticket['advisor']`
+    // (المرشد "الرسمي" الحالي للطالب بالتذكرة) - قد يختلفان بعد إعادة توزيع
+    // حالات مرشدين يدويًا بين الزملاء/الأقسام (سليمان صراحةً 2026-09-05: "من
+    // الظلم تُحسب لشخص آخر" - حالتا الطالبين ABDULLAH ALSUFYANI/YAZEED AL MANI
+    // أنجزهما فعليًا طارق حلمي ومعاذ الذنيبات بملفَيهما، لكن التذكرتين ظلّتا
+    // مُسندتين رسميًا لـ"فهد مصلح منيف السعدي" فاحتُسب الإنجاز له خطأً).
+    // تذاكر أقدم بلا هذا الحقل تفترض أن `ticket['advisor']` هو المُنفِّذ (كما
+    // كان الافتراض دومًا قبل هذا الإصلاح).
     final advisorsWithProgress = <String>{};
     for (final ticket in tickets) {
       final actions = (ticket['actions'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
-      final hasCompleted = actions.any((a) => isCompletedStatus((a['advisor_status'] ?? '').toString().trim()));
-      if (!hasCompleted) continue;
-      final advisor = (ticket['advisor'] ?? '').toString().trim();
-      if (advisor.isNotEmpty) advisorsWithProgress.add(normalizeAdvisorNameForMatch(advisor));
+      final ticketAdvisor = (ticket['advisor'] ?? '').toString().trim();
+      for (final a in actions) {
+        if (!isCompletedStatus((a['advisor_status'] ?? '').toString().trim())) continue;
+        final performer = (a['performed_by_advisor'] ?? '').toString().trim();
+        final effectivePerformer = performer.isNotEmpty ? performer : ticketAdvisor;
+        if (effectivePerformer.isNotEmpty) advisorsWithProgress.add(normalizeAdvisorNameForMatch(effectivePerformer));
+      }
     }
     return tickets.where((t) {
       final advisor = (t['advisor'] ?? '').toString().trim();

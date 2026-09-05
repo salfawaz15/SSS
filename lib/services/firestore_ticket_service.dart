@@ -355,6 +355,19 @@ class FirestoreTicketService {
           existingAction[field] = value;
         }
       }
+      // اسم المرشد الفعلي الذي باشر هذا الإجراء وأنجزه هو المرشد المكتوب
+      // بعمود ملفه المرفوع نفسه لحظة تحديث advisor_status - لا بالضرورة
+      // "المرشد الرسمي" المسجَّل بحقل 'advisor' على مستوى التذكرة (قد يختلفا
+      // بعد إعادة توزيع حالات المرشدين يدويًا بين الأقسام/الزملاء - سليمان
+      // صراحةً 2026-09-05: "من الظلم تُحسب لشخص آخر"). يُحفَظ منفصلاً حتى
+      // يُحتسَب الإنجاز لمن نفَّذه فعليًا لا لمن هو مُسنَد له الطالب حاليًا -
+      // انظر [ReportFilterService.delinquentAdvisorTickets].
+      if (changedFields.containsKey('advisor_status')) {
+        final rowAdvisor = (row['advisor'] ?? '').toString().trim();
+        if (rowAdvisor.isNotEmpty) {
+          existingAction['performed_by_advisor'] = rowAdvisor;
+        }
+      }
       // سجل تراكمي لكل قرار فعلي على هذا الإجراء بتاريخه - بدل الاستبدال
       // الصامت لقرار سابق (كان القرار القديم يختفي كليًا عند كل رفعة لاحقة)،
       // حتى تظهر ببطاقة حالة الطالب/ة كل استجابة/قرار وتاريخه (سليمان
@@ -407,6 +420,7 @@ class FirestoreTicketService {
       'coordinator_notes': (row['coordinator_notes'] ?? '').toString(),
       'college_status': (row['college_status'] ?? '').toString(),
       'college_notes': (row['college_notes'] ?? '').toString(),
+      'performed_by_advisor': (row['advisor'] ?? '').toString(),
     };
   }
 
