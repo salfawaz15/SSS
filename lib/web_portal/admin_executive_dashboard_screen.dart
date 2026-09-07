@@ -214,14 +214,30 @@ class _DashboardData {
 /// حالة/إجراء مستقل كامل، فـ'الجزئي' لا معنى له على مستوى الصف الواحد -
 /// يظهر فقط لو جُمِّعت عدة إجراءات معًا، وهذا بالضبط ما لا نريده هنا").
 /// `escalated` تعني "لم يُنفَّذ بهذا المستوى فانتقلت للمستوى التالي" - ليست
-/// بالضرورة رفضًا.
-enum _ActionOutcome { complete, escalated, notStarted }
+/// بالضرورة رفضًا. `notNeeded` (منسّق قسم/كلية فقط) تعني "أُنجزت الحالة فعليًا
+/// بمستوى أسبق فلم تحتَج تصل لهذا المستوى إطلاقًا" - سليمان صراحةً
+/// 2026-09-08: "لم يُعمَل عليه بعد" كانت تُحتسَب لكل حالة عمودها فارغ حتى لو
+/// أُنجزت فعليًا بمستوى أسبق، فتوحي بتقصير منسّقي القسم/الكلية رغم أن أغلب
+/// الحالات لم تكن لتصلهم أصلاً (خلل تسمية/تصنيف حقيقي مؤكَّد).
+enum _ActionOutcome { complete, escalated, notStarted, notNeeded }
 
 _ActionOutcome _actionOutcomeForField(Map<String, dynamic> action, String statusField) {
   final status = (action[statusField] ?? '').toString().trim();
   if (status.isEmpty) return _ActionOutcome.notStarted;
   if (isCompletedStatus(status)) return _ActionOutcome.complete;
   return _ActionOutcome.escalated;
+}
+
+/// نفس [_actionOutcomeForField] لكن لمنسّق قسم/كلية تحديدًا - عمود فارغ لا
+/// يعني بالضرورة "لم يُعمَل عليه بعد"، فقد تكون الحالة أُنجزت مسبقًا بمستوى
+/// أسبق (`earlierFields`) فلم تحتَج تصل لهذا المستوى إطلاقًا.
+_ActionOutcome _actionOutcomeForRole(Map<String, dynamic> action, String statusField, List<String> earlierFields) {
+  final outcome = _actionOutcomeForField(action, statusField);
+  if (outcome == _ActionOutcome.notStarted &&
+      earlierFields.any((f) => _actionOutcomeForField(action, f) == _ActionOutcome.complete)) {
+    return _ActionOutcome.notNeeded;
+  }
+  return outcome;
 }
 
 /// نتيجة إجراءات دور واحد (مرشد/منسّق قسم/منسّق كلية) - تُحسَب الآن على
@@ -239,9 +255,9 @@ List<_RoleProgress> _computeRoleProgress(List<Map<String, dynamic>> tickets) {
       final action = Map<String, dynamic>.from(raw as Map);
       final advisorOutcome = _actionOutcomeForField(action, 'advisor_status');
       advisor[advisorOutcome] = (advisor[advisorOutcome] ?? 0) + 1;
-      final coordinatorOutcome = _actionOutcomeForField(action, 'coordinator_status');
+      final coordinatorOutcome = _actionOutcomeForRole(action, 'coordinator_status', ['advisor_status']);
       coordinator[coordinatorOutcome] = (coordinator[coordinatorOutcome] ?? 0) + 1;
-      final collegeOutcome = _actionOutcomeForField(action, 'college_status');
+      final collegeOutcome = _actionOutcomeForRole(action, 'college_status', ['advisor_status', 'coordinator_status']);
       college[collegeOutcome] = (college[collegeOutcome] ?? 0) + 1;
     }
   }
@@ -1125,6 +1141,7 @@ class _RoleProgress {
   int get complete => breakdown[_ActionOutcome.complete] ?? 0;
   int get escalated => breakdown[_ActionOutcome.escalated] ?? 0;
   int get notStarted => breakdown[_ActionOutcome.notStarted] ?? 0;
+  int get notNeeded => breakdown[_ActionOutcome.notNeeded] ?? 0;
 }
 
 class _WorkflowSection extends StatelessWidget {
@@ -1396,6 +1413,7 @@ class _RoleProgressCard extends StatelessWidget {
   static const _completeColor = AppColors.green;
   static const _escalatedColor = AppColors.gold;
   static const _notStartedColor = Color(0xFF9AA5B1);
+  static const _notNeededColor = Color(0xFFBFC7CE);
 
   // سطر أفقي واحد لكل بطاقة (سليمان 2026-08-23: "اعتماد نهائي" بمرجع صورة
   // صريح) بدل الشبكة الرأسية السابقة - عنوان المستوى + الإجمالي يمينًا، ثم
@@ -1437,6 +1455,8 @@ class _RoleProgressCard extends StatelessWidget {
             Expanded(child: _outcomeCell('تعذّر التنفيذ / تم التصعيد', progress.escalated, progress.total, _escalatedColor)),
             _divider(),
             Expanded(child: _outcomeCell('لم يُعمَل عليه بعد', progress.notStarted, progress.total, _notStartedColor)),
+            _divider(),
+            Expanded(child: _outcomeCell('لم تحتَج تدخل (أُنجزت بمستوى أسبق)', progress.notNeeded, progress.total, _notNeededColor)),
           ],
         ),
       ),

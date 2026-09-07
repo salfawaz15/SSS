@@ -29,6 +29,9 @@ class MobileWorkflowSummaryCard extends StatelessWidget {
           Expanded(
             child: _countChip('${progress.escalated}', PortalStatusColors.escalated),
           ),
+          Expanded(
+            child: _countChip('${progress.notNeeded}', PortalStatusColors.notStarted.withValues(alpha: 0.55)),
+          ),
         ],
       ),
     );
@@ -56,6 +59,7 @@ class MobileWorkflowSummaryHeader extends StatelessWidget {
         Expanded(child: Center(child: Text('تم التنفيذ', style: style))),
         Expanded(child: Center(child: Text('لم يُعمَل بعد', style: style))),
         Expanded(child: Center(child: Text('تعذّر / تصعيد', style: style))),
+        Expanded(child: Center(child: Text('لم تحتَج تدخل', style: style))),
       ],
     );
   }

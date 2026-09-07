@@ -34,16 +34,35 @@ TicketActionStage ticketActionStageOf(Map<String, dynamic> action) {
   return TicketActionStage.advisor;
 }
 
-/// نتيجة إجراء واحد مستقل لعمود حالة معيّن - ثلاث حالات فقط بلا "تنفيذ
-/// جزئي" (كل صف بملف Excel = حالة/إجراء مستقل كامل). `escalated` تعني "لم
-/// يُنفَّذ بهذا المستوى فانتقلت للمستوى التالي" - ليست بالضرورة رفضًا.
-enum TicketActionOutcome { complete, escalated, notStarted }
+/// نتيجة إجراء واحد مستقل لعمود حالة معيّن - أربع حالات بلا "تنفيذ جزئي"
+/// (كل صف بملف Excel = حالة/إجراء مستقل كامل). `escalated` تعني "لم يُنفَّذ
+/// بهذا المستوى فانتقلت للمستوى التالي" - ليست بالضرورة رفضًا. `notNeeded`
+/// (منسّق قسم/كلية فقط) تعني "أُنجزت الحالة فعليًا بمستوى أسبق فلم تحتَج تصل
+/// لهذا المستوى إطلاقًا" - سليمان صراحةً 2026-09-08: عمود فارغ لمستوى لم
+/// يحتَج العمل عليه كان يُحتسَب "لم يُعمَل عليه بعد" فيوحي بتقصير غير حقيقي.
+enum TicketActionOutcome { complete, escalated, notStarted, notNeeded }
 
 TicketActionOutcome ticketActionOutcomeForField(Map<String, dynamic> action, String statusField) {
   final status = (action[statusField] ?? '').toString().trim();
   if (status.isEmpty) return TicketActionOutcome.notStarted;
   if (isCompletedStatus(status)) return TicketActionOutcome.complete;
   return TicketActionOutcome.escalated;
+}
+
+/// نفس [ticketActionOutcomeForField] لكن لمنسّق قسم/كلية تحديدًا - عمود فارغ
+/// لا يعني بالضرورة "لم يُعمَل عليه بعد" إن كانت الحالة أُنجزت مسبقًا بمستوى
+/// أسبق (`earlierFields`).
+TicketActionOutcome ticketActionOutcomeForRole(
+  Map<String, dynamic> action,
+  String statusField,
+  List<String> earlierFields,
+) {
+  final outcome = ticketActionOutcomeForField(action, statusField);
+  if (outcome == TicketActionOutcome.notStarted &&
+      earlierFields.any((f) => ticketActionOutcomeForField(action, f) == TicketActionOutcome.complete)) {
+    return TicketActionOutcome.notNeeded;
+  }
+  return outcome;
 }
 
 /// نتيجة إجراءات دور واحد (مرشد/منسّق قسم/منسّق كلية) على مستوى كل
@@ -57,6 +76,7 @@ class TicketRoleProgress {
   int get complete => breakdown[TicketActionOutcome.complete] ?? 0;
   int get escalated => breakdown[TicketActionOutcome.escalated] ?? 0;
   int get notStarted => breakdown[TicketActionOutcome.notStarted] ?? 0;
+  int get notNeeded => breakdown[TicketActionOutcome.notNeeded] ?? 0;
 }
 
 List<TicketRoleProgress> computeTicketRoleProgress(List<Map<String, dynamic>> tickets) {
@@ -70,9 +90,9 @@ List<TicketRoleProgress> computeTicketRoleProgress(List<Map<String, dynamic>> ti
       final action = Map<String, dynamic>.from(raw as Map);
       final advisorOutcome = ticketActionOutcomeForField(action, 'advisor_status');
       advisor[advisorOutcome] = (advisor[advisorOutcome] ?? 0) + 1;
-      final coordinatorOutcome = ticketActionOutcomeForField(action, 'coordinator_status');
+      final coordinatorOutcome = ticketActionOutcomeForRole(action, 'coordinator_status', ['advisor_status']);
       coordinator[coordinatorOutcome] = (coordinator[coordinatorOutcome] ?? 0) + 1;
-      final collegeOutcome = ticketActionOutcomeForField(action, 'college_status');
+      final collegeOutcome = ticketActionOutcomeForRole(action, 'college_status', ['advisor_status', 'coordinator_status']);
       college[collegeOutcome] = (college[collegeOutcome] ?? 0) + 1;
     }
   }
