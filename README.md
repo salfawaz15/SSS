@@ -7,6 +7,24 @@
 
 ## سجل الإنجاز
 
+### حذف تطبيق "CBA Advising" القديم بالكامل + نظام تحديث جديد داخل "بوابة الإرشاد" (2026-09-09)
+
+بطلب سليمان صراحةً، بعد تطوير نظام "تحديث داخل التطبيق" جديد (فحص/تنزيل/تثبيت APK بلا متجر Google Play، مصدره GitHub Releases API مباشرة)، تقرر حذف تطبيق **"CBA Advising"** القديم المجمَّد بالكامل بدل الإبقاء عليه، لأن وجود تطبيقين (كل منهما ينتج APK) بنفس GitHub Release كان سيُدخل لبسًا حقيقيًا في تحديد أي مرفق (asset) يخص أيهما.
+
+**حُذف نهائيًا**: `lib/main_advising_app.dart`، `lib/web_portal/mobile_advising_root.dart`، `lib/web_portal/mobile_splash_screen.dart` (كان مُستخدَمًا حصريًا كجذر التطبيق المحذوف)، `lib/services/app_update_service.dart`، `lib/web_portal/app_update_banner.dart`، نكهة (`flavor`) `advising` بـ`android/app/build.gradle.kts` وموارد `android/app/src/advising/`، وخطوتا بناء/توزيع `advising` بـ`.github/workflows/deploy.yml`. نقطتا تنقّل كانتا تستهدفان الجذر المحذوف (`hidden_admin_login_screen.dart` لدخول المدير العام من الجوال) أُعيد توجيههما لـ`MobileHomeScreen` مباشرة (نفس الشاشة التي كان الجذر المحذوف يغلّفها فقط بشريط تحديث).
+
+**لم يُحذف (مُشترَك فعليًا مع الموقع نفسه)**: `lib/web_portal/mobile_home_screen.dart` وسلسلته (`mobile_admin_dashboard_screen.dart`, `portal_role_gate.dart`, `mobile_account_screen.dart`) - هذه النسخة المتجاوبة لموقع الجوال، لا شيء حصري بتطبيق CBA Advising.
+
+**نظام التحديث الجديد** (حصريًا لتطبيق "بوابة الإرشاد" - `lib/main_advising_portal.dart`، أندرويد فقط، لا شيء على iOS لمنع نظامي لأي sideloading):
+- `lib/services/portal_update_service.dart`: يقرأ `GET /repos/salfawaz15/SSS/releases/latest` مباشرة (بلا وسيط Firestore)، يقارن رقم البناء (لا اسم النسخة فقط) عبر `package_info_plus`، يختار مرفق APK الذي يحتوي اسمه كلمة "portal" (أو أول `.apk` كحل احتياطي)، ينزّل لمجلد وثائق التطبيق بشريط تقدّم حقيقي، ثم يفتح مثبّت أندرويد عبر `open_filex` - مع استثناءات مفصَّلة (`PortalUpdateDownloadException`/`PortalInstallOpenException`) لتمييز فشل الشبكة عن فشل فتح المثبّت. يحمل أيضًا `resolveDirectDownloadUrl` (نفس منطق الخدمة القديمة) لزر تحميل التطبيق العائم بلوحة الإدارة (`admin_workspace_screen.dart`) الذي أُعيد توجيهه لهذا المصدر الجديد بدل Firestore.
+- `lib/mobile_portal/services/portal_update_controller.dart`: مُنسِّق وحيد (singleton) يفحص عند فتح التطبيق ثم كل 6 ساعات دوريًا (`Timer.periodic`، بعلم `isChecking` يمنع تداخل الفحوصات)، ويبثّ النتيجة لكل نسخ شعار الشريط العلوي عبر `ValueNotifier`.
+- `lib/mobile_portal/widgets/portal_app_bar_logo.dart`: نقطة حمراء صغيرة فوق الشعار المشترك (يظهر بكل شاشات التطبيق كـ`leading`) تظهر تلقائيًا طالما هناك تحديث متاح بصرف النظر عن رد المستخدم السابق - الضغط عليها يفتح الحوار مباشرة ويُلغي "لا تحدّث أبدًا" إن كان مفعَّلاً.
+- `lib/mobile_portal/widgets/portal_update_dialog.dart`: حوار بثلاثة خيارات ("تحديث الآن" يبدأ التنزيل/التثبيت بشريط تقدّم داخل نفس الحوار، "لاحقًا" يؤجّل لهذا البناء فقط عبر `SharedPreferences`، "لا تحدّث أبدًا" يُخفي الحوار التلقائي كليًا) - يظهر تلقائيًا مرة واحدة فقط لكل رقم بناء جديد.
+- `.github/workflows/deploy.yml`: خطوة جديدة "Create GitHub Release for بوابة الإرشاد" تنشئ Release تلقائيًا بعد كل بناء ناجح (وسم `vX.Y.Z+build` مطابق لـpubspec.yaml بالضبط، مرفق APK باسم يحتوي "portal")، بصلاحية `contents: write` الجديدة على مستوى الـjob - بلا هذه الخطوة لن يعمل فحص التحديث إطلاقًا (404 دائمًا).
+- رُفعت نُسَخ `http` (^1.6.0)، `package_info_plus` (^9.0.1)، `open_filex` (^4.7.0) بـpubspec.yaml. `REQUEST_INSTALL_PACKAGES` كانت مُضافة أصلاً بالمانيفست المشترك، لم تحتج تعديلاً.
+
+**لم يُختبَر حيًّا بعد** - لا تتوفر أداة `flutter` بهذه البيئة للتحقق المحلي (`flutter analyze`/`flutter build`)؛ التحقق الفعلي يحدث عبر نجاح CI بعد الدفع، ثم تجربة حية على جهاز أندرويد بعد صدور إصدارين متتاليين على الأقل (الأول لا يحمل تحديثًا لنفسه، الثاني يختبر الفحص/التنزيل/التثبيت فعليًا).
+
 ### إصلاح تجاوز نص بطاقات الرئيسية الجوّالة + إعادة ترتيب "متابعة سير العمل" (2026-09-08)
 
 بعد نشر تصحيح تسمية "متابعة سير العمل" (البند التالي بالأسفل)، لاحظ سليمان بلقطات فعلية من جهازه أن نص بعض بطاقات "مؤشرات رئيسية لحالات الإرشاد"/"إحصائيات طلبات الحذف والإضافة" بالصفحة الرئيسية الجوّالة (`portal_home_screen.dart`) يفيض خارج حدود الصندوق الأبيض. السبب: `_StatGrid` كانت تستخدم `GridView` بنسبة عرض/ارتفاع ثابتة (`childAspectRatio`) تفرض ارتفاعًا واحدًا على كل البطاقات بصرف النظر عن طول نصّها الفعلي - تسميات طويلة (مثال: "طلبة تابعين لمرشد – ذوي الإعاقة" مع ملاحظة إضافية) تحتاج ارتفاعًا أكبر من بطاقات أخرى بنص قصير بنفس الصف.

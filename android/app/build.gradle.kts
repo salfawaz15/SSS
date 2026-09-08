@@ -58,10 +58,6 @@ android {
             dimension = "app"
             applicationId = "com.sulaiman.chat"
         }
-        create("advising") {
-            dimension = "app"
-            applicationId = "com.taif.cba.advising"
-        }
         create("advisingPortal") {
             dimension = "app"
             applicationId = "com.taif.cba.advisingportal"

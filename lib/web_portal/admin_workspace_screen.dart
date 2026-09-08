@@ -16,7 +16,7 @@ import '../services/advisor_department_resolver.dart';
 import '../services/advisor_roster_service.dart';
 import '../services/college_roster_repository.dart';
 import '../services/advisor_zip_service.dart';
-import '../services/app_update_service.dart';
+import '../services/portal_update_service.dart';
 import '../services/disability_file_service.dart';
 import '../services/escalation_file_service.dart';
 import '../services/excel_parser_service.dart';
@@ -1197,21 +1197,21 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
     );
   }
 
-  /// مربع صغير عائم بأسفل الشاشة (لا شريط علوي بارز) لتحميل تطبيق الجوال
-  /// (Android) - تظهر فقط بنسخة الموقع (لا معنى لها داخل التطبيق نفسه بعد
-  /// تثبيته) وفقط بلوحة الإدارة. النقر على الأيقونة نفسها يبدأ التحميل
-  /// مباشرة - بلا زر "تحميل" منفصل، بأسلوب مربعات التحميل بالمواقع الاحترافية.
-  /// تقرأ رابط ورقم آخر نسخة منشورة حيًّا من نفس مصدر [AppUpdateService]
-  /// المستخدَم للتحقق من التحديثات داخل التطبيق - فتختفي تلقائيًا لو لم يوجد
-  /// رابط منشور بعد.
+  /// مربع صغير عائم بأسفل الشاشة (لا شريط علوي بارز) لتحميل تطبيق "بوابة
+  /// الإرشاد" (Android) - تظهر فقط بنسخة الموقع (لا معنى لها داخل التطبيق
+  /// نفسه بعد تثبيته) وفقط بلوحة الإدارة. النقر على الأيقونة نفسها يبدأ
+  /// التحميل مباشرة - بلا زر "تحميل" منفصل، بأسلوب مربعات التحميل بالمواقع
+  /// الاحترافية. تقرأ رابط ورقم آخر نسخة منشورة حيًّا من نفس مصدر
+  /// [PortalUpdateService] المستخدَم للتحقق من التحديثات داخل التطبيق نفسه
+  /// (GitHub Release مباشرة) - فتختفي تلقائيًا لو لم يوجد إصدار منشور بعد.
   Widget _buildAndroidDownloadBadge() {
     if (!kIsWeb) return const SizedBox.shrink();
     return FutureBuilder(
-      future: AppUpdateService.getLatestRelease(),
+      future: PortalUpdateService.checkForUpdate(),
       builder: (context, snapshot) {
         final apkUrl = snapshot.data?.apkUrl;
         if (apkUrl == null || apkUrl.isEmpty) return const SizedBox.shrink();
-        final versionName = snapshot.data?.versionName;
+        final versionName = snapshot.data?.latestVersionName;
         return Tooltip(
           message: 'تحميل تطبيق الجوال (Android)'
               '${versionName != null && versionName.isNotEmpty ? ' - الإصدار $versionName' : ''}',
@@ -1222,7 +1222,7 @@ class _AdminWorkspaceScreenState extends State<AdminWorkspaceScreen> {
             child: InkWell(
               customBorder: const CircleBorder(),
               onTap: () async {
-                final directUrl = await AppUpdateService.resolveDirectDownloadUrl(apkUrl);
+                final directUrl = await PortalUpdateService.resolveDirectDownloadUrl(apkUrl);
                 launchUrl(Uri.parse(directUrl), mode: LaunchMode.externalApplication);
               },
               child: const Padding(

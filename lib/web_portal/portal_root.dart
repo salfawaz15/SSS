@@ -18,7 +18,7 @@ const String kPortalRootRouteName = '/portal-root';
 
 /// نقطة دخول بوابة الويب: يوجّه حسب حالة تسجيل الدخول إلى شاشة الدخول، أو
 /// لوحة الإدارة، أو شاشة المنسّق - عبر [PortalRoleGate] (منطق حسم الدور
-/// المشترك مع `MobileAdvisingRoot`، انظر portal_role_gate.dart).
+/// المشترك مع نظير الجوال بـmobile_account_screen.dart، انظر portal_role_gate.dart).
 class PortalRoot extends StatelessWidget {
   const PortalRoot({super.key});
 

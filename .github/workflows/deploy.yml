@@ -8,6 +8,10 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    # contents: write مطلوبة لإنشاء GitHub Release (خطوة نظام تحديث بوابة
+    # الإرشاد أدناه) - الصلاحية الافتراضية بلا هذا السطر قراءة فقط.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -73,35 +77,9 @@ jobs:
           keyPassword=$ANDROID_UPLOAD_KEY_PASSWORD
           PROPEOF
 
-      - name: Build APK (advising flavor)
-        run: flutter build apk --release --flavor advising -t lib/main_advising_app.dart
-
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-advising-release
-          path: build/app/outputs/flutter-apk/app-advising-release.apk
-          retention-days: 30
-
-      - name: Distribute APK via Firebase App Distribution
-        run: |
-          npx firebase-tools appdistribution:distribute \
-            build/app/outputs/flutter-apk/app-advising-release.apk \
-            --app 1:843787630334:android:01b9f5a9d7ea7712ea97af \
-            --release-notes "نشر تلقائي من الفرع main - $(git log -1 --pretty=%s)" \
-            --testers "salfawaz50@gmail.com" \
-            --token "$FIREBASE_TOKEN"
-        env:
-          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-
-      # تطبيق "بوابة الإرشاد" (com.taif.cba.advisingportal) - نقطة دخول
-      # منفصلة كليًا (lib/main_advising_portal.dart، معمارية lib/mobile_portal/)
-      # عن "CBA Advising" القديم أعلاه (lib/main_advising_app.dart) - لم تكن
-      # مبنية/موزَّعة عبر CI إطلاقًا رغم وجود flavor لها فعليًا بـ
-      # android/app/build.gradle.kts، فكانت كل تحديثات بوابة الإرشاد الجوّالة
-      # (كالشريط الموحَّد) لا تصل سليمان أبدًا عبر التوزيع التلقائي (اكتُشف
-      # فعليًا 2026-08-25 حين وصلت رسالة تحديث "CBA Advising" القديم بدلاً
-      # من "بوابة الإرشاد" الجديدة التي كان يتوقعها).
+      # تطبيق "CBA Advising" القديم (flavor `advising`) حُذف بالكامل من
+      # المشروع (سليمان صراحةً 2026-09-09) - "بوابة الإرشاد" أدناه هو
+      # التطبيق النشط الوحيد الآن.
       - name: Build APK (advisingPortal flavor)
         run: flutter build apk --release --flavor advisingPortal -t lib/main_advising_portal.dart
 
@@ -122,3 +100,28 @@ jobs:
             --token "$FIREBASE_TOKEN"
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+
+      # نشر GitHub Release لبوابة الإرشاد (سليمان صراحةً 2026-09-09) - هذا
+      # هو المصدر الوحيد الذي يقرأ منه نظام "التحديث داخل التطبيق"
+      # (`PortalUpdateService`، GET /repos/.../releases/latest) - بلا هذه
+      # الخطوة تلقائيًا، لن يعمل فحص التحديث إطلاقًا (يحتاج Release منشور
+      # فعليًا لا مجرد Artifact بـActions). الوسم يطابق "version+build" من
+      # pubspec.yaml بالضبط (مثال 1.0.20+25 → v1.0.20+25)، واسم المرفق يحمل
+      # كلمة "portal" صراحةً حتى يميّزه الكود عن أي APK آخر يُرفَع لنفس
+      # الإصدار مستقبلاً.
+      - name: Create GitHub Release for بوابة الإرشاد
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          FULL_VERSION=$(grep -m1 '^version:' pubspec.yaml | sed 's/version:[[:space:]]*//')
+          TAG="v${FULL_VERSION}"
+          cp build/app/outputs/flutter-apk/app-advisingportal-release.apk app-advisingportal-release.apk
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "الإصدار $TAG منشور مسبقًا - تخطّي (تشغيل مُعاد بلا رفع رقم إصدار جديد)"
+          else
+            gh release create "$TAG" \
+              app-advisingportal-release.apk \
+              --title "بوابة الإرشاد $TAG" \
+              --notes "نشر تلقائي من الفرع main - $(git log -1 --pretty=%s)" \
+              --repo "$GITHUB_REPOSITORY"
+          fi

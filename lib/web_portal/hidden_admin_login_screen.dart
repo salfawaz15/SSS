@@ -2,7 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
-import 'mobile_advising_root.dart';
+import 'mobile_home_screen.dart';
 import 'portal_accounts.dart';
 import 'portal_root.dart';
 
@@ -10,7 +10,7 @@ import 'portal_root.dart';
 /// زر ظاهر لها في أي مكان بالموقع؛ يُصل إليها فقط عبر معرفة الرابط السرّي
 /// مباشرة على الويب (انظر SECRET_PATH في main.dart)، أو عبر نقطة الدخول
 /// الخفية أسفل شاشة [PortalLoginScreen] على تطبيق الجوال (نفس الشاشة
-/// مُعاد استخدامها هناك أيضًا - انظر mobile_advising_root.dart). تعرض اسم
+/// مُعاد استخدامها هناك أيضًا). تعرض اسم
 /// مستخدم وكلمة مرور عاديين بدل قائمة الأدوار المعروضة في شاشة الدخول العامة.
 class HiddenAdminLoginScreen extends StatefulWidget {
   const HiddenAdminLoginScreen({super.key});
@@ -63,7 +63,7 @@ class _HiddenAdminLoginScreenState extends State<HiddenAdminLoginScreen> {
                   builder: (_) => const PortalRoot(),
                   settings: const RouteSettings(name: kPortalRootRouteName),
                 )
-              : MaterialPageRoute(builder: (_) => const MobileAdvisingRoot()),
+              : MaterialPageRoute(builder: (_) => const MobileHomeScreen()),
           (route) => false,
         );
       }

@@ -1,5 +1,4 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:url_launcher/url_launcher.dart';
@@ -8,7 +7,6 @@ import '../utils/mailto.dart';
 import '../utils/name_display.dart';
 
 import '../models/unit_committee_member.dart';
-import '../services/app_update_service.dart';
 import '../services/unit_committee_repository.dart';
 import '../services/unit_guide_pdf_service.dart';
 import '../services/web_download.dart';
@@ -144,7 +142,6 @@ class _PublicLandingScreenState extends State<PublicLandingScreen> {
       backgroundColor: const Color(0xFFF5F7F6),
       body: _PublicPageShell(
         header: [
-          const _TopUtilityBar(),
           _NavBar(current: 'home', onLogin: _openLogin),
         ],
         content: const Column(
@@ -241,7 +238,6 @@ class InfoPageScaffold extends StatelessWidget {
       backgroundColor: const Color(0xFFF5F7F6),
       body: _PublicPageShell(
         header: [
-          const _TopUtilityBar(),
           _NavBar(current: current, onLogin: () => _pushLogin(context)),
         ],
         content: child,
@@ -1309,118 +1305,6 @@ class _TextCard extends StatelessWidget {
   }
 }
 
-/// شريط علوي رفيع (أخضر غامق) يحتوي زر تسجيل الدخول - على غرار الأشرطة
-/// العلوية الشائعة في المواقع الحكومية الرسمية (رابط دخول أعلى الصفحة، منفصل
-/// عن شريط التنقّل الرئيسي الأبيض).
-class _TopUtilityBar extends StatefulWidget {
-  const _TopUtilityBar();
-
-  @override
-  State<_TopUtilityBar> createState() => _TopUtilityBarState();
-}
-
-class _TopUtilityBarState extends State<_TopUtilityBar> {
-  bool _isChecking = false;
-
-  Future<void> _checkForUpdate() async {
-    setState(() => _isChecking = true);
-    try {
-      final result = await AppUpdateService.checkForUpdate();
-      if (!mounted) return;
-
-      if (!result.hasUpdate) {
-        await showDialog<void>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('لا يوجد تحديث جديد'),
-            content: Text('لديك أحدث إصدار من التطبيق (${result.currentVersionName}).'),
-            actions: [
-              TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('حسنًا')),
-            ],
-          ),
-        );
-        return;
-      }
-
-      await showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('يتوفّر تحديث جديد'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('الإصدار الجديد: ${result.latestVersionName ?? ''}'),
-              if ((result.releaseNotes ?? '').isNotEmpty) ...[
-                const SizedBox(height: 10),
-                Text(result.releaseNotes!),
-              ],
-              const SizedBox(height: 10),
-              Text(
-                'سيبدأ تنزيل ملف التحديث عبر المتصفح، ثم افتحه لإكمال التثبيت.',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('لاحقًا')),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                launchUrl(Uri.parse(result.apkUrl!), mode: LaunchMode.externalApplication);
-              },
-              child: const Text('تنزيل التحديث'),
-            ),
-          ],
-        ),
-      );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('تعذّر التحقق من التحديثات: $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isChecking = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // شريط تحديث التطبيق - يظهر فقط في تطبيق الأندرويد (وليس الموقع)
-        // لأنه لا معنى لـ"تحديث" صفحة ويب بهذه الطريقة.
-        if (!kIsWeb)
-          Container(
-            color: AppColors.greenDark,
-            child: SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                child: Row(
-                  children: [
-                    IconButton(
-                      onPressed: _isChecking ? null : _checkForUpdate,
-                      tooltip: 'التحقق من وجود تحديث',
-                      icon: _isChecking
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white70),
-                            )
-                          : const Icon(Icons.system_update_alt, size: 18, color: Colors.white70),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}
 
 /// الشعار الرسمي المعتمد بالهيدر الأبيض - بلا أي مستطيل/حدّ/ظل خلفه (بطلب
 /// سليمان الصريح 2026-08-20: خلفية شفافة حقيقية، لا صندوق أخضر خلف الشعار).

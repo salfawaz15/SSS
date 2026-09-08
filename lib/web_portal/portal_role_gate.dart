@@ -37,7 +37,7 @@ class PortalResolvedRole {
 /// يغلّف منطق تسجيل الدخول وحسم الدور بالكامل (حالة المصادقة، توكن Custom
 /// Claim، فحص إجبار تغيير كلمة المرور، ثم التوافق الرجعي مع حسابات الأدوار
 /// المشتركة القديمة بالبريد الحرفي) - مصدر وحيد للحقيقة يُستخدَم من
-/// `PortalRoot` (الويب) و`MobileAdvisingRoot` (الجوال) معًا، فأي تحديث لمنطق
+/// `PortalRoot` (الويب) وmobile_account_screen.dart (الجوال) معًا، فأي تحديث لمنطق
 /// تحديد الدور يظهر أثره تلقائيًا بكلا الواجهتين بلا ازدواجية.
 class PortalRoleGate extends StatelessWidget {
   final Widget Function(BuildContext context, PortalResolvedRole resolved) builder;

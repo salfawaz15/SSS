@@ -5,11 +5,10 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'firebase_options.dart';
 import 'mobile_portal/app/advising_portal_app.dart';
 
-/// نقطة دخول منفصلة لتطبيق "بوابة الإرشاد" (com.taif.cba.advisingportal) -
-/// تطبيق جوال جديد كليًا، مختلف عن نقطة دخول "CBA Advising" القديمة المجمَّدة
-/// (`main_advising_app.dart`) بمعمارية Mobile-First مستقلة تحت `lib/mobile_portal/`،
-/// لكنه يشترك بنفس مشروع Firebase (Firestore/Auth) ونفس خدمات منطق الأعمال
-/// (`lib/services/*`) بمعرّف تطبيق Android مختلف فقط - راجع
+/// نقطة دخول تطبيق "بوابة الإرشاد" (com.taif.cba.advisingportal) - الوحيدة
+/// الآن بعد حذف تطبيق "CBA Advising" القديم بالكامل (2026-09-09)، بمعمارية
+/// Mobile-First مستقلة تحت `lib/mobile_portal/`، ويشترك بنفس مشروع Firebase
+/// (Firestore/Auth) ونفس خدمات منطق الأعمال (`lib/services/*`) - راجع
 /// `DefaultFirebaseOptions.advisingPortal`.
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
