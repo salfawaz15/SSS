@@ -208,36 +208,43 @@ class _StatCardData {
 /// شبكة إحصائيات بعمودين - نفس الهوية البصرية لبطاقات الموقع (أيقونة مربَّعة
 /// ملوَّنة + رقم كبير + تسمية)، لكن بعمودين بدل صف أفقي واحد (4 بطاقات بصف
 /// واحد لا تصلح لعرض جوال ضيق - القسم 30 من المواصفات: لا تمرير أفقي).
+///
+/// صفوف (`Row` + `IntrinsicHeight`) بدل `GridView` بنسبة عرض/ارتفاع ثابتة -
+/// كانت `childAspectRatio` الثابتة تفرض ارتفاعًا واحدًا على كل البطاقات بصرف
+/// النظر عن طول نصّها الفعلي، فتسميات طويلة (مثال: "طلبة تابعين لمرشد – ذوي
+/// الإعاقة" + ملاحظة) تفيض خارج حدود الصندوق مرئيًا (سليمان صراحةً
+/// 2026-09-08، لقطة فعلية). كل صف الآن يتمدَّد لارتفاع أطول بطاقتين بداخله
+/// فقط - بلا فراغ زائد على بقية الصفوف الأقصر.
 class _StatGrid extends StatelessWidget {
   final List<_StatCardData> cards;
   const _StatGrid({required this.cards});
 
   @override
   Widget build(BuildContext context) {
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: cards.length,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisSpacing: AppSpacing.sm,
-        crossAxisSpacing: AppSpacing.sm,
-        // 1.5 كانت تُنتج بطاقات طويلة جدًا مقارنة بمحتواها الفعلي (أيقونة +
-        // رقم + تسمية بارتفاع ~100) - فراغ داخلي كبير غير مستغَل يبدو "غير
-        // احترافي" (سليمان صراحةً 2026-08-26، لقطة فعلية). 2.8 يقارب ارتفاع
-        // المحتوى الحقيقي.
-        childAspectRatio: 2.8,
-      ),
-      itemBuilder: (context, i) {
-        final c = cards[i];
-        return MobileKpiCard(
-          label: c.label,
-          value: c.value,
-          note: c.note,
-          icon: c.icon,
-          accentColor: c.color,
-        );
-      },
+    return Column(
+      children: [
+        for (var i = 0; i < cards.length; i += 2) ...[
+          if (i > 0) const SizedBox(height: AppSpacing.sm),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: _cardFor(cards[i])),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(child: i + 1 < cards.length ? _cardFor(cards[i + 1]) : const SizedBox()),
+              ],
+            ),
+          ),
+        ],
+      ],
     );
   }
+
+  Widget _cardFor(_StatCardData c) => MobileKpiCard(
+        label: c.label,
+        value: c.value,
+        note: c.note,
+        icon: c.icon,
+        accentColor: c.color,
+      );
 }
