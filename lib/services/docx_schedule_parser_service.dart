@@ -89,6 +89,20 @@ class DocxScheduleParserService {
     return withoutPresence;
   }
 
+  /// يحدِّد index عمود "القاعة" ديناميكيًا من صف الرأس نفسه بدل الاعتماد على
+  /// ترقيم ثابت - إصدارات/تقارير مختلفة من ملف الحويّة قد تضع بهذا الموضع
+  /// بالذات "رقم المحاضر" بدل "القاعة" فعليًا (دليل فعلي: مقارنة ملف حويّة
+  /// قديم بملف CSV حقيقي من سليمان 2026-09-09 أظهرت اختلاف محتوى نفس الموضع
+  /// بين ملفين). fallback يُستخدَم فقط إن لم يُعثَر على صف رأس صريح بكلمة
+  /// "القاعة" (مثل ملفات لا تحوي عمود قاعة إطلاقًا).
+  static int _detectRoomColumnIndex(List<List<String>> rows, {int fallback = 4}) {
+    for (final cells in rows) {
+      final idx = cells.indexOf('القاعة');
+      if (idx != -1) return idx;
+    }
+    return fallback;
+  }
+
   static String _cellText(XmlElement tc) {
     final buffer = StringBuffer();
     for (final t in tc.findAllElements('t', namespace: _wNs)) {
@@ -155,14 +169,16 @@ class DocxScheduleParserService {
     // ترتيب الأعمدة الثابت في جدول Word الناتج عن تحويل PDF (تحقّقنا منه
     // يدويًا مباشرة من الملف الحقيقي 2026-08-24): فترة الاختبار، جاهزة،
     // المستفيد، المحاضر، القاعة، إلى، من، الأيام، المسجلين، اعلى حد،
-    // التسلسل، النشاط، س، اسم المقرر، المقرر، الشعبة. عمود "القاعة" (index
-    // 4) كان يُظَنّ سابقًا "رقم المحاضر" غير مستخدَم - تصحيح حقيقي.
+    // التسلسل، النشاط، س، اسم المقرر، المقرر، الشعبة. عمود "القاعة" يختلف
+    // موضعه فعليًا بين ملفات/تقارير مختلفة (قد يكون index 4 نفسه "رقم
+    // المحاضر" بدل "القاعة" بملفات أخرى) - يُحدَّد ديناميكيًا من صف الرأس
+    // بدل الاعتماد على ترقيم ثابت (سليمان صراحةً 2026-09-09).
     const colTo = 5, colFrom = 6, colDay = 7, colRegistered = 8, colMaxCapacity = 9;
     const colSequence = 10, colActivity = 11;
     const colHours = 12, colCourseName = 13, colCourseCode = 14, colSection = 15;
     const colInstructor = 3;
     const colBeneficiary = 2;
-    const colRoom = 4;
+    final colRoom = _detectRoomColumnIndex(rows);
 
     final activityRows = <_RawActivityRow>[];
     _RawActivityRow? lastRow;
@@ -171,7 +187,7 @@ class DocxScheduleParserService {
       if (cells.length < 16) continue;
       final activity = cells[colActivity];
       final isMain = activity == 'نظري' || activity == 'عملي';
-      final room = _normalizeRoom(cells[colRoom]);
+      final room = colRoom < cells.length ? _normalizeRoom(cells[colRoom]) : '';
 
       if (isMain && cells[colCourseCode].contains('-') && cells[colSection].isNotEmpty) {
         final courseCode = cells[colCourseCode].split('-').first;
@@ -376,7 +392,7 @@ class DocxScheduleParserService {
     const colHours = 12, colCourseName = 13, colCourseCode = 14, colSection = 15;
     const colInstructor = 3;
     const colBeneficiary = 2;
-    const colRoom = 4;
+    final colRoom = _detectRoomColumnIndex(rows);
 
     final activityRows = <_RawActivityRow>[];
     _RawActivityRow? lastRow;
@@ -387,7 +403,7 @@ class DocxScheduleParserService {
       if (cells.length < 16) continue;
       final activity = cells[colActivity];
       final isMain = activity == 'نظري' || activity == 'عملي';
-      final room = _normalizeRoom(cells[colRoom]);
+      final room = colRoom < cells.length ? _normalizeRoom(cells[colRoom]) : '';
 
       if (isMain && cells[colCourseCode].contains('-') && cells[colSection].isNotEmpty) {
         final courseCode = cells[colCourseCode].split('-').first;
