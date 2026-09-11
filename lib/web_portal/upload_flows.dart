@@ -1359,21 +1359,25 @@ Future<void> runUploadCourses({
       if (proceedDespiteWarning != true) return;
     }
 
-    // عمود "المستفيد" قد يخرج فارغًا (فشل استخراج أو نقص بالمصدر) رغم أن
-    // الشعبة تخص كليتنا فعليًا - إن كان المحاضر أحد منسوبي كلية إدارة الأعمال
-    // بملف منسوبي الكلية الرسمي، تُحتسَب الشعبة رغم فراغ "المستفيد" (سليمان
-    // صراحةً 2026-09-11). لا يُمَس شرط "المستفيد" نفسه حين يكون غير فارغ -
-    // شعبة بمستفيد يذكر كليتنا بمحاضر منتدب من كلية أخرى تبقى محسوبة كما هي.
+    // الهدف: كل مقرر تابع لكليتنا (بصرف النظر عن كلية المحاضر) + كل مقرر
+    // يُدرِّسه أحد منسوبي كليتنا (بصرف النظر عن الكلية المستفيدة المذكورة) -
+    // شرط "أو" غير مشروط بفراغ "المستفيد"، لا مجرد بديل احتياطي عند فراغه
+    // (سليمان صراحةً 2026-09-11: "يا يكون المقرر تابع للكلية والمحاضر من
+    // داخلها أو خارجها، يا يكون المنسوب من الكلية والمقرر من داخلها أو
+    // خارجها"). هذا يلتقط أيضًا حالة "مستفيد يذكر كلية أخرى لكن المحاضر أحد
+    // منسوبينا" التي كانت تُستبعَد سابقًا حتى مع "مستفيد" غير فارغ.
     final collegeRoster = await CollegeRosterRepository.load();
     bool instructorBelongsToCollege(String? instructorName) {
       if (instructorName == null || instructorName.trim().isEmpty) return false;
       return resolveAdvisorDepartment(instructorName, collegeRoster) != null;
     }
 
-    final ourSections = sections.where((s) {
-      if (s.beneficiary.trim().isNotEmpty) return isBusinessCollegeBeneficiary(s.beneficiary);
-      return instructorBelongsToCollege(s.record.instructorName);
-    }).toList();
+    final ourSections = sections
+        .where((s) =>
+            isBusinessCollegeBeneficiary(s.beneficiary) ||
+            instructorBelongsToCollege(s.record.instructorName) ||
+            instructorBelongsToCollege(s.record.practicalInstructorName))
+        .toList();
     final outsideCodes = CourseCatalog.outsideCollegeCourses.map(CourseCatalog.outsideCourseCode).toSet();
 
     // يزيل تكرار الشعبة الواحدة إن ظهرت أكثر من مرة بنفس بيانات المصدر (مثلاً
