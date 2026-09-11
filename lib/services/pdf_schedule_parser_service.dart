@@ -35,10 +35,20 @@ class PdfScheduleParserService {
   // فعلي من سليمان (2026-08-24) بعد مقارنة برمجية بقارئ Word المُصلَح.
   static final RegExp _reversedGluedNetworkRoom = RegExp(r'^شبكة(\d+)\s+(.*)$');
 
+  // "أونلاين" تخرج أحيانًا مُقطَّعة بشدة (مثال حرفي فعلي متكرر بعدة مقررات
+  // مختلفة: "أون (50لاي (") - رقم دخيل وأقواس فارغة تتوسَّطان الكلمة بدل
+  // انعكاس بسيط كبقية الأنماط أعلاه - دليل فعلي من سليمان (2026-09-11) بعد
+  // لقطة شاشة حية أظهرت هذا النص بخانة القاعة. يُكتفى بالتحقق من وجود "أون"
+  // ثم "لاي" بأي ترتيب محتوى بينهما (أرقام/أقواس/مسافات) بدل اشتراط تتالٍ
+  // حرفي تام كالأنماط الصريحة أعلاه.
+  static final RegExp _mangledOnlinePattern = RegExp(r'أون.*لاي');
+
   static String _normalizeRoom(String raw) {
     var s = raw.trim();
     if (s.isEmpty) return s;
-    if (s.contains('أونلاين') || s.contains('اونلاين') || s.contains('أون لاي')) return 'أونلاين';
+    if (s.contains('أونلاين') || s.contains('اونلاين') || s.contains('أون لاي') || _mangledOnlinePattern.hasMatch(s)) {
+      return 'أونلاين';
+    }
     s = s.replaceAll(RegExp(r'[()]*حضوري[()]*'), '').trim();
     s = s.replaceAll(RegExp(r'^[()]+|[()]+$'), '').trim();
     final reversedMatch = _reversedGluedNetworkRoom.firstMatch(s);
