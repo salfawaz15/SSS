@@ -299,7 +299,8 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
         if (_placementFilter == _kUnplacedOption && isPlaced) return false;
       }
       if (search.isNotEmpty) {
-        final hay = '${row.record.courseCode} ${row.record.courseName}';
+        final hay =
+            '${row.record.courseCode} ${row.record.courseName} ${row.record.instructorName ?? ''} ${row.record.practicalInstructorName ?? ''}';
         if (!hay.contains(search)) return false;
       }
       return true;
@@ -480,7 +481,7 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
                 child: TextField(
                   controller: _searchCtrl,
                   decoration: const InputDecoration(
-                    labelText: 'بحث باسم أو رمز المقرر',
+                    labelText: 'بحث باسم/رمز المقرر أو اسم المحاضر',
                     prefixIcon: Icon(Icons.search),
                     border: OutlineInputBorder(),
                     isDense: true,
