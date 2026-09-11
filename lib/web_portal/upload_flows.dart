@@ -1361,18 +1361,30 @@ Future<void> runUploadCourses({
     final ourSections = sections.where((s) => isBusinessCollegeBeneficiary(s.beneficiary)).toList();
     final outsideCodes = CourseCatalog.outsideCollegeCourses.map(CourseCatalog.outsideCourseCode).toSet();
 
+    // يزيل تكرار الشعبة الواحدة إن ظهرت أكثر من مرة بنفس بيانات المصدر (مثلاً
+    // بسبب انقسام صفحة بملف PDF/DOCX) - بلا هذا الدمج تظهر نفس الشعبة مرتين
+    // بالجدول الدراسي عند كل رفعة (سليمان صراحةً 2026-09-11).
+    List<CourseSectionRecord> dedupeRecords(List<CourseSectionRecord> records) {
+      final byKey = <String, CourseSectionRecord>{};
+      for (final r in records) {
+        byKey['${r.courseCode}|${r.theorySection}|${r.sequence}'] = r;
+      }
+      return byKey.values.toList();
+    }
+
     ({
       List<CourseSectionRecord> ownRecords,
       List<String> outsideOptions,
       List<CourseSectionRecord> outsideRecords,
     }) buildForShatr(Shatr shatr) {
       final shatrSections = ourSections.where((s) => s.shatr == shatr).toList();
-      final ownRecords =
-          shatrSections.where((s) => !outsideCodes.contains(s.record.courseCode)).map((s) => s.record).toList();
+      final ownRecords = dedupeRecords(
+        shatrSections.where((s) => !outsideCodes.contains(s.record.courseCode)).map((s) => s.record).toList(),
+      );
       final outsideSections = shatrSections.where((s) => outsideCodes.contains(s.record.courseCode)).toList();
       final offeredOutsideCodes = outsideSections.map((s) => s.record.courseCode).toSet();
       final outsideOptions = CourseCatalog.filterOutsideCoursesByOfferedCodes(offeredOutsideCodes);
-      final outsideRecords = outsideSections.map((s) => s.record).toList()
+      final outsideRecords = dedupeRecords(outsideSections.map((s) => s.record).toList())
         ..sort((a, b) {
           final c = a.courseCode.compareTo(b.courseCode);
           return c != 0 ? c : a.sequence.compareTo(b.sequence);
