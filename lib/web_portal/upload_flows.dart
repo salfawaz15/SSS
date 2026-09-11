@@ -24,6 +24,7 @@ import '../services/advising_report_repository.dart';
 import '../services/advising_schedule_excel_service.dart';
 import '../services/advising_schedule_repository.dart';
 import '../services/advisor_correction_service.dart';
+import '../services/advisor_department_resolver.dart';
 import '../services/advisor_movement_repository.dart';
 import '../services/advisor_name_matching.dart';
 import '../services/advisor_roster_service.dart';
@@ -1358,7 +1359,21 @@ Future<void> runUploadCourses({
       if (proceedDespiteWarning != true) return;
     }
 
-    final ourSections = sections.where((s) => isBusinessCollegeBeneficiary(s.beneficiary)).toList();
+    // عمود "المستفيد" قد يخرج فارغًا (فشل استخراج أو نقص بالمصدر) رغم أن
+    // الشعبة تخص كليتنا فعليًا - إن كان المحاضر أحد منسوبي كلية إدارة الأعمال
+    // بملف منسوبي الكلية الرسمي، تُحتسَب الشعبة رغم فراغ "المستفيد" (سليمان
+    // صراحةً 2026-09-11). لا يُمَس شرط "المستفيد" نفسه حين يكون غير فارغ -
+    // شعبة بمستفيد يذكر كليتنا بمحاضر منتدب من كلية أخرى تبقى محسوبة كما هي.
+    final collegeRoster = await CollegeRosterRepository.load();
+    bool instructorBelongsToCollege(String? instructorName) {
+      if (instructorName == null || instructorName.trim().isEmpty) return false;
+      return resolveAdvisorDepartment(instructorName, collegeRoster) != null;
+    }
+
+    final ourSections = sections.where((s) {
+      if (s.beneficiary.trim().isNotEmpty) return isBusinessCollegeBeneficiary(s.beneficiary);
+      return instructorBelongsToCollege(s.record.instructorName);
+    }).toList();
     final outsideCodes = CourseCatalog.outsideCollegeCourses.map(CourseCatalog.outsideCourseCode).toSet();
 
     // يزيل تكرار الشعبة الواحدة إن ظهرت أكثر من مرة بنفس بيانات المصدر (مثلاً
