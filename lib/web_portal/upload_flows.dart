@@ -1367,9 +1367,39 @@ Future<void> runUploadCourses({
     // خارجها"). هذا يلتقط أيضًا حالة "مستفيد يذكر كلية أخرى لكن المحاضر أحد
     // منسوبينا" التي كانت تُستبعَد سابقًا حتى مع "مستفيد" غير فارغ.
     final collegeRoster = await CollegeRosterRepository.load();
+
+    // مطابقة الاسم الكاملة (`resolveAdvisorDepartment`) تفشل إن اختلف اسم
+    // الأب/الجد الأوسط بين الاسم بملف الجدول وملف منسوبي الكلية الرسمي (مثال
+    // فعلي: "سليمان مفوز الفواز" بملف الجدول مقابل "سليمان مفوز سليم الفواز"
+    // بملف المنسوبين - كلمة "سليم" وسطى إضافية فقط) - سليمان صراحةً
+    // (2026-09-11) بعد أن اختفت شعبته الخاصة رغم كونه منسوبًا فعليًا. يُضاف
+    // هنا احتياطي: تطابق الاسم الأول والأخير معًا، وكل كلمات الاسم الأقصر
+    // موجودة ضمن الأطول (بصرف النظر عن ترتيبها) - يمنع تطابقات زائفة بين
+    // أشخاص مختلفين بنفس الاسم الأول/الأخير فقط.
+    List<String> nameTokens(String s) {
+      final cleaned = s.trim().replaceAll(RegExp(r'^(الأستاذة|الأستاذ|أ\.\s*د\.|د\.|أ\.|م\.)\s*'), '');
+      return cleaned
+          .split(RegExp(r'\s+'))
+          .where((t) => t.isNotEmpty)
+          .map((t) => t.replaceAll('أ', 'ا').replaceAll('إ', 'ا').replaceAll('آ', 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه'))
+          .toList();
+    }
+
+    bool namesLikelyMatch(String a, String b) {
+      final ta = nameTokens(a);
+      final tb = nameTokens(b);
+      if (ta.length < 2 || tb.length < 2) return false;
+      final shorter = ta.length <= tb.length ? ta : tb;
+      final longer = ta.length <= tb.length ? tb : ta;
+      if (shorter.first != longer.first || shorter.last != longer.last) return false;
+      final longerSet = longer.toSet();
+      return shorter.every(longerSet.contains);
+    }
+
     bool instructorBelongsToCollege(String? instructorName) {
       if (instructorName == null || instructorName.trim().isEmpty) return false;
-      return resolveAdvisorDepartment(instructorName, collegeRoster) != null;
+      if (resolveAdvisorDepartment(instructorName, collegeRoster) != null) return true;
+      return collegeRoster.any((m) => namesLikelyMatch(instructorName, m.name));
     }
 
     final ourSections = sections
