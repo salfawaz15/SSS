@@ -169,6 +169,22 @@ class PdfScheduleParserService {
           }
         }
 
+        // خلية "المستفيد" (كلية) قد تُحذَف كليًا من الاستخراج بدل أن تبقى
+        // فارغة حين تكون فارغة أصلًا بمصدر PDF - فلا تُوجَد أي كلمة "كلية"
+        // يُرتكَز عليها أعلاه، فيبقى اسم المحاضر بلا استخراج رغم وجوده فعليًا
+        // بالصف الخام (دليل فعلي من سليمان 2026-09-11: شعبته الخاصة بمقرر
+        // 603205 اختفت تمامًا لهذا السبب تحديدًا). في هذه الحالة اسم المحاضر
+        // هو آخر خلية غير فارغة قبل حدود الأعمدة المرساة من النهاية (طالما
+        // "المستفيد" غاب فعليًا فلا خلايا أخرى تسبقه سوى علم "جاهزة" نعم/لا).
+        if (instructor == null && beneficiary.isEmpty) {
+          for (var j = searchLimit - 1; j >= 0; j--) {
+            final cell = cells[j].trim();
+            if (cell.isEmpty || cell == 'نعم' || cell == 'لا') continue;
+            instructor = _stripTitlePrefix(cell);
+            break;
+          }
+        }
+
         final sequence = int.tryParse(sequenceStr) ?? 0;
         final hours = int.tryParse(hoursStr) ?? 0;
         final registered = int.tryParse(registeredStr) ?? 0;
