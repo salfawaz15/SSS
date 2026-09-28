@@ -1366,13 +1366,19 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
                       _infoChip('رقم المكتب', _officeNumberFor(name) ?? '—', icon: Icons.meeting_room_outlined),
                     ],
                   ),
-                  if (quota.note != null) ...[
-                    const SizedBox(height: 14),
-                    _quotaNoteBox(quota.status, quota.note!),
-                  ],
-                  const Divider(height: 32),
-                  _instructorTable(tableRows, totalHours),
                   _buildOfficialLoadReportSection(name),
+                  const Divider(height: 32),
+                  // بطلب سليمان صراحةً (2026-09-28): "الجدول الرسمي الكامل"
+                  // أعلاه أولوية العرض لأنه المصدر الأدق والأشمل - جدول
+                  // "الحويّة" أدناه يبقى ثانويًا (تقرير النصاب لا يزال مبنيًا
+                  // عليه وحده حاليًا، انظر خطة piped-humming-fox).
+                  const Text('حسب ملف الحويّة (تقرير النصاب الحالي)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  const SizedBox(height: 10),
+                  if (quota.note != null) ...[
+                    _quotaNoteBox(quota.status, quota.note!),
+                    const SizedBox(height: 14),
+                  ],
+                  _instructorTable(tableRows, totalHours),
                 ],
               ),
             ),
