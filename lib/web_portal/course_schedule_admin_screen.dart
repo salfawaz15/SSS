@@ -15,8 +15,10 @@ import '../services/college_roster_repository.dart';
 import '../services/course_schedule_repository.dart';
 import '../services/course_schedule_student_pdf_service.dart';
 import '../services/course_table_pdf_service.dart';
+import '../models/instructor_teaching_load_report.dart';
 import '../services/instructor_schedule_pdf_service.dart';
 import '../services/instructor_schedule_table.dart';
+import '../services/instructor_teaching_load_report_repository.dart';
 import '../services/outside_course_repository.dart';
 import '../services/web_download.dart';
 import '../theme/app_theme.dart';
@@ -1370,11 +1372,113 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
                   ],
                   const Divider(height: 32),
                   _instructorTable(tableRows, totalHours),
+                  _buildOfficialLoadReportSection(name),
                 ],
               ),
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// "الجدول الرسمي الكامل" من تقرير "جدول المحاضرين" الصادر عن عمادة القبول
+  /// والتسجيل (مصدر منفصل تمامًا عن "الحويّة" أعلاه) - يشمل كل مقررات العضو
+  /// بصرف النظر عن الكلية المصدر (خارج الكلية/التطبيقية/الماجستير...). عرض
+  /// فقط بلا أي حساب/تأثير على تقرير النصاب أعلاه (انظر خطة piped-humming-fox).
+  Widget _buildOfficialLoadReportSection(String name) {
+    return FutureBuilder<List<InstructorTeachingLoadReport>>(
+      future: InstructorTeachingLoadReportRepository.forInstructorName(name),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Padding(
+            padding: EdgeInsets.only(top: 20),
+            child: SizedBox(height: 24, width: 24, child: CircularProgressIndicator(strokeWidth: 2)),
+          );
+        }
+        final reports = snapshot.data ?? const <InstructorTeachingLoadReport>[];
+        if (reports.isEmpty) return const SizedBox.shrink();
+
+        return Padding(
+          padding: const EdgeInsets.only(top: 28),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.verified_outlined, color: AppColors.greenDark, size: 18),
+                  const SizedBox(width: 8),
+                  const Text('الجدول الرسمي الكامل - عمادة القبول والتسجيل',
+                      style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'يشمل كل مقررات العضو (بما فيها خارج الكلية/التطبيقية/الماجستير) كما وردت رسميًا - عرض مرجعي مستقل، لا يدخل في حساب النصاب أعلاه.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
+              ),
+              const SizedBox(height: 14),
+              for (final report in reports) _officialLoadReportCard(report),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _officialLoadReportCard(InstructorTeachingLoadReport report) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+            child: Wrap(
+              spacing: 14,
+              runSpacing: 6,
+              alignment: WrapAlignment.center,
+              children: [
+                if (report.semesterLabel.isNotEmpty)
+                  Text(report.semesterLabel, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5)),
+                Text('العبء: ${report.load.toStringAsFixed(0)}', style: const TextStyle(fontSize: 12.5)),
+                Text('الحد النظامي: ${report.maxLoad.toStringAsFixed(0)}', style: const TextStyle(fontSize: 12.5)),
+                if (report.extraHours > 0)
+                  Text('ساعات إضافية: ${report.extraHours.toStringAsFixed(0)}',
+                      style: TextStyle(fontSize: 12.5, color: AppColors.greenDark, fontWeight: FontWeight.bold)),
+                if (report.adminHours > 0) Text('ساعات عمل إداري: ${report.adminHours.toStringAsFixed(0)}', style: const TextStyle(fontSize: 12.5)),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Table(
+            columnWidths: const {0: FlexColumnWidth(1.3), 1: FlexColumnWidth(2.4)},
+            children: [
+              const TableRow(children: [
+                Padding(padding: EdgeInsets.all(6), child: Text('رمز المقرر', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5))),
+                Padding(padding: EdgeInsets.all(6), child: Text('اسم المقرر', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5))),
+              ]),
+              for (final c in report.courses)
+                TableRow(children: [
+                  Padding(padding: const EdgeInsets.all(6), child: Text(c.courseCode, style: const TextStyle(fontSize: 11.5))),
+                  Padding(
+                    padding: const EdgeInsets.all(6),
+                    child: Text(
+                      '${c.courseName} (${c.activity}) - ${c.degree} - ${c.scheduleType}${c.place.trim() != 'حوية' && c.place.trim().isNotEmpty ? ' - ${c.place}' : ''}',
+                      style: const TextStyle(fontSize: 11.5),
+                    ),
+                  ),
+                ]),
+            ],
+          ),
+        ],
       ),
     );
   }
