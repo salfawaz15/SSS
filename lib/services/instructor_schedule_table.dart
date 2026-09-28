@@ -18,6 +18,7 @@ class InstructorScheduleRow {
   final String? practicalDayName;
   final String? practicalTimeRange;
   final String? practicalRoomRange;
+  final String? theoryActivityLabel;
 
   const InstructorScheduleRow({
     required this.courseCode,
@@ -32,6 +33,7 @@ class InstructorScheduleRow {
     this.practicalDayName,
     this.practicalTimeRange,
     this.practicalRoomRange,
+    this.theoryActivityLabel,
   });
 
   bool get hasPractical => practicalSection != null;
@@ -95,6 +97,7 @@ class InstructorScheduleTable {
           practicalRoomRange: (r.practicalSection != null && r.practicalInstructorName != null)
               ? _joinMeetings(r.practicalMeetings, (m) => m.room.isEmpty ? '-' : m.room)
               : null,
+          theoryActivityLabel: r.theoryActivityLabel,
         ),
     ];
   }

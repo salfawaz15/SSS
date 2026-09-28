@@ -1401,39 +1401,29 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
     );
   }
 
-  /// يحوّل صفوف "جدول المحاضرين" الرسمي إلى [CourseSectionRecord] بدمج صفَّي
-  /// نظري/عملي لنفس (رمز المقرر + الشعبة + الدرجة + نوع الجدول) في سجل واحد
-  /// - نفس فكرة الدمج المستخدَمة بقرّاء الحويّة (`pdf_schedule_parser_service`)
-  /// - لإعادة استخدام نفس [InstructorScheduleTable]/[_instructorTable] المعتمَد
-  /// بالتصميم بلا أي تكرار كود عرض جديد.
+  /// يحوّل صفوف "جدول المحاضرين" الرسمي إلى [CourseSectionRecord] - **بلا أي
+  /// دمج** بين نظري/عملي (خلافًا لقرّاء الحويّة): عمود "شعبة" هنا هو رقم
+  /// الشعبة الفعلي لكل نشاط بمفرده وليس "تسلسلًا" مشتركًا يربط نظريًا بعمليّه
+  /// كما بملفات الحويّة - لا يوجد بهذا التقرير أي عمود يربطهما صراحةً (دليل
+  /// فعلي: صالح العريفي بمادة "ذكاء الأعمال" له شعبتا نظري (1867، 1861)
+  /// وشعبتا عملي (1862، 1868) بأرقام منفصلة كليًا بلا أي تطابق بينها - محاولة
+  /// الدمج بتخمين تسبَّبت بإسقاط صفوف العملي كليًا - سليمان 2026-09-28).
+  /// كل صف بالتقرير الرسمي يُعرَض كسجل مستقل قائم بذاته بدل التخمين.
   List<CourseSectionRecord> _recordsFromOfficialReports(List<InstructorTeachingLoadReport> reports) {
-    final theoryByKey = <String, TeachingLoadCourseRow>{};
-    final practicalByKey = <String, TeachingLoadCourseRow>{};
-    for (final report in reports) {
-      for (final c in report.courses) {
-        final key = '${c.courseCode}|${c.section}|${c.degree}|${c.scheduleType}';
-        if (c.activity.contains('عملي')) {
-          practicalByKey[key] = c;
-        } else {
-          theoryByKey[key] = c;
-        }
-      }
-    }
     return [
-      for (final entry in theoryByKey.entries)
-        CourseSectionRecord(
-          courseCode: entry.value.courseCode,
-          courseName: entry.value.courseName,
-          sequence: 0,
-          theorySection: entry.value.section,
-          practicalSection: practicalByKey[entry.key]?.section,
-          meetings: entry.value.meetings,
-          practicalMeetings: practicalByKey[entry.key]?.meetings ?? const [],
-          instructorName: entry.value.courseName,
-          practicalInstructorName: practicalByKey[entry.key]?.courseName,
-          theoryHours: entry.value.load.round(),
-          practicalHours: practicalByKey[entry.key]?.load.round() ?? 0,
-        ),
+      for (final report in reports)
+        for (final c in report.courses)
+          CourseSectionRecord(
+            courseCode: c.courseCode,
+            courseName: c.courseName,
+            sequence: 0,
+            theorySection: c.section,
+            meetings: c.meetings,
+            theoryHours: c.load.round(),
+            // "نظري" هو الافتراض الوحيد الذي يعرفه _activityChip بلا تمييز -
+            // أي نشاط آخر (عملي/تدريب) يُمرَّر صراحةً وإلا ظهر خطأً كنظري.
+            theoryActivityLabel: c.activity.trim().isEmpty || c.activity.contains('نظري') ? null : c.activity.trim(),
+          ),
     ];
   }
 
@@ -1743,7 +1733,7 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
                           cell(Text(tableRows[i].courseCode, maxLines: 1, overflow: TextOverflow.ellipsis)),
                           cell(Text(tableRows[i].courseName, maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false)),
                           cell(!tableRows[i].hasPractical
-                              ? _activityChip('نظري')
+                              ? _activityChip(tableRows[i].theoryActivityLabel ?? 'نظري')
                               : _splitCell(_activityChip('نظري'), _activityChip('عملي'))),
                           cell(!tableRows[i].hasPractical
                               ? Text(tableRows[i].theorySection, maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false)
