@@ -139,7 +139,9 @@ class InstructorTeachingLoadPdfParserService {
 
       // صف مادة حقيقي: يحمل رقم مقرر بصيغة "12345-N".
       final courseCodeRaw = at(1);
-      final looksLikeMainRow = RegExp(r'^\d{4,7}-\d+$').hasMatch(courseCodeRaw.trim());
+      // رمز المقرر قد يصل 8 أرقام قبل الشرطة للمقررات المشتركة بين أكثر من
+      // قسم (دليل فعلي: "66034104-3" - سليمان 2026-09-28).
+      final looksLikeMainRow = RegExp(r'^\d{4,12}-\d+$').hasMatch(courseCodeRaw.trim());
 
       if (looksLikeMainRow) {
         final courseName = at(2);
