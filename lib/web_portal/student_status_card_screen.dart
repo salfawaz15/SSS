@@ -269,6 +269,8 @@ class _StudentStatusCardScreenState extends State<StudentStatusCardScreen> {
                     _kv('المعدل التراكمي', r.gpa?.toStringAsFixed(2) ?? 'غير مسجَّل بالتقرير'),
                     _kv('ساعات الخطة', r.planHours?.toString() ?? 'غير مسجَّل بالتقرير'),
                     _kv('الساعات المتبقية', r.remainingHours?.toString() ?? 'غير مسجَّل بالتقرير'),
+                    _kv('الإنذارات', r.academicWarnings?.toString() ?? 'غير مسجَّل بالتقرير'),
+                    _kv('المقررات المسجلة (الفصل الحالي)', r.registeredCoursesCount?.toString() ?? 'غير مسجَّل بالتقرير'),
                     _kv(
                       'حالة التخرج',
                       r.remainingHours == null

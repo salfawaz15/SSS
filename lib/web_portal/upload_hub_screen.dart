@@ -100,6 +100,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   bool _uploadingHealth = false;
   bool _uploadingAcademicMale = false;
   bool _uploadingAcademicFemale = false;
+  bool _uploadingAcademicRegular = false;
   bool _uploadingSchedule = false;
   bool _uploadingFormsFile = false;
   bool _downloadingFormsFile = false;
@@ -1387,6 +1388,18 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
         },
       );
 
+  /// رفع ملف "بيانات الطلبة الأكاديمية v1" الأشمل (منتظمين فقط - يُحدِّثهم
+  /// بلا مساس ببيانات المفصولين/المنقطعين من آخر رفعة CSV) - انظر خطة
+  /// piped-humming-fox وتوثيق [runUploadAcademicDataRegular].
+  Future<void> _pickAndUploadAcademicDataRegular() => runUploadAcademicDataRegular(
+        context: context,
+        setUploading: (v) => setState(() => _uploadingAcademicRegular = v),
+        onSuccess: () async {
+          await _loadDates();
+          if (mounted) _showSuccessSnackBar('تم تحديث المنتظمين بنجاح');
+        },
+      );
+
   /// مربع "بيانات الطلبة الأكاديمية" (المعدل/الساعات) - نفس هوية "منسوبي
   /// الكلية"/"المقررات الدراسية" حرفيًا (بطلب سليمان صراحةً 2026-08-26).
   Widget _academicDataBanner() {
@@ -1404,7 +1417,21 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
             title: 'بيانات الطلبة الأكاديمية',
             subtitleIcon: Icons.info_outline,
             subtitle: academicDate != null ? 'آخر رفع: ${dateFmt.format(academicDate)}' : 'بيانات الطلبة والتخصص والشطر والحالة الأكاديمية (منتظم/مفصول/منقطع)',
-            button: _bannerButton(uploading: uploading, label: 'رفع الملفات', onPressed: _pickAndUploadAcademicData),
+            button: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _bannerButton(uploading: uploading, label: 'رفع الملفات', onPressed: _pickAndUploadAcademicData),
+                // ملف "بيانات الطلبة الأكاديمية v1" الأشمل - يحدّث المنتظمين
+                // فقط بلا مساس بالمفصولين/المنقطعين (انظر خطة piped-humming-fox).
+                _bannerButton(
+                  uploading: _uploadingAcademicRegular,
+                  label: 'تحديث المنتظمين (ملف تفصيلي)',
+                  icon: Icons.fact_check_outlined,
+                  onPressed: _pickAndUploadAcademicDataRegular,
+                ),
+              ],
+            ),
             verticalPadding: 12,
           ),
           const SizedBox(height: 10),

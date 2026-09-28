@@ -17,6 +17,7 @@ import '../models/course_section_record.dart';
 import '../models/instructor_teaching_load_report.dart';
 import '../services/academic_data_csv_parser_service.dart';
 import '../services/academic_data_excel_parser_service.dart';
+import '../services/academic_data_regular_html_parser_service.dart';
 import '../services/advising_case_analyzer.dart';
 import '../services/advising_report_parser_service.dart';
 import '../services/advising_report_csv_parser_service.dart';
@@ -577,6 +578,90 @@ Future<void> runUploadAcademicData({
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('تم اعتماد ملفات "بيانات الطلبة الأكاديمية" بنجاح - حُذف $totalOld سجلًا قديمًا وأُضيف $totalCount سجلًا جديدًا.')),
+    );
+  } catch (e) {
+    if (!context.mounted) return;
+    showUploadErrorDialog(context, 'تعذّر إتمام العملية', '$e');
+  } finally {
+    setUploading(false);
+  }
+}
+
+/// يرفع ملف "بيانات الطلبة الأكاديمية v1" (تصدير Oracle Reports/HTML، أشمل
+/// وأعمق من ملفات CSV الستة أعلاه لكن **للمنتظمين فقط** - لا عمود حالة قيد
+/// بالملف إطلاقًا). **دمج هجين وليس استبدالًا**: يُحدِّث المنتظمين بأحدث
+/// وأدق بيانات، ويُبقي سجلات "مفصول أكاديميًا"/"منقطع عن الدراسة" الحالية
+/// كما هي من آخر رفعة CSV (بتأكيد سليمان صراحةً 2026-09-29: هذا الملف لا
+/// يغطي تلك الحالتين، فلا يصح إسقاطهما). انظر خطة piped-humming-fox.
+Future<void> runUploadAcademicDataRegular({
+  required BuildContext context,
+  required ValueChanged<bool> setUploading,
+  required VoidCallback onSuccess,
+}) async {
+  final result = await FilePicker.platform.pickFiles(
+    type: FileType.custom,
+    allowedExtensions: const ['xls'],
+    withData: true,
+  );
+  if (result == null || result.files.isEmpty) return;
+
+  final file = result.files.first;
+  final bytes = file.bytes;
+  if (bytes == null) {
+    if (!context.mounted) return;
+    showUploadErrorDialog(context, 'تعذّر قراءة الملف', 'تعذّرت قراءة محتوى الملف.');
+    return;
+  }
+
+  setUploading(true);
+  try {
+    final records = AcademicDataRegularHtmlParserService.parse(bytes);
+    if (records.isEmpty) {
+      throw Exception('لم يُعثر على أي سجل طالب بهذا الملف - تأكد من أنه ملف "بيانات الطلبة الأكاديمية v1" الصحيح.');
+    }
+
+    final byShatr = <Shatr, List<AdvisingCaseRecord>>{};
+    for (final r in records) {
+      final shatr = r.shatr == Shatr.female.label ? Shatr.female : Shatr.male;
+      byShatr.putIfAbsent(shatr, () => []).add(r);
+    }
+
+    final summary = byShatr.entries.map((e) => '${e.key.label}: ${e.value.length} طالبًا منتظمًا').join('\n');
+    if (!context.mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('تأكيد تحديث المنتظمين'),
+        content: Text(
+          '$summary\n\n'
+          'سيُحدَّث المنتظمون بهذا الملف (أدق وأشمل)، وتبقى بيانات المفصولين أكاديميًا/المنقطعين كما هي '
+          'من آخر رفعة CSV بلا أي تغيير. هل تريد الاعتماد؟',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('اعتماد')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    for (final entry in byShatr.entries) {
+      final current = await AdvisingReportRepository.load(entry.key, kind: AdvisingReportKind.base);
+      final keptDismissedWithdrawn = current.where((r) => !r.isRegularlyEnrolled).toList();
+      final merged = [...keptDismissedWithdrawn, ...entry.value];
+      await AdvisingReportRepository.promoteBaseToPrevious(entry.key);
+      await AdvisingReportRepository.save(
+        entry.key,
+        merged,
+        kind: AdvisingReportKind.base,
+        sourceFileName: file.name,
+      );
+    }
+
+    onSuccess();
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('تم تحديث المنتظمين بنجاح (${records.length} طالبًا) - بيانات المفصولين/المنقطعين لم تتغيّر.')),
     );
   } catch (e) {
     if (!context.mounted) return;

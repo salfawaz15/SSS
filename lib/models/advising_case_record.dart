@@ -35,6 +35,18 @@ class AdvisingCaseRecord {
   /// "الساعات المتبقية" من نفس التقرير - يُحسَب منها [completedHours] تلقائيًا.
   final int? remainingHours;
 
+  /// "الإنذارات" - من ملف "بيانات الطلبة الأكاديمية v1" (منتظمين فقط، أشمل
+  /// من ملفات CSV الستة القديمة) - null إن لم يُرفَع هذا المصدر بعد لهذا
+  /// الطالب (لا علاقة له بـ[planHours]/[remainingHours]، مصدر مختلف).
+  final int? academicWarnings;
+
+  /// "المقررات المسجلة" بالفصل الحالي - من نفس مصدر [academicWarnings].
+  final int? registeredCoursesCount;
+
+  /// "الساعات المسجلة" بالفصل الحالي - من نفس مصدر [academicWarnings]، لا
+  /// تُحسَب منها [completedHours] (ذلك يعتمد حصرًا على [planHours]/[remainingHours]).
+  final int? registeredHours;
+
   const AdvisingCaseRecord({
     required this.studentId,
     required this.studentName,
@@ -49,6 +61,9 @@ class AdvisingCaseRecord {
     this.previousGpa,
     this.planHours,
     this.remainingHours,
+    this.academicWarnings,
+    this.registeredCoursesCount,
+    this.registeredHours,
   });
 
   bool get hasAdvisor => advisorNameRaw.trim().isNotEmpty;
@@ -80,6 +95,9 @@ class AdvisingCaseRecord {
     double? previousGpa,
     int? planHours,
     int? remainingHours,
+    int? academicWarnings,
+    int? registeredCoursesCount,
+    int? registeredHours,
   }) =>
       AdvisingCaseRecord(
         studentId: studentId,
@@ -95,6 +113,9 @@ class AdvisingCaseRecord {
         previousGpa: previousGpa ?? this.previousGpa,
         planHours: planHours ?? this.planHours,
         remainingHours: remainingHours ?? this.remainingHours,
+        academicWarnings: academicWarnings ?? this.academicWarnings,
+        registeredCoursesCount: registeredCoursesCount ?? this.registeredCoursesCount,
+        registeredHours: registeredHours ?? this.registeredHours,
       );
 
   Map<String, dynamic> toJson() => {
@@ -111,6 +132,9 @@ class AdvisingCaseRecord {
         'previousGpa': previousGpa,
         'planHours': planHours,
         'remainingHours': remainingHours,
+        'academicWarnings': academicWarnings,
+        'registeredCoursesCount': registeredCoursesCount,
+        'registeredHours': registeredHours,
       };
 
   factory AdvisingCaseRecord.fromJson(Map<String, dynamic> json) => AdvisingCaseRecord(
@@ -127,6 +151,9 @@ class AdvisingCaseRecord {
         previousGpa: (json['previousGpa'] as num?)?.toDouble(),
         planHours: (json['planHours'] as num?)?.toInt(),
         remainingHours: (json['remainingHours'] as num?)?.toInt(),
+        academicWarnings: (json['academicWarnings'] as num?)?.toInt(),
+        registeredCoursesCount: (json['registeredCoursesCount'] as num?)?.toInt(),
+        registeredHours: (json['registeredHours'] as num?)?.toInt(),
       );
 }
 
