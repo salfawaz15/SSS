@@ -18,6 +18,11 @@ class InstructorTeachingLoadPdfParserService {
   static final RegExp _timePattern = RegExp(r'^\d{1,2}:\d{2}\s*[صم]$');
   static final RegExp _numberPattern = RegExp(r'^-?\d+([.,]\d+)?$');
 
+  // لقب "د." قبل اسم المحاضر - يُزال وإلا فشلت مطابقة الاسم لاحقًا مع النسخة
+  // "النظيفة" بملف منسوبي الكلية عند عرض الجدول الرسمي داخل بطاقة العضو.
+  static final RegExp _titlePrefixPattern = RegExp(r'^\s*[دأا][\.\/]\s*');
+  static String _stripTitlePrefix(String name) => name.replaceFirst(_titlePrefixPattern, '').trim();
+
   static double _num(String s) {
     final cleaned = s.trim().replaceAll(',', '');
     return double.tryParse(cleaned) ?? 0;
@@ -77,7 +82,7 @@ class InstructorTeachingLoadPdfParserService {
         if (current != null) reports.add(current.build());
         final semesterLabel = _findSemesterLabel(rows) ?? '';
         current = _PendingReport(
-          instructorName: instructorName.trim(),
+          instructorName: _stripTitlePrefix(instructorName),
           staffNumber: (staffNumber ?? '').trim(),
           college: _findHeaderValue(rows, ['الكلية']) ?? '',
           department: _findHeaderValue(rows, ['القسم']) ?? '',

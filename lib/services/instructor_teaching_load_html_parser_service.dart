@@ -37,6 +37,12 @@ class InstructorTeachingLoadHtmlParserService {
   );
   static const Map<String, int> _dayAbbrev = {'ح': 1, 'ثن': 2, 'ثل': 3, 'ر': 4, 'خ': 5};
 
+  // لقب "د." قبل اسم المحاضر - يُزال (نفس نمط `_titlePrefixPattern` بقارئ
+  // الحويّة) وإلا فشلت المطابقة لاحقًا مع الاسم "النظيف" بملف منسوبي الكلية
+  // عند عرض الجدول الرسمي داخل بطاقة العضو (`forInstructorName`).
+  static final RegExp _titlePrefixPattern = RegExp(r'^\s*[دأا][\.\/]\s*');
+  static String _stripTitlePrefix(String name) => name.replaceFirst(_titlePrefixPattern, '').trim();
+
   // العلامة المائية: صف مستقل بخلية واحدة فقط، رقم منسوب مكرَّر بلون رمادي
   // باهت (#b7b7b7) - يُكتفى هنا باكتشافها بنمطها (رقم من 6-7 خانات وحيد
   // بالصف) بدل الاعتماد على تحليل CSS (أبسط وكافٍ عمليًا).
@@ -122,7 +128,7 @@ class InstructorTeachingLoadHtmlParserService {
 
       final instructorValue = findValue(row, 'المحاضر');
       if (current == null && instructorValue != null) {
-        current = _PendingReport(instructorName: instructorValue)
+        current = _PendingReport(instructorName: _stripTitlePrefix(instructorValue))
           ..semesterLabel = pendingSemesterLabel
           ..reportDate = pendingReportDate;
         pendingCourses = [];
