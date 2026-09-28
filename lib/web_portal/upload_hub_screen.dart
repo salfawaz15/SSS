@@ -19,6 +19,7 @@ import '../services/docx_schedule_parser_service.dart';
 import '../services/escalation_file_service.dart';
 import '../services/excel_parser_service.dart';
 import '../services/firestore_ticket_service.dart';
+import '../services/instructor_teaching_load_report_repository.dart';
 import '../services/outside_course_repository.dart';
 import '../services/processed_file_parser_service.dart';
 import '../services/stage_download_service.dart';
@@ -70,6 +71,10 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   bool _uploadingCourses = false;
   bool _downloadingMaleCourses = false;
   bool _downloadingFemaleCourses = false;
+
+  DateTime? _instructorLoadReportUploadedAt;
+  int _instructorLoadReportCount = 0;
+  bool _uploadingInstructorLoadReport = false;
 
   DateTime? _rosterLastSavedAt;
   int _rosterFacultyCount = 0;
@@ -147,9 +152,11 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
         CourseScheduleRepository.loadSchedule(Shatr.female),
         CollegeRosterRepository.currentLastSavedAt(),
         CollegeRosterRepository.load(),
+        InstructorTeachingLoadReportRepository.currentMeta(),
       ]);
       if (!mounted) return;
       final roster = results[17] as List<CollegeRosterMember>;
+      final instructorLoadMeta = results[18] as ({DateTime? uploadedAt, int count});
       final statusMale = results[10] as ({int regular, int dismissed, int withdrawn});
       final statusFemale = results[11] as ({int regular, int dismissed, int withdrawn});
       setState(() {
@@ -179,6 +186,8 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
         _rosterLastSavedAt = results[16] as DateTime?;
         _rosterFacultyCount = roster.where((m) => m.type == CollegeMemberType.faculty).length;
         _rosterAdminCount = roster.where((m) => m.type == CollegeMemberType.admin).length;
+        _instructorLoadReportUploadedAt = instructorLoadMeta.uploadedAt;
+        _instructorLoadReportCount = instructorLoadMeta.count;
       });
     } finally {
       if (mounted) setState(() => _loadingDates = false);
@@ -192,6 +201,16 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   Future<void> _uploadCoursesCombined() => runUploadCourses(
         context: context,
         setUploading: (v) => setState(() => _uploadingCourses = v),
+        onSuccess: _loadDates,
+        onMessage: _showSuccessSnackBar,
+      );
+
+  /// رفع "جدول المحاضرين" الرسمي (عمادة القبول والتسجيل) - مصدر منفصل تمامًا
+  /// عن المقررات الدراسية أعلاه، لا يؤثر عليها ولا يُقرأ منها. انظر خطة
+  /// piped-humming-fox لسياق إضافة هذه الميزة.
+  Future<void> _uploadInstructorTeachingLoadReport() => runUploadInstructorTeachingLoadReport(
+        context: context,
+        setUploading: (v) => setState(() => _uploadingInstructorLoadReport = v),
         onSuccess: _loadDates,
         onMessage: _showSuccessSnackBar,
       );
@@ -684,7 +703,13 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
                         // دون تمرير").
                         child: LayoutBuilder(builder: (context, constraints) {
                           final wide = constraints.maxWidth >= 1100;
-                          final boxes = [_advisingSection(), _academicDataBanner(), _rosterBanner(), _coursesBanner()];
+                          final boxes = [
+                            _advisingSection(),
+                            _academicDataBanner(),
+                            _rosterBanner(),
+                            _coursesBanner(),
+                            _instructorTeachingLoadReportBanner(),
+                          ];
                           if (!wide) {
                             return Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1221,6 +1246,37 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
               padding: const EdgeInsets.only(top: 10),
               child: Align(alignment: Alignment.centerLeft, child: _clearDataButton(label: 'مسح بيانات المقررات', onPressed: _clearCourses)),
             ),
+        ],
+      ),
+    );
+  }
+
+  /// "جدول المحاضرين" الرسمي (عمادة القبول والتسجيل) - مصدر منفصل تمامًا عن
+  /// المقررات الدراسية أعلاه (الحويّة)، يغطي مقررات كل عضو بصرف النظر عن
+  /// الكلية المصدر (خارج الكلية/التطبيقية/الماجستير). لا يؤثر على تقرير
+  /// النصاب الحالي - عرض مستقل فقط (انظر خطة piped-humming-fox).
+  Widget _instructorTeachingLoadReportBanner() {
+    final dateFmt = DateFormat('d MMMM yyyy، h:mm a', 'ar');
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: Colors.white, border: Border.all(color: AppColors.goldLight), borderRadius: BorderRadius.circular(16)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _greenBanner(
+            icon: Icons.badge_outlined,
+            title: 'جدول المحاضرين الرسمي (عمادة القبول والتسجيل)',
+            subtitleIcon: Icons.info_outline,
+            subtitle: _instructorLoadReportUploadedAt != null
+                ? 'آخر رفع: ${dateFmt.format(_instructorLoadReportUploadedAt!)} - $_instructorLoadReportCount جدول محاضر'
+                : 'يغطي مقررات كل عضو كاملة (بما فيها خارج الكلية/التطبيقية/الماجستير) - لا توجد بيانات مرفوعة بعد',
+            button: _bannerButton(
+              uploading: _uploadingInstructorLoadReport,
+              label: 'رفع الملف',
+              onPressed: _uploadInstructorTeachingLoadReport,
+            ),
+            verticalPadding: 12,
+          ),
         ],
       ),
     );

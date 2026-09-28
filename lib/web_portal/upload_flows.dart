@@ -42,6 +42,9 @@ import '../services/pdf_schedule_parser_service.dart';
 import '../services/escalation_file_service.dart';
 import '../services/excel_parser_service.dart';
 import '../services/firestore_ticket_service.dart';
+import '../services/instructor_teaching_load_html_parser_service.dart';
+import '../services/instructor_teaching_load_pdf_parser_service.dart';
+import '../services/instructor_teaching_load_report_repository.dart';
 import '../services/outside_course_repository.dart';
 import '../services/processed_file_parser_service.dart';
 import '../services/unit_committee_repository.dart';
@@ -1522,6 +1525,83 @@ Future<void> runUploadCourses({
     if (appliedChanges.isNotEmpty) {
       await _showCourseScheduleChangesDialog(context, appliedChanges);
     }
+  } catch (e) {
+    if (!context.mounted) return;
+    showUploadErrorDialog(context, 'تعذّر قراءة الملف', '$e');
+  } finally {
+    setUploading(false);
+  }
+}
+
+/// يرفع تقرير "جدول المحاضرين" الرسمي (عمادة القبول والتسجيل) - يقبل نسخته
+/// .xls (فعليًا جدول HTML، أدق وأوثق - انظر توثيق
+/// [InstructorTeachingLoadHtmlParserService]) أو نسخته PDF المكافئة، ملف
+/// واحد متعدد الصفحات/السجلات (سجل مستقل لكل عضو هيئة تدريس بكل مقرراته،
+/// بصرف النظر عن الكلية المصدر). مصدر منفصل تمامًا عن "الحويّة"
+/// (`courseSchedules`) - لا يُقرأ منه شيء ولا يُكتَب إليه، ويُعرَض بشكل مستقل
+/// بلا أي تأثير على تقرير النصاب الحالي (انظر خطة piped-humming-fox).
+Future<void> runUploadInstructorTeachingLoadReport({
+  required BuildContext context,
+  required ValueChanged<bool> setUploading,
+  required VoidCallback onSuccess,
+  required ValueChanged<String> onMessage,
+}) async {
+  final result = await FilePicker.platform.pickFiles(
+    type: FileType.custom,
+    allowedExtensions: ['xls', 'pdf'],
+    withData: true,
+  );
+  if (result == null || result.files.isEmpty) return;
+
+  final file = result.files.first;
+  final bytes = file.bytes;
+  if (bytes == null) {
+    if (!context.mounted) return;
+    showUploadErrorDialog(context, 'تعذّر قراءة الملف', 'تعذّرت قراءة محتوى الملف.');
+    return;
+  }
+  final isXls = file.name.toLowerCase().endsWith('.xls');
+  if (!isXls) {
+    final looksValidPdf = bytes.length >= 4 && bytes[0] == 0x25 && bytes[1] == 0x50 && bytes[2] == 0x44 && bytes[3] == 0x46;
+    if (!looksValidPdf) {
+      if (!context.mounted) return;
+      showUploadErrorDialog(context, 'تعذّر قراءة الملف', 'لا يبدو ملف PDF حقيقيًا أو أنه تالف.');
+      return;
+    }
+  }
+
+  setUploading(true);
+  try {
+    final reports = isXls
+        ? InstructorTeachingLoadHtmlParserService.parse(bytes)
+        : InstructorTeachingLoadPdfParserService.parse(bytes);
+    if (reports.isEmpty) {
+      throw Exception('لم يُعثر على أي جدول محاضر بهذا الملف - تأكد من أنه ملف "جدول المحاضرين" الرسمي الصحيح.');
+    }
+
+    final totalCourses = reports.fold<int>(0, (sum, r) => sum + r.courses.length);
+    if (!context.mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('تأكيد الاعتماد'),
+        content: Text(
+          'تم استخراج ${reports.length} جدول محاضر (بإجمالي $totalCourses مقررًا).\n\n'
+          'سيستبدل هذا كل نسخة سابقة مخزَّنة من جدول المحاضرين الرسمي بالكامل. '
+          'هذا لا يؤثر إطلاقًا على "الحويّة" أو تقرير النصاب الحالي - عرض مستقل فقط. هل تريد الاعتماد؟',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('اعتماد')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    await InstructorTeachingLoadReportRepository.saveAll(reports);
+    onSuccess();
+    if (!context.mounted) return;
+    onMessage('تم رفع ${reports.length} جدول محاضر بنجاح');
   } catch (e) {
     if (!context.mounted) return;
     showUploadErrorDialog(context, 'تعذّر قراءة الملف', '$e');

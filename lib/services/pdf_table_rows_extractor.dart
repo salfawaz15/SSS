@@ -89,24 +89,41 @@ class PdfTableRowsExtractor {
       // استدعاء واحد لكل الصفحات معًا (لا حلقة صفحة-بصفحة) - أسرع بكثير
       // (~78 ثانية لملف 315 صفحة مقابل ~32 دقيقة عند استدعاء منفصل لكل صفحة).
       final lines = extractor.extractTextLines(startPageIndex: 0, endPageIndex: document.pages.count - 1);
-      return _rowsFromLines(lines);
+      return _rowsFromLines(lines).map((r) => r.cells).toList();
     } finally {
       document.dispose();
     }
   }
 
-  static List<List<String>> _rowsFromLines(List<TextLine> lines) {
+  /// كـ[extract] لكن يُرفِق رقم صفحة كل صف (0-based) - لتقارير "صفحة واحدة =
+  /// سجل مستقل" (مثل جدول المحاضر الرسمي لكل عضو هيئة تدريس)، خلافًا لتقارير
+  /// الجدول المتصل عبر الصفحات التي يكفيها [extract] العادي. يعيد استخدام نفس
+  /// منطق تجميع/تقسيم الصفوف بلا أي تغيير سلوكي على [extract] نفسه.
+  static List<({int pageIndex, List<String> cells})> extractRowsWithPage(List<int> pdfBytes) {
+    final document = PdfDocument(inputBytes: pdfBytes);
+    try {
+      final extractor = PdfTextExtractor(document);
+      final lines = extractor.extractTextLines(startPageIndex: 0, endPageIndex: document.pages.count - 1);
+      return _rowsFromLines(lines).map((r) => (pageIndex: r.pageIndex, cells: r.cells)).toList();
+    } finally {
+      document.dispose();
+    }
+  }
+
+  static List<({int pageIndex, List<String> cells})> _rowsFromLines(List<TextLine> lines) {
     // إحداثي `top` نسبي **لكل صفحة على حدة** فيتكرر نفس المدى تقريبًا في كل
     // صفحة - فيُنزَّح (offset) بمضاعف كبير لرقم الصفحة قبل التجميع، وإلا
     // اختلطت صفوف من صفحات مختلفة تشترك نفس ارتفاع `top` في صف واحد.
     const pageOffset = 100000.0;
     final words = <TextWord>[];
     final wordAdjustedTop = <TextWord, double>{};
+    final wordPageIndex = <TextWord, int>{};
     for (final line in lines) {
       for (final w in line.wordCollection) {
         if (w.text.trim().isEmpty) continue;
         words.add(w);
         wordAdjustedTop[w] = line.pageIndex * pageOffset + w.bounds.top;
+        wordPageIndex[w] = line.pageIndex;
       }
     }
     words.sort((a, b) {
@@ -114,7 +131,7 @@ class PdfTableRowsExtractor {
       return t != 0 ? t : a.bounds.left.compareTo(b.bounds.left);
     });
 
-    final rows = <List<String>>[];
+    final rows = <({int pageIndex, List<String> cells})>[];
     var i = 0;
     while (i < words.length) {
       final rowTop = wordAdjustedTop[words[i]]!;
@@ -138,7 +155,7 @@ class PdfTableRowsExtractor {
       if (currentCellWords.isNotEmpty) {
         cells.add(_deshape(currentCellWords.reversed.map((w) => w.text).join(' ')));
       }
-      rows.add(cells);
+      rows.add((pageIndex: wordPageIndex[words[i]]!, cells: cells));
       i = j;
     }
     return rows;
