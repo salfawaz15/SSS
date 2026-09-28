@@ -93,6 +93,14 @@ class InstructorTeachingLoadHtmlParserService {
       pendingCourses = null;
     }
 
+    // الصف الذي يحوي "الفصل الدراسي.../التاريخ" يسبق صف "المحاضر :" فعليًا
+    // ببنية هذا الملف (رُصد فعليًا - سليمان 2026-09-28: عضو أول صفحة خرج
+    // بحقل فصل دراسي فارغ) - فيُحفَظ بمتغيّر معلَّق قبل إنشاء `current` بدل
+    // فقدانه بشرط `if (current == null) continue`، ثم يُطبَّق فور إنشاء
+    // `current` وأيضًا عند أي تكرار لاحق لنفس الصف بصفحة أخرى.
+    String pendingSemesterLabel = '';
+    DateTime? pendingReportDate;
+
     for (final row in rows) {
       final joined = row.join(' ');
 
@@ -101,23 +109,28 @@ class InstructorTeachingLoadHtmlParserService {
         continue; // صف عنوان فقط - الرأس الفعلي بالصفوف التالية.
       }
 
-      final instructorValue = findValue(row, 'المحاضر');
-      if (current == null && instructorValue != null) {
-        current = _PendingReport(instructorName: instructorValue);
-        pendingCourses = [];
-      }
-      if (current == null) continue;
-
       final semMatch = RegExp(r'الفصل الدراسي.*?للعام الجامعي\s*\S+').firstMatch(joined);
-      if (semMatch != null) current!.semesterLabel = semMatch.group(0)!;
+      if (semMatch != null) pendingSemesterLabel = semMatch.group(0)!;
 
       final dateValue = findValue(row, 'التاريخ');
       if (dateValue != null) {
         final m = RegExp(r'(\d{1,2})-(\d{1,2})-(\d{4})').firstMatch(dateValue);
         if (m != null) {
-          current!.reportDate = DateTime.tryParse('${m.group(3)}-${m.group(2)!.padLeft(2, '0')}-${m.group(1)!.padLeft(2, '0')}');
+          pendingReportDate = DateTime.tryParse('${m.group(3)}-${m.group(2)!.padLeft(2, '0')}-${m.group(1)!.padLeft(2, '0')}');
         }
       }
+
+      final instructorValue = findValue(row, 'المحاضر');
+      if (current == null && instructorValue != null) {
+        current = _PendingReport(instructorName: instructorValue)
+          ..semesterLabel = pendingSemesterLabel
+          ..reportDate = pendingReportDate;
+        pendingCourses = [];
+      }
+      if (current == null) continue;
+
+      if (semMatch != null) current!.semesterLabel = pendingSemesterLabel;
+      if (dateValue != null && pendingReportDate != null) current!.reportDate = pendingReportDate;
 
       final v = findValue(row, 'رقم المنسوب');
       if (v != null) current!.staffNumber = v;
