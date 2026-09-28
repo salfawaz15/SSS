@@ -1401,30 +1401,73 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
     );
   }
 
-  /// يحوّل صفوف "جدول المحاضرين" الرسمي إلى [CourseSectionRecord] - **بلا أي
-  /// دمج** بين نظري/عملي (خلافًا لقرّاء الحويّة): عمود "شعبة" هنا هو رقم
-  /// الشعبة الفعلي لكل نشاط بمفرده وليس "تسلسلًا" مشتركًا يربط نظريًا بعمليّه
-  /// كما بملفات الحويّة - لا يوجد بهذا التقرير أي عمود يربطهما صراحةً (دليل
-  /// فعلي: صالح العريفي بمادة "ذكاء الأعمال" له شعبتا نظري (1867، 1861)
-  /// وشعبتا عملي (1862، 1868) بأرقام منفصلة كليًا بلا أي تطابق بينها - محاولة
-  /// الدمج بتخمين تسبَّبت بإسقاط صفوف العملي كليًا - سليمان 2026-09-28).
-  /// كل صف بالتقرير الرسمي يُعرَض كسجل مستقل قائم بذاته بدل التخمين.
+  /// يحوّل صفوف "جدول المحاضرين" الرسمي إلى [CourseSectionRecord] بدمج
+  /// نظري+عملي لنفس الشعبة في سجل واحد - كما بملفات الحويّة، بطلب سليمان
+  /// صراحةً (2026-09-28): "العملي والنظري يُعدّ شعبة واحدة". هذا التقرير لا
+  /// يحمل عمود "تسلسل" صريحًا يربطهما، لكن **رقم شعبة العملي = رقم شعبة
+  /// النظري + 1 دومًا** (دليل فعلي مؤكَّد بعدة أمثلة حقيقية: نظري 3582 ↔
+  /// عملي 3583، نظري 1349/1354 ↔ عملي 1350/1355، نظري 1861/1867 ↔ عملي
+  /// 1862/1868 - جميعها بفارق +1 بالضبط) - تُطابَق الأزواج بهذه القاعدة ضمن
+  /// نفس المقرر، وأي صف عملي بلا نظري مطابِق (نادر) يبقى صفًا مستقلاً بشارة
+  /// "عملي" الصحيحة بدل إسقاطه.
   List<CourseSectionRecord> _recordsFromOfficialReports(List<InstructorTeachingLoadReport> reports) {
-    return [
-      for (final report in reports)
-        for (final c in report.courses)
-          CourseSectionRecord(
-            courseCode: c.courseCode,
-            courseName: c.courseName,
-            sequence: 0,
-            theorySection: c.section,
-            meetings: c.meetings,
-            theoryHours: c.load.round(),
-            // "نظري" هو الافتراض الوحيد الذي يعرفه _activityChip بلا تمييز -
-            // أي نشاط آخر (عملي/تدريب) يُمرَّر صراحةً وإلا ظهر خطأً كنظري.
-            theoryActivityLabel: c.activity.trim().isEmpty || c.activity.contains('نظري') ? null : c.activity.trim(),
-          ),
-    ];
+    final allCourses = [for (final r in reports) ...r.courses];
+    final byCourseCode = <String, List<TeachingLoadCourseRow>>{};
+    for (final c in allCourses) {
+      byCourseCode.putIfAbsent(c.courseCode, () => []).add(c);
+    }
+
+    final records = <CourseSectionRecord>[];
+    for (final group in byCourseCode.values) {
+      final theoryRows = group.where((c) => !c.activity.contains('عملي')).toList();
+      final practicalRows = group.where((c) => c.activity.contains('عملي')).toList();
+      final usedPractical = <TeachingLoadCourseRow>{};
+
+      for (final theory in theoryRows) {
+        final theorySectionNum = int.tryParse(theory.section.trim());
+        TeachingLoadCourseRow? practical;
+        if (theorySectionNum != null) {
+          for (final p in practicalRows) {
+            if (usedPractical.contains(p)) continue;
+            if (int.tryParse(p.section.trim()) == theorySectionNum + 1) {
+              practical = p;
+              break;
+            }
+          }
+        }
+        if (practical != null) usedPractical.add(practical);
+
+        records.add(CourseSectionRecord(
+          courseCode: theory.courseCode,
+          courseName: theory.courseName,
+          sequence: 0,
+          theorySection: theory.section,
+          practicalSection: practical?.section,
+          meetings: theory.meetings,
+          practicalMeetings: practical?.meetings ?? const [],
+          instructorName: theory.courseName,
+          practicalInstructorName: practical != null ? theory.courseName : null,
+          theoryHours: theory.load.round(),
+          practicalHours: practical?.load.round() ?? 0,
+          theoryActivityLabel: theory.activity.trim().isEmpty || theory.activity.contains('نظري') ? null : theory.activity.trim(),
+        ));
+      }
+
+      // صفوف عملي بلا نظري مطابِق (نادر) - تبقى مستقلة بدل إسقاطها.
+      for (final p in practicalRows) {
+        if (usedPractical.contains(p)) continue;
+        records.add(CourseSectionRecord(
+          courseCode: p.courseCode,
+          courseName: p.courseName,
+          sequence: 0,
+          theorySection: p.section,
+          meetings: p.meetings,
+          theoryHours: p.load.round(),
+          theoryActivityLabel: 'عملي',
+        ));
+      }
+    }
+    return records;
   }
 
   Future<Uint8List> _buildQuotaPdf(List<_QuotaRow> rows) => TeachingQuotaPdfService.build(

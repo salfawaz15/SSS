@@ -32,8 +32,13 @@ class InstructorTeachingLoadHtmlParserService {
   // "(35206حضوري)(ر)12:00 - 15:00/" (بقاعة) أو "(ثن)11:00 - 14:00/" (بلا
   // قاعة، تدريب مثلًا) أو "(عن بعد)(ثل)18:00 - 20:00/" - عيّنة حقيقية
   // (سليمان 2026-09-28، ملف "جداول شطر الطلاب اكسل.xls" 72 صفحة).
+  // "عن بعد" تحوي مسافة داخلية حقيقية - لا تُزال كل المسافات من النص قبل
+  // المطابقة (خلافًا لمحاولة سابقة أسقطت هذه المسافة فحوَّلت "عن بعد" إلى
+  // "عنبعد" غير المطابِقة للنمط الحرفي، فبدا وكأن الموعد "غير محدَّد" رغم
+  // وجوده فعليًا - دليل فعلي: سليمان 2026-09-28، شعبة 3583 "عن بعد" ظهرت
+  // بلا وقت). المسافات حول الأرقام/الشرطة تبقى `\s*` بدل حذفها يدويًا.
   static final RegExp _meetingPattern = RegExp(
-    r'^(?:\((?:(\d+)?حضوري|عن بعد|أونلاين|اونلاين)\))?\((ح|ثن|ثل|ر|خ)\)(\d{1,2}:\d{2})-(\d{1,2}:\d{2})/?$',
+    r'^(?:\((?:(\d+)?\s*حضوري|عن\s*بعد|أون\s*لاي\s*\d*|أونلاين|اونلاين)\)\s*)?\((ح|ثن|ثل|ر|خ)\)\s*(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})\s*/?$',
   );
   static const Map<String, int> _dayAbbrev = {'ح': 1, 'ثن': 2, 'ثل': 3, 'ر': 4, 'خ': 5};
 
@@ -191,7 +196,7 @@ class InstructorTeachingLoadHtmlParserService {
 
         final meetings = <CourseMeeting>[];
         for (final mt in meetingTexts) {
-          final m = _meetingPattern.firstMatch(mt.replaceAll(' ', ''));
+          final m = _meetingPattern.firstMatch(mt.trim());
           if (m == null) continue;
           final room = m.group(1) ?? '';
           final dayAbbrev = m.group(2)!;
