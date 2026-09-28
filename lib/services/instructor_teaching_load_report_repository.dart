@@ -69,4 +69,23 @@ class InstructorTeachingLoadReportRepository {
     final snap = await _col.where('instructorName', isEqualTo: cleaned).get();
     return snap.docs.map((d) => InstructorTeachingLoadReport.fromJson(d.data())).toList();
   }
+
+  /// إجمالي ساعات كل عضو (مجموع "عبء" كل صفوف مقرراته بآخر تقرير مرفوع) -
+  /// قراءة واحدة لكل الجدول، بدل استعلام منفصل لكل عضو - تُستخدَم لعرض
+  /// "العبء الدراسي" بشاشات تسرد عشرات/مئات الأعضاء دفعة واحدة (مثل شاشة
+  /// منسوبي الكلية) بلا حاجة لجلب كل تقرير على حدة.
+  static Future<Map<String, int>> totalHoursByInstructorName() async {
+    final snap = await _col.get();
+    final totals = <String, int>{};
+    for (final doc in snap.docs) {
+      if (doc.id == _metaDocId) continue;
+      final data = doc.data();
+      final name = data['instructorName'] as String? ?? '';
+      if (name.trim().isEmpty) continue;
+      final courses = data['courses'] as List<dynamic>? ?? [];
+      final total = courses.fold<double>(0, (sum, c) => sum + ((c as Map<String, dynamic>)['load'] as num? ?? 0));
+      totals[name.trim()] = (totals[name.trim()] ?? 0) + total.round();
+    }
+    return totals;
+  }
 }

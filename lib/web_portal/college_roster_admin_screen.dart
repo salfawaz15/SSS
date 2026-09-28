@@ -9,6 +9,7 @@ import '../models/college_roster_member.dart';
 import '../models/course_section_record.dart';
 import '../services/college_roster_repository.dart';
 import '../services/course_schedule_repository.dart';
+import '../services/instructor_teaching_load_report_repository.dart';
 import '../theme/app_theme.dart';
 import '../theme/dashboard_table.dart';
 import '../theme/dashboard_tokens.dart';
@@ -114,6 +115,7 @@ class _CollegeRosterAdminScreenState extends State<CollegeRosterAdminScreen> {
   List<CollegeRosterMember> _members = [];
   List<CourseSectionRecord> _maleRecords = [];
   List<CourseSectionRecord> _femaleRecords = [];
+  Map<String, int> _officialLoadByName = {};
   DateTime? _lastSavedAt;
   bool _loading = true;
 
@@ -166,6 +168,7 @@ class _CollegeRosterAdminScreenState extends State<CollegeRosterAdminScreen> {
       CollegeRosterRepository.currentLastSavedAt(),
       CourseScheduleRepository.loadSchedule(Shatr.male),
       CourseScheduleRepository.loadSchedule(Shatr.female),
+      InstructorTeachingLoadReportRepository.totalHoursByInstructorName(),
     ]);
     if (!mounted) return;
     setState(() {
@@ -173,6 +176,7 @@ class _CollegeRosterAdminScreenState extends State<CollegeRosterAdminScreen> {
       _lastSavedAt = results[1] as DateTime?;
       _maleRecords = results[2] as List<CourseSectionRecord>;
       _femaleRecords = results[3] as List<CourseSectionRecord>;
+      _officialLoadByName = results[4] as Map<String, int>;
       _loading = false;
     });
   }
@@ -183,11 +187,15 @@ class _CollegeRosterAdminScreenState extends State<CollegeRosterAdminScreen> {
       .replaceAll(RegExp('[أإآ]'), 'ا')
       .replaceAll('ة', 'ه');
 
-  /// العبء الدراسي الفعلي لعضو هيئة التدريس - مجموع ساعات كل شعبة (نظري/عملي)
-  /// أُسنِدت له فعليًا في آخر جدول دراسي معتمد (كلا الشطرين)، وليس النصاب
-  /// النظري المكتوب في ملف العمادة (`teachingLoadHours`، عمود منفصل تمامًا).
+  /// العبء الدراسي الفعلي لعضو هيئة التدريس - يُفضَّل مصدر "جدول المحاضرين"
+  /// الرسمي (عمادة القبول والتسجيل، `instructorTeachingLoadReports`) إن وُجد
+  /// لهذا العضو (أدق وأشمل - يغطي خارج الكلية/التطبيقية/الماجستير)، ويُستخدَم
+  /// "الحويّة" فقط كاحتياطي إن لم يُرفَع بعد تقرير رسمي له - بطلب سليمان
+  /// صراحةً (2026-09-28)، نفس منطق التفضيل بـ`course_schedule_admin_screen.dart`.
   int _teachingLoadFor(CollegeRosterMember m) {
     final key = _nameKey(displayName(m.name));
+    final official = _officialLoadByName[displayName(m.name).trim()];
+    if (official != null) return official;
     var total = 0;
     for (final r in [..._maleRecords, ..._femaleRecords]) {
       // النظري والعملي لنفس الشعبة قد يُسنَدان لعضوين مختلفين - تُحتسَب فقط
