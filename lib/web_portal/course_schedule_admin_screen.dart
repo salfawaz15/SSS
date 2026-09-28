@@ -1293,200 +1293,148 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
     if (rows.isEmpty && roster != null && _isAbsentRosterMember(roster)) {
       return const Center(child: Text('لا يوجد جدول دراسي'));
     }
-    final records = rows.map((r) => r.record).toList();
-    final tableRows = InstructorScheduleTable.buildRows(records);
-    final totalHours = InstructorScheduleTable.totalCreditHours(records);
-    final department = _departmentFor(name, _facultyDept ?? '');
-    final quota = _quotaCompare(
-      totalHours,
-      _effectiveMaxHoursFor(name),
-      fullRankMaxHours: TeachingLoadRegulation.maxHoursFor(_rosterFor(name)?.academicRank),
-    );
+    final fallbackRecords = rows.map((r) => r.record).toList();
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 980),
-          child: Card(
-            elevation: 2,
-            color: const Color(0xFFFBF9F3),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(color: AppColors.gold.withValues(alpha: 0.5)),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text('◆', style: TextStyle(color: AppColors.gold, fontSize: 12)),
-                      const SizedBox(width: 8),
-                      const Text('جدول عضو هيئة التدريس', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                      const SizedBox(width: 8),
-                      Text('◆', style: TextStyle(color: AppColors.gold, fontSize: 12)),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Container(height: 2, width: 200, color: AppColors.gold),
-                  const SizedBox(height: 14),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      FilledButton.icon(
-                        onPressed: () async => Printing.sharePdf(
-                            bytes: await _buildInstructorPdf(name, department, rows), filename: 'جدول_$name.pdf'),
-                        icon: const Icon(Icons.picture_as_pdf_outlined),
-                        label: const Text('عرض PDF'),
-                        style: FilledButton.styleFrom(backgroundColor: AppColors.green),
-                      ),
-                      const SizedBox(width: 8),
-                      OutlinedButton.icon(
-                        onPressed: () async =>
-                            Printing.layoutPdf(onLayout: (_) async => _buildInstructorPdf(name, department, rows)),
-                        icon: const Icon(Icons.print_outlined),
-                        label: const Text('طباعة'),
-                        style:
-                            OutlinedButton.styleFrom(foregroundColor: AppColors.green, side: BorderSide(color: AppColors.green)),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 18),
-                  Wrap(
-                    alignment: WrapAlignment.center,
-                    spacing: 12,
-                    runSpacing: 10,
-                    children: [
-                      _infoChip('الفصل الدراسي', 'الأول 1448هـ', icon: Icons.calendar_month_outlined),
-                      _infoChip('القسم', department.replaceFirst('قسم ', ''), icon: Icons.apartment_outlined),
-                      _infoChip('عضو هيئة التدريس', name, icon: Icons.person_outline),
-                      _infoChip('رقم المكتب', _officeNumberFor(name) ?? '—', icon: Icons.meeting_room_outlined),
-                    ],
-                  ),
-                  _buildOfficialLoadReportSection(name),
-                  const Divider(height: 32),
-                  // بطلب سليمان صراحةً (2026-09-28): "الجدول الرسمي الكامل"
-                  // أعلاه أولوية العرض لأنه المصدر الأدق والأشمل - جدول
-                  // "الحويّة" أدناه يبقى ثانويًا (تقرير النصاب لا يزال مبنيًا
-                  // عليه وحده حاليًا، انظر خطة piped-humming-fox).
-                  const Text('حسب ملف الحويّة (تقرير النصاب الحالي)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                  const SizedBox(height: 10),
-                  if (quota.note != null) ...[
-                    _quotaNoteBox(quota.status, quota.note!),
-                    const SizedBox(height: 14),
-                  ],
-                  _instructorTable(tableRows, totalHours),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// "الجدول الرسمي الكامل" من تقرير "جدول المحاضرين" الصادر عن عمادة القبول
-  /// والتسجيل (مصدر منفصل تمامًا عن "الحويّة" أعلاه) - يشمل كل مقررات العضو
-  /// بصرف النظر عن الكلية المصدر (خارج الكلية/التطبيقية/الماجستير...). عرض
-  /// فقط بلا أي حساب/تأثير على تقرير النصاب أعلاه (انظر خطة piped-humming-fox).
-  Widget _buildOfficialLoadReportSection(String name) {
+    // جدول واحد فقط بنفس التصميم المعتمد - يُفضَّل مصدر "جدول المحاضرين"
+    // الرسمي (عمادة القبول والتسجيل) إن وُجد لهذا العضو (أدق وأشمل، يغطي
+    // خارج الكلية/التطبيقية/الماجستير)، ويُستخدَم "الحويّة" فقط كاحتياطي إن
+    // لم يُرفَع بعد تقرير رسمي لهذا العضو - بطلب سليمان صراحةً (2026-09-28):
+    // "جدول واحد فقط... نفس التصميم القديم ولكن ببيانات الجدول المرفوع حديثًا".
     return FutureBuilder<List<InstructorTeachingLoadReport>>(
       future: InstructorTeachingLoadReportRepository.forInstructorName(name),
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
-          return const Padding(
-            padding: EdgeInsets.only(top: 20),
-            child: SizedBox(height: 24, width: 24, child: CircularProgressIndicator(strokeWidth: 2)),
-          );
+          return const Center(child: CircularProgressIndicator());
         }
-        final reports = snapshot.data ?? const <InstructorTeachingLoadReport>[];
-        if (reports.isEmpty) return const SizedBox.shrink();
+        final officialReports = snapshot.data ?? const <InstructorTeachingLoadReport>[];
+        final records = officialReports.isNotEmpty ? _recordsFromOfficialReports(officialReports) : fallbackRecords;
+        final semesterLabel =
+            officialReports.isNotEmpty ? officialReports.first.semesterLabel : null;
 
-        return Padding(
-          padding: const EdgeInsets.only(top: 28),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.verified_outlined, color: AppColors.greenDark, size: 18),
-                  const SizedBox(width: 8),
-                  const Text('الجدول الرسمي الكامل - عمادة القبول والتسجيل',
-                      style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.bold)),
-                ],
+        final tableRows = InstructorScheduleTable.buildRows(records);
+        final totalHours = InstructorScheduleTable.totalCreditHours(records);
+        final department = _departmentFor(name, _facultyDept ?? '');
+        final quota = _quotaCompare(
+          totalHours,
+          _effectiveMaxHoursFor(name),
+          fullRankMaxHours: TeachingLoadRegulation.maxHoursFor(_rosterFor(name)?.academicRank),
+        );
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 980),
+              child: Card(
+                elevation: 2,
+                color: const Color(0xFFFBF9F3),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: AppColors.gold.withValues(alpha: 0.5)),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text('◆', style: TextStyle(color: AppColors.gold, fontSize: 12)),
+                          const SizedBox(width: 8),
+                          const Text('جدول عضو هيئة التدريس', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                          const SizedBox(width: 8),
+                          Text('◆', style: TextStyle(color: AppColors.gold, fontSize: 12)),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Container(height: 2, width: 200, color: AppColors.gold),
+                      const SizedBox(height: 14),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          FilledButton.icon(
+                            onPressed: () async => Printing.sharePdf(
+                                bytes: await _buildInstructorPdf(name, department, records), filename: 'جدول_$name.pdf'),
+                            icon: const Icon(Icons.picture_as_pdf_outlined),
+                            label: const Text('عرض PDF'),
+                            style: FilledButton.styleFrom(backgroundColor: AppColors.green),
+                          ),
+                          const SizedBox(width: 8),
+                          OutlinedButton.icon(
+                            onPressed: () async =>
+                                Printing.layoutPdf(onLayout: (_) async => _buildInstructorPdf(name, department, records)),
+                            icon: const Icon(Icons.print_outlined),
+                            label: const Text('طباعة'),
+                            style: OutlinedButton.styleFrom(
+                                foregroundColor: AppColors.green, side: BorderSide(color: AppColors.green)),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
+                      Wrap(
+                        alignment: WrapAlignment.center,
+                        spacing: 12,
+                        runSpacing: 10,
+                        children: [
+                          _infoChip('الفصل الدراسي', semesterLabel?.isNotEmpty == true ? semesterLabel! : 'الأول 1448هـ',
+                              icon: Icons.calendar_month_outlined),
+                          _infoChip('القسم', department.replaceFirst('قسم ', ''), icon: Icons.apartment_outlined),
+                          _infoChip('عضو هيئة التدريس', name, icon: Icons.person_outline),
+                          _infoChip('رقم المكتب', _officeNumberFor(name) ?? '—', icon: Icons.meeting_room_outlined),
+                        ],
+                      ),
+                      if (quota.note != null) ...[
+                        const SizedBox(height: 14),
+                        _quotaNoteBox(quota.status, quota.note!),
+                      ],
+                      const Divider(height: 32),
+                      _instructorTable(tableRows, totalHours),
+                    ],
+                  ),
+                ),
               ),
-              const SizedBox(height: 4),
-              Text(
-                'يشمل كل مقررات العضو (بما فيها خارج الكلية/التطبيقية/الماجستير) كما وردت رسميًا - عرض مرجعي مستقل، لا يدخل في حساب النصاب أعلاه.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
-              ),
-              const SizedBox(height: 14),
-              for (final report in reports) _officialLoadReportCard(report),
-            ],
+            ),
           ),
         );
       },
     );
   }
 
-  Widget _officialLoadReportCard(InstructorTeachingLoadReport report) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.grey.shade300),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-            child: Wrap(
-              spacing: 14,
-              runSpacing: 6,
-              alignment: WrapAlignment.center,
-              children: [
-                if (report.semesterLabel.isNotEmpty)
-                  Text(report.semesterLabel, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5)),
-                Text('العبء: ${report.load.toStringAsFixed(0)}', style: const TextStyle(fontSize: 12.5)),
-                Text('الحد النظامي: ${report.maxLoad.toStringAsFixed(0)}', style: const TextStyle(fontSize: 12.5)),
-                if (report.extraHours > 0)
-                  Text('ساعات إضافية: ${report.extraHours.toStringAsFixed(0)}',
-                      style: TextStyle(fontSize: 12.5, color: AppColors.greenDark, fontWeight: FontWeight.bold)),
-                if (report.adminHours > 0) Text('ساعات عمل إداري: ${report.adminHours.toStringAsFixed(0)}', style: const TextStyle(fontSize: 12.5)),
-              ],
-            ),
-          ),
-          const Divider(height: 1),
-          Table(
-            columnWidths: const {0: FlexColumnWidth(1.3), 1: FlexColumnWidth(2.4)},
-            children: [
-              const TableRow(children: [
-                Padding(padding: EdgeInsets.all(6), child: Text('رمز المقرر', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5))),
-                Padding(padding: EdgeInsets.all(6), child: Text('اسم المقرر', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5))),
-              ]),
-              for (final c in report.courses)
-                TableRow(children: [
-                  Padding(padding: const EdgeInsets.all(6), child: Text(c.courseCode, style: const TextStyle(fontSize: 11.5))),
-                  Padding(
-                    padding: const EdgeInsets.all(6),
-                    child: Text(
-                      '${c.courseName} (${c.activity}) - ${c.degree} - ${c.scheduleType}${c.place.trim() != 'حوية' && c.place.trim().isNotEmpty ? ' - ${c.place}' : ''}',
-                      style: const TextStyle(fontSize: 11.5),
-                    ),
-                  ),
-                ]),
-            ],
-          ),
-        ],
-      ),
-    );
+  /// يحوّل صفوف "جدول المحاضرين" الرسمي إلى [CourseSectionRecord] بدمج صفَّي
+  /// نظري/عملي لنفس (رمز المقرر + الشعبة + الدرجة + نوع الجدول) في سجل واحد
+  /// - نفس فكرة الدمج المستخدَمة بقرّاء الحويّة (`pdf_schedule_parser_service`)
+  /// - لإعادة استخدام نفس [InstructorScheduleTable]/[_instructorTable] المعتمَد
+  /// بالتصميم بلا أي تكرار كود عرض جديد.
+  List<CourseSectionRecord> _recordsFromOfficialReports(List<InstructorTeachingLoadReport> reports) {
+    final theoryByKey = <String, TeachingLoadCourseRow>{};
+    final practicalByKey = <String, TeachingLoadCourseRow>{};
+    for (final report in reports) {
+      for (final c in report.courses) {
+        final key = '${c.courseCode}|${c.section}|${c.degree}|${c.scheduleType}';
+        if (c.activity.contains('عملي')) {
+          practicalByKey[key] = c;
+        } else {
+          theoryByKey[key] = c;
+        }
+      }
+    }
+    return [
+      for (final entry in theoryByKey.entries)
+        CourseSectionRecord(
+          courseCode: entry.value.courseCode,
+          courseName: entry.value.courseName,
+          sequence: 0,
+          theorySection: entry.value.section,
+          practicalSection: practicalByKey[entry.key]?.section,
+          meetings: entry.value.meetings,
+          practicalMeetings: practicalByKey[entry.key]?.meetings ?? const [],
+          instructorName: entry.value.courseName,
+          practicalInstructorName: practicalByKey[entry.key]?.courseName,
+          theoryHours: entry.value.load.round(),
+          practicalHours: practicalByKey[entry.key]?.load.round() ?? 0,
+        ),
+    ];
   }
 
   Future<Uint8List> _buildQuotaPdf(List<_QuotaRow> rows) => TeachingQuotaPdfService.build(
@@ -1983,11 +1931,11 @@ class _CourseScheduleAdminScreenState extends State<CourseScheduleAdminScreen>
     );
   }
 
-  Future<Uint8List> _buildInstructorPdf(String name, String department, List<_DisplayRow> rows) {
+  Future<Uint8List> _buildInstructorPdf(String name, String department, List<CourseSectionRecord> records) {
     return InstructorSchedulePdfService.build(
       instructorName: name,
       department: department,
-      records: rows.map((r) => r.record).toList(),
+      records: records,
       officeNumber: _officeNumberFor(name),
     );
   }
