@@ -14,6 +14,7 @@ import '../models/advising_case_record.dart';
 import '../models/advising_schedule.dart';
 import '../models/college_roster_member.dart';
 import '../models/course_section_record.dart';
+import '../models/instructor_teaching_load_report.dart';
 import '../services/academic_data_csv_parser_service.dart';
 import '../services/academic_data_excel_parser_service.dart';
 import '../services/advising_case_analyzer.dart';
@@ -1550,33 +1551,51 @@ Future<void> runUploadInstructorTeachingLoadReport({
     type: FileType.custom,
     allowedExtensions: ['xls', 'pdf'],
     withData: true,
+    allowMultiple: true,
   );
   if (result == null || result.files.isEmpty) return;
 
-  final file = result.files.first;
-  final bytes = file.bytes;
-  if (bytes == null) {
-    if (!context.mounted) return;
-    showUploadErrorDialog(context, 'تعذّر قراءة الملف', 'تعذّرت قراءة محتوى الملف.');
-    return;
-  }
-  final isXls = file.name.toLowerCase().endsWith('.xls');
-  if (!isXls) {
-    final looksValidPdf = bytes.length >= 4 && bytes[0] == 0x25 && bytes[1] == 0x50 && bytes[2] == 0x44 && bytes[3] == 0x46;
-    if (!looksValidPdf) {
-      if (!context.mounted) return;
-      showUploadErrorDialog(context, 'تعذّر قراءة الملف', 'لا يبدو ملف PDF حقيقيًا أو أنه تالف.');
-      return;
+  // اختيار متعدد (لرفع ملفَي شطر الطلاب/الطالبات معًا بضغطة واحدة، بنفس نمط
+  // `runUploadCourses`) - كل ملف يُقرَأ بالقارئ المناسب له، ونتائجهم تُدمَج
+  // معًا قبل المتابعة.
+  final reports = <InstructorTeachingLoadReport>[];
+  final failedFiles = <({String fileName, String error})>[];
+  for (final file in result.files) {
+    final bytes = file.bytes;
+    if (bytes == null) {
+      failedFiles.add((fileName: file.name, error: 'تعذّرت قراءة محتوى الملف.'));
+      continue;
+    }
+    final isXls = file.name.toLowerCase().endsWith('.xls');
+    if (!isXls) {
+      final looksValidPdf = bytes.length >= 4 && bytes[0] == 0x25 && bytes[1] == 0x50 && bytes[2] == 0x44 && bytes[3] == 0x46;
+      if (!looksValidPdf) {
+        failedFiles.add((fileName: file.name, error: 'لا يبدو ملف PDF حقيقيًا أو أنه تالف.'));
+        continue;
+      }
+    }
+    try {
+      final fileReports = isXls
+          ? InstructorTeachingLoadHtmlParserService.parse(bytes)
+          : InstructorTeachingLoadPdfParserService.parse(bytes);
+      if (fileReports.isEmpty) {
+        failedFiles.add((fileName: file.name, error: 'لم يُعثر على أي جدول محاضر بهذا الملف.'));
+      } else {
+        reports.addAll(fileReports);
+      }
+    } catch (e) {
+      failedFiles.add((fileName: file.name, error: '$e'));
     }
   }
 
   setUploading(true);
   try {
-    final reports = isXls
-        ? InstructorTeachingLoadHtmlParserService.parse(bytes)
-        : InstructorTeachingLoadPdfParserService.parse(bytes);
     if (reports.isEmpty) {
-      throw Exception('لم يُعثر على أي جدول محاضر بهذا الملف - تأكد من أنه ملف "جدول المحاضرين" الرسمي الصحيح.');
+      throw Exception(
+        failedFiles.isEmpty
+            ? 'لم يُعثر على أي جدول محاضر بالملفات المختارة - تأكد من أنها ملفات "جدول المحاضرين" الرسمي الصحيحة.'
+            : 'تعذّر استخراج أي جدول محاضر من الملفات المختارة:\n${failedFiles.map((f) => '${f.fileName}: ${f.error}').join('\n')}',
+      );
     }
 
     final totalCourses = reports.fold<int>(0, (sum, r) => sum + r.courses.length);

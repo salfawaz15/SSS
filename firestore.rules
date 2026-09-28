@@ -283,6 +283,14 @@ service cloud.firestore {
       allow read, write: if isUnitCoordinator();
     }
 
+    // تقرير "جدول المحاضرين" الرسمي (عمادة القبول والتسجيل) - مصدر منفصل
+    // تمامًا عن courseSchedules، مستند لكل (عضو + فصل دراسي) - نفس صلاحيات
+    // courseSchedules تمامًا (رفع من نفس شاشة "رفع وتنزيل الملفات").
+    match /instructorTeachingLoadReports/{docId} {
+      allow read, write: if isSuperAdmin();
+      allow read, write: if isUnitCoordinator();
+    }
+
     // تقرير "بيانات الطلبة الأكاديمية حسب الكلية والقسم" المعتمد لكل شطر -
     // مصدر صفحة "متابعة حالات الإرشاد" - نفس صلاحيات courseSchedules تمامًا.
     // السجلات مُقسَّمة لدفعات (chunks) تحت كل مستند شطر (يتجاوز حد 1 ميجابايت
