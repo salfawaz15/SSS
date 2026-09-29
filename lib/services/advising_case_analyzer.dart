@@ -861,6 +861,34 @@ class AdvisingCaseAnalyzer {
         .toSet()
         .toList();
 
+    // مسؤول "الحالات الخاصة" الفعلي لكل قسم - أمين/ة القسم إن كان تصنيفه
+    // النهائي "حالات خاصة فقط"، وإلا منسّق/ة القسم بديلاً (حين يكون أمين
+    // القسم من تخصص مختلف عن قسمه فلا يُحسَب أمينًا لهذا القسم تحديدًا -
+    // بطلب سليمان صراحةً 2026-09-29: مثال غراس أبو الشامات - أمينة قسم
+    // الإدارة فعليًا لكنها مسجَّلة بقسم الاقتصاد والتمويل). يُستثنى هذا
+    // العضو من علامة "تجاوز النصاب" أدناه بصرف النظر عن تصنيفه النهائي
+    // (حالات خاصة أو مخفَّض 50%)، لأن أي تجاوز لديه سببه استيعاب حالات ذوي
+    // إعاقة من قسمه المسؤول عنه لا خللاً حقيقيًا بالتوزيع.
+    bool isDeptCoordinator(CollegeRosterMember m) {
+      final text = _key([m.position, m.position2, m.position3].join(' '));
+      return (text.contains(_key('منسق قسم')) || text.contains(_key('منسقة قسم'))) &&
+          !text.contains(_key('منسق الكلية')) &&
+          !text.contains(_key('منسقة الكلية'));
+    }
+
+    final aminByDept = {
+      for (final m in facultyInScope.where((m) => m.advisingLoad == AdvisingLoad.specialCasesOnly)) m.department: m,
+    };
+    final coordinatorByDept = {
+      for (final m in facultyInScope.where(isDeptCoordinator)) m.department: m,
+    };
+    final specialCaseResponsibleKeys = <String>{
+      for (final dept in departmentsInScope)
+        if ((aminByDept[dept] ?? coordinatorByDept[dept]) != null)
+          _key(displayName((aminByDept[dept] ?? coordinatorByDept[dept])!.name)),
+    };
+
+
     for (final member in facultyInScope) {
       final key = _key(displayName(member.name));
       final assigned = byAdvisorKey[key] ?? const <AdvisingCaseRecord>[];
@@ -977,7 +1005,8 @@ class AdvisingCaseAnalyzer {
         // بالعكس). الحل: التصنيف يقارن الآن بالقيمة **المقرَّبة** نفسها
         // المعروضة بالجدول، لا الخام - يطابق دائمًا ما يراه المستخدم فعليًا.
         final fairShareRounded = fairShare.round();
-        final isOver = (actual - fairShareRounded) > 1;
+        final isSpecialCaseResponsible = specialCaseResponsibleKeys.contains(_key(displayName(m.name)));
+        final isOver = !isSpecialCaseResponsible && (actual - fairShareRounded) > 1;
         final isUnder = (fairShareRounded - actual) > 1;
         if (isOver) {
           overloaded.add(OverloadedAdvisorCase(
@@ -1073,26 +1102,6 @@ class AdvisingCaseAnalyzer {
       }
     }
     final atRisk = activeStudents.where((s) => gpaStatusOf(s.gpa).needsAttention).toList();
-
-    // حالات صحية/إعاقة: يجب أن يكون مرشد الطالب هو أمين قسمه (حالات خاصة
-    // فقط) - أي طالب له حالة صحية ومرشده الحالي غير أمين القسم (أو بلا مرشد
-    // أصلاً) يُسجَّل هنا. استثناء: إن كان أمين القسم من خارج القسم (تخصصه
-    // مختلف - عندها لا يُصنَّف specialCasesOnly أصلاً لهذا القسم في
-    // [AdvisingLoadRules.classify]، فيغيب من aminByDept)، تُقبَل حالاته لدى
-    // منسّق/ة القسم بدلًا منه.
-    final aminByDept = {
-      for (final m in facultyInScope.where((m) => m.advisingLoad == AdvisingLoad.specialCasesOnly)) m.department: m,
-    };
-    bool isDeptCoordinator(CollegeRosterMember m) {
-      final text = _key([m.position, m.position2, m.position3].join(' '));
-      return (text.contains(_key('منسق قسم')) || text.contains(_key('منسقة قسم'))) &&
-          !text.contains(_key('منسق الكلية')) &&
-          !text.contains(_key('منسقة الكلية'));
-    }
-
-    final coordinatorByDept = {
-      for (final m in facultyInScope.where(isDeptCoordinator)) m.department: m,
-    };
     final healthMismatches = <HealthCaseMismatch>[];
     final healthCasesWithAmin = <AdvisingCaseRecord>[];
     final healthCaseStudents = activeStudents.where((s) => s.hasHealthCondition).toList();
