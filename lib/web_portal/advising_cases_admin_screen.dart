@@ -445,11 +445,18 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
   /// العرض مباشرة.
   Widget _buildStatsGrid(List<(String, Widget Function())> tabs) {
     final counts = <int>[
+      // بطاقة "الكل" - إجمالي حقيقي شامل كل طالب موجود بالمصدر مهما كانت
+      // حالته (منتظم/مؤجل/مفصول/مطوي قيد/أي حالة أخرى) أو كونه مستجدًا -
+      // بطلب سليمان الصريح 2026-09-30: عدم شمول هذه الفئات يعطي انطباعًا
+      // برقم غير حقيقي. يبقى "المستهدفون بالإرشاد" (الملاحظة أسفل البطاقة)
+      // هو العدد الفرعي المستهدَف فعليًا بالإرشاد (منتظم، غير مستجد).
       _classification.studentsCorrectlyAssigned.length +
           _classification.studentsWithoutAdvisor.length +
           _classification.studentsWithWrongDeptAdvisor.length +
           _classification.externalAdvisorsWithOurStudents.length +
-          _classification.ourAdvisorsWithExternalStudents.length,
+          _classification.ourAdvisorsWithExternalStudents.length +
+          _classification.newStudents.length +
+          _classification.dismissedStudents.length,
       _classification.studentsCorrectlyAssigned.length,
       _analysis.healthCasesWithAmin.length,
       _classification.studentsWithoutAdvisor.length,
