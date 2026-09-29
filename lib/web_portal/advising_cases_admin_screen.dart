@@ -766,6 +766,21 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
   static String _remainingHoursCell(AdvisingCaseRecord s) => s.remainingHours?.toString() ?? '—';
 
   Widget _tabAllStudents() {
+    // هذا التبويب مصدره حصرًا الطلبة المنتظمين (`_classification` مبنية من
+    // activeStudents فقط) - اختيار حالة أخرى من فلتر "الحالة" (مفصول/مؤجل/
+    // متوفى...) لا معنى له هنا إطلاقًا، فيُعرَض تنبيه فارغ بدل تجاهل الفلتر
+    // بصمت وعرض كل المنتظمين وكأن لا فلتر مطبَّقًا - كان هذا يُظهر بيانات
+    // مضلِّلة (طالب "متوفى" ضمن قائمة الكل رغم اختيار فلتر "متوفى" تحديدًا،
+    // لأن الفلتر كان بلا أي تأثير على هذا التبويب) - دليل فعلي: سليمان
+    // 2026-09-29. طلبة الحالات الأخرى بتبويب "حالات غير منتظمة" المخصَّص.
+    if (!_statusMatches('منتظم')) {
+      return _buildPanel(
+        title: 'كل الطلاب',
+        headers: const ['الاسم', 'الرقم الجامعي', 'القسم', 'الشطر', 'المرشد', 'الوضع', 'المعدل', 'النطاق', 'الساعات المجتازة', 'الساعات المتبقية'],
+        rows: const [],
+        emptyMessage: 'هذا التبويب للمنتظمين فقط - الحالة المختارة بالفلتر موجودة بتبويب "حالات غير منتظمة"',
+      );
+    }
     final rows = <List<String>>[];
     for (final s in _classification.studentsCorrectlyAssigned) {
       if (_deptMatches(s.department) &&
