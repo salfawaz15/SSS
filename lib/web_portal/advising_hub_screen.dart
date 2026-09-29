@@ -94,7 +94,17 @@ class _AdvisingHubScreenState extends State<AdvisingHubScreen> {
         facultyByNameKey: loaded.facultyByKey,
       );
 
-      final analyses = [maleAnalysis, femaleAnalysis];
+      // أعداد الطلبة (المستهدَفون/لديهم مرشد صحيح/تحتاج تصحيح) تُحسَب من
+      // [classifyAllColleges] لا [analyze] - بطلب سليمان صراحةً (2026-09-30):
+      // شاشة "حالات الإرشاد" (advising_cases_admin_screen) تعتمد
+      // [classifyAllColleges] حصرًا لهذه الأعداد (وهي المصدر الأصح: "ملف
+      // الإكسل هو الأصل" 2026-08-25 مع استبعاد المستجدين وطلاب الماجستير
+      // التنفيذي)، بينما كانت هذه الشاشة تحسبها من [analyze] فيظهر رقم مختلف
+      // لنفس الحالة (تضارب "0" مقابل "1" لنفس الطالب) - توحيد المصدر هنا
+      // يطابق الشاشتين تمامًا. [quota]/[quotaReport] يبقيان من [analyze] (لا
+      // مكافئ لهما في [classifyAllColleges]، وهما عدد/توازن المرشدين لا
+      // الطلبة).
+      final classifications = [maleClassification, femaleClassification];
       final quota = [...maleAnalysis.quotaReport, ...femaleAnalysis.quotaReport];
       final loads = quota.map((q) => q.actualCount).toList()..sort();
       final deviations = quota.where((q) => q.fairShare > 0).map((q) => (q.actualCount - q.fairShare).abs() / q.fairShare);
@@ -102,28 +112,28 @@ class _AdvisingHubScreenState extends State<AdvisingHubScreen> {
 
       if (!mounted) return;
       setState(() {
-        _totalActiveStudents = analyses.fold(0, (s, a) => s + a.studentsCorrectlyAssigned.length + a.studentsWithWrongDeptAdvisor.length + a.studentsWithoutAdvisor.length);
-        _correctlyAssigned = analyses.fold(0, (s, a) => s + a.studentsCorrectlyAssigned.length);
-        _wrongDeptCount = analyses.fold(0, (s, a) => s + a.studentsWithWrongDeptAdvisor.length);
-        _withoutAdvisorCount = analyses.fold(0, (s, a) => s + a.studentsWithoutAdvisor.length);
-        _totalAdvisors = analyses.fold(0, (s, a) => s + a.quotaReport.length);
+        _totalActiveStudents = classifications.fold(0, (s, c) => s + c.studentsCorrectlyAssigned.length + c.studentsWithWrongDeptAdvisor.length + c.studentsWithoutAdvisor.length);
+        _correctlyAssigned = classifications.fold(0, (s, c) => s + c.studentsCorrectlyAssigned.length);
+        _wrongDeptCount = classifications.fold(0, (s, c) => s + c.studentsWithWrongDeptAdvisor.length);
+        _withoutAdvisorCount = classifications.fold(0, (s, c) => s + c.studentsWithoutAdvisor.length);
+        _totalAdvisors = [maleAnalysis, femaleAnalysis].fold(0, (s, a) => s + a.quotaReport.length);
 
-        _totalActiveMale = maleAnalysis.studentsCorrectlyAssigned.length + maleAnalysis.studentsWithWrongDeptAdvisor.length + maleAnalysis.studentsWithoutAdvisor.length;
-        _totalActiveFemale = femaleAnalysis.studentsCorrectlyAssigned.length + femaleAnalysis.studentsWithWrongDeptAdvisor.length + femaleAnalysis.studentsWithoutAdvisor.length;
-        _correctMale = maleAnalysis.studentsCorrectlyAssigned.length;
-        _correctFemale = femaleAnalysis.studentsCorrectlyAssigned.length;
-        _needsCorrectionMale = maleAnalysis.studentsWithWrongDeptAdvisor.length + maleAnalysis.studentsWithoutAdvisor.length;
-        _needsCorrectionFemale = femaleAnalysis.studentsWithWrongDeptAdvisor.length + femaleAnalysis.studentsWithoutAdvisor.length;
+        _totalActiveMale = maleClassification.studentsCorrectlyAssigned.length + maleClassification.studentsWithWrongDeptAdvisor.length + maleClassification.studentsWithoutAdvisor.length;
+        _totalActiveFemale = femaleClassification.studentsCorrectlyAssigned.length + femaleClassification.studentsWithWrongDeptAdvisor.length + femaleClassification.studentsWithoutAdvisor.length;
+        _correctMale = maleClassification.studentsCorrectlyAssigned.length;
+        _correctFemale = femaleClassification.studentsCorrectlyAssigned.length;
+        _needsCorrectionMale = maleClassification.studentsWithWrongDeptAdvisor.length + maleClassification.studentsWithoutAdvisor.length;
+        _needsCorrectionFemale = femaleClassification.studentsWithWrongDeptAdvisor.length + femaleClassification.studentsWithoutAdvisor.length;
         _advisorsMale = maleAnalysis.quotaReport.length;
         _advisorsFemale = femaleAnalysis.quotaReport.length;
 
-        _disabilityCorrect = analyses.fold(0, (s, a) => s + a.studentsCorrectlyAssigned.where((r) => r.hasHealthCondition).length);
-        _disabilityWrong = analyses.fold(
+        _disabilityCorrect = classifications.fold(0, (s, c) => s + c.studentsCorrectlyAssigned.where((r) => r.hasHealthCondition).length);
+        _disabilityWrong = classifications.fold(
           0,
-          (s, a) =>
+          (s, c) =>
               s +
-              a.studentsWithWrongDeptAdvisor.where((m) => m.student.hasHealthCondition).length +
-              a.studentsWithoutAdvisor.where((r) => r.hasHealthCondition).length,
+              c.studentsWithWrongDeptAdvisor.where((m) => m.student.hasHealthCondition).length +
+              c.studentsWithoutAdvisor.where((r) => r.hasHealthCondition).length,
         );
 
         _externalAdvisorsWithOurStudents = maleClassification.externalAdvisorsWithOurStudents.length + femaleClassification.externalAdvisorsWithOurStudents.length;
