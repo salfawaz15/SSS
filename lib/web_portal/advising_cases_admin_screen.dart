@@ -1507,6 +1507,36 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
   /// جدول عام من نصوص جاهزة (بلا نوع بيانات محدَّد) - يُبنى مرة واحدة فقط
   /// لكل التبويبات الاثني عشر بدل تكرار كود `DataTable` لكل نوع سجل. يُقلَّص
   /// للعرض المرئي فقط عند تجاوز [_kMaxTableRows] (التصدير يبقى كاملاً دومًا).
+  /// شارة ملوَّنة لعمود "النطاق" (تصنيف المعدل) - مؤشر متدرِّج من الأحمر
+  /// (ضعيف) إلى الأخضر (ممتاز) بطلب سليمان الصريح ("النطاق يكون موشر
+  /// تدريجي من الاحمر إلى الاخضر") بدل نص عادي كباقي الأعمدة.
+  static const Map<String, Color> _rangeColors = {
+    'ضعيف': Color(0xFFE53935),
+    'مقبول': Color(0xFFFB8C00),
+    'جيد': Color(0xFFFDD835),
+    'جيد جدًا': Color(0xFF9CCC65),
+    'ممتاز': Color(0xFF43A047),
+  };
+
+  int? _rangeColumnIndex(List<String> columns) {
+    final idx = columns.indexOf('النطاق');
+    return idx == -1 ? null : idx;
+  }
+
+  Widget _rangeBadge(String label) {
+    final color = _rangeColors[label.trim()];
+    if (color == null) return Text(label);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.5)),
+      ),
+      child: Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 12)),
+    );
+  }
+
   Widget _dataTableFromRows(List<String> columns, List<List<String>> allRows, {required String emptyMessage}) {
     if (allRows.isEmpty) {
       return AdvisingEmptyState(icon: Icons.inbox_outlined, title: 'لا توجد بيانات', description: emptyMessage);
@@ -1589,7 +1619,12 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
               rows: [
                 for (var i = 0; i < visible.length; i++)
                   DataRow(
-                    cells: [for (final v in visible[i]) DataCell(Center(child: Text(v)))],
+                    cells: [
+                      for (var c = 0; c < visible[i].length; c++)
+                        c == _rangeColumnIndex(columns)
+                            ? DataCell(Center(child: _rangeBadge(visible[i][c])))
+                            : DataCell(Center(child: Text(visible[i][c]))),
+                    ],
                   ),
               ],
             ),
