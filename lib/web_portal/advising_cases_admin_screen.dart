@@ -519,8 +519,8 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       Colors.pink.shade700,
       Colors.lime.shade800,
       Colors.blueGrey.shade400,
-      Colors.orange.shade600,
-      Colors.blue.shade600,
+      Colors.teal.shade400,
+      Colors.amber.shade800,
       Colors.orange.shade700,
       Colors.red.shade700,
     ];
