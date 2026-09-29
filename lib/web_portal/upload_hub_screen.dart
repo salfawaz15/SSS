@@ -98,9 +98,6 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
 
   bool _uploadingAllColleges = false;
   bool _uploadingHealth = false;
-  bool _uploadingAcademicMale = false;
-  bool _uploadingAcademicFemale = false;
-  bool _uploadingAcademicRegular = false;
   bool _uploadingAcademicDetailed = false;
   bool _uploadingSchedule = false;
   bool _uploadingFormsFile = false;
@@ -1371,36 +1368,6 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     );
   }
 
-  /// رفع "بيانات الطلبة الأكاديمية" - اختيار متعدد كالمعتاد (كالإرشاد/
-  /// المقررات وغيرهما)، يدعم الملفات الستة CSV دفعة واحدة (منتظم/مفصول
-  /// أكاديمي/منقطع عن الدراسة × طلاب/طالبات) بجانب صيغة xlsx القديمة، يُكتشَف
-  /// شطر كل ملف وحالته تلقائيًا من اسمه (انظر [runUploadAcademicData]) -
-  /// بطلب سليمان صراحةً (2026-08-26): "المفترض ما تظهر يسمح بارفاق اكثر من
-  /// ملف كالعاده".
-  Future<void> _pickAndUploadAcademicData() => runUploadAcademicData(
-        context: context,
-        setUploading: (v) => setState(() {
-          _uploadingAcademicMale = v;
-          _uploadingAcademicFemale = v;
-        }),
-        onSuccess: () async {
-          await _loadDates();
-          if (mounted) _showSuccessSnackBar('تم رفع الملفات بنجاح');
-        },
-      );
-
-  /// رفع ملف "بيانات الطلبة الأكاديمية v1" الأشمل (منتظمين فقط - يُحدِّثهم
-  /// بلا مساس ببيانات المفصولين/المنقطعين من آخر رفعة CSV) - انظر خطة
-  /// piped-humming-fox وتوثيق [runUploadAcademicDataRegular].
-  Future<void> _pickAndUploadAcademicDataRegular() => runUploadAcademicDataRegular(
-        context: context,
-        setUploading: (v) => setState(() => _uploadingAcademicRegular = v),
-        onSuccess: () async {
-          await _loadDates();
-          if (mounted) _showSuccessSnackBar('تم تحديث المنتظمين بنجاح');
-        },
-      );
-
   /// رفع ملفات "بيانات الطلبة الأكاديمية" التفصيلية (كل الحالات معًا) -
   /// انظر توثيق [runUploadAcademicDataDetailed].
   Future<void> _pickAndUploadAcademicDataDetailed() => runUploadAcademicDataDetailed(
@@ -1417,7 +1384,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   Widget _academicDataBanner() {
     final academicDate = _latestOf(_academicMaleDate, _academicFemaleDate);
     final dateFmt = DateFormat('d MMMM yyyy، h:mm a', 'ar');
-    final uploading = _uploadingAcademicMale || _uploadingAcademicFemale;
+    // زر واحد فقط الآن - المصدر التفصيلي المعتمد وحده (سليمان صراحةً 2026-09-29).
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(color: Colors.white, border: Border.all(color: AppColors.goldLight), borderRadius: BorderRadius.circular(16)),
@@ -1429,30 +1396,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
             title: 'بيانات الطلبة الأكاديمية',
             subtitleIcon: Icons.info_outline,
             subtitle: academicDate != null ? 'آخر رفع: ${dateFmt.format(academicDate)}' : 'بيانات الطلبة والتخصص والشطر والحالة الأكاديمية (منتظم/مفصول/منقطع)',
-            button: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _bannerButton(uploading: uploading, label: 'رفع الملفات', onPressed: _pickAndUploadAcademicData),
-                // المصدر الشامل الموصى به لكل بداية فصل دراسي (20 ملف عادة: قسم × نوع
-                // دراسة) - يستبدل الحاجة لبقية الأزرار بالكامل (تأكيد سليمان 2026-09-29).
-                _bannerButton(
-                  uploading: _uploadingAcademicDetailed,
-                  label: 'رفع بيانات الفصل (تفصيلي شامل - موصى به)',
-                  icon: Icons.upload_file,
-                  onPressed: _pickAndUploadAcademicDataDetailed,
-                ),
-                // ملف "بيانات الطلبة الأكاديمية v1" الأشمل - يحدّث المنتظمين
-                // فقط بلا مساس بالمفصولين/المنقطعين (انظر خطة piped-humming-fox).
-                _bannerButton(
-                  uploading: _uploadingAcademicRegular,
-                  label: 'تحديث المنتظمين (ملف تفصيلي)',
-                  icon: Icons.fact_check_outlined,
-                  onPressed: _pickAndUploadAcademicDataRegular,
-                ),
-              ],
-            ),
-            verticalPadding: 12,
+            button: _bannerButton(uploading: _uploadingAcademicDetailed, label: 'رفع بيانات الفصل', icon: Icons.upload_file, onPressed: _pickAndUploadAcademicDataDetailed),
           ),
           const SizedBox(height: 10),
           Row(
