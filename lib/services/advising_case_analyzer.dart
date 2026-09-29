@@ -657,6 +657,16 @@ class AdvisingCaseAnalyzer {
 
     final facultyByKey = {for (final m in roster) nameKey(displayName(m.name)): m};
 
+    // بيانات الطلبة الأكاديمية التفصيلية (academic - المصدر الحالي المعتمَد
+    // 2026-09-29، 9-20 ملفًا لكل الأقسام) أصبحت القائمة **المرجعية** لمن هو
+    // طالب نشط فعلاً وبأي قسم/حالة - بخلاف تقرير "كل الكليات" (all) القديم
+    // الذي لم يعد يُرفَع بنفس وتيرة الرفعة الجديدة فيتأخر عن عكس طلاب مستجدين
+    // (سليمان لاحظ صراحةً 2026-09-29: فرق 7820 مقابل 9324 طالبًا بين شاشتين،
+    // وطالب "يحتاج تصحيح إسناد" لا يظهر بأي تبويب لأنه غائب أصلاً عن القائمة
+    // القديمة). الاتجاه انعكس هنا: الأساس الآن [academic]، وبيانات المرشد
+    // (اسمه/رقمه/قسمه) تُلحَق من [all] بالرقم الجامعي فقط - إن غاب الطالب من
+    // [all] كليًا يبقى "بلا مرشد" بصدق (لا مرشد مسجَّل له بأي مصدر)، بدل
+    // اختفائه صامتًا من كل التحليل كما كان يحدث سابقًا.
     List<AdvisingCaseRecord> scopeToCollege(
       List<AdvisingCaseRecord> all,
       List<AdvisingCaseRecord> health,
@@ -664,9 +674,10 @@ class AdvisingCaseAnalyzer {
       List<AdvisingCaseRecord> academicPrevious,
     ) {
       final scoped =
-          all.where((r) => isKnownBachelorDepartment(normalizeDepartmentName(r.department))).toList();
-      final withHealth = mergeHealthConditions(scoped, health);
-      return mergeAcademicData(withHealth, academic, academicPrevious);
+          academic.where((r) => isKnownBachelorDepartment(normalizeDepartmentName(r.department))).toList();
+      final withAdvisor = mergeAdvisorInfo(scoped, all);
+      final withHealth = mergeHealthConditions(withAdvisor, health);
+      return mergePreviousGpa(withHealth, academicPrevious);
     }
 
     return (
@@ -696,6 +707,27 @@ class AdvisingCaseAnalyzer {
     }).toList();
   }
 
+
+  /// يُلحق بيانات المرشد (اسمه/رقمه/قسمه) من تقرير "كل الكليات" - مطابقة
+  /// بالرقم الجامعي - بقائمة أساسها بيانات الطلبة الأكاديمية التفصيلية
+  /// (المرجع الآن لمن هو طالب نشط أصلاً، انظر [scopeToCollege]). طالب غائب
+  /// كليًا عن تقرير "كل الكليات" يبقى بلا مرشد بصدق (`hasAdvisor` = false)،
+  /// لا يُستبعَد من القائمة كما كان يحدث حين كان هذا التقرير هو الأساس.
+  static List<AdvisingCaseRecord> mergeAdvisorInfo(
+    List<AdvisingCaseRecord> students,
+    List<AdvisingCaseRecord> advisorSource,
+  ) {
+    final byId = {for (final a in advisorSource) a.studentId: a};
+    return students.map((s) {
+      final a = byId[s.studentId];
+      if (a == null) return s;
+      return s.copyWith(
+        advisorNameRaw: a.advisorNameRaw,
+        advisorId: a.advisorId,
+        advisorDepartment: a.advisorDepartment,
+      );
+    }).toList();
+  }
   /// يدمج بيانات تقرير "بيانات الطلبة الأكاديمية" (المعدل التراكمي + ساعات
   /// الخطة/المتبقية) مع قائمة الطلاب - مطابقة بالرقم الجامعي، والمعدل السابق
   /// أيضًا (من basePrevious) كـ"النطاق السابق" لنفس التقرير. طالب لم يظهر بعد
