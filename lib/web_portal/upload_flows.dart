@@ -16,6 +16,7 @@ import '../models/college_roster_member.dart';
 import '../models/course_section_record.dart';
 import '../models/instructor_teaching_load_report.dart';
 import '../services/academic_data_csv_parser_service.dart';
+import '../services/academic_data_detailed_html_parser_service.dart';
 import '../services/academic_data_excel_parser_service.dart';
 import '../services/academic_data_regular_html_parser_service.dart';
 import '../services/advising_case_analyzer.dart';
@@ -670,6 +671,106 @@ Future<void> runUploadAcademicDataRegular({
     setUploading(false);
   }
 }
+
+
+/// يرفع ملفات "بيانات الطلبة الأكاديمية" التفصيلية (عادة عدة ملفات - قسم ×
+/// نوع دراسة، اختيار متعدد) - **مصدر شامل يستبدل النظامين الآخرين معًا**
+/// (ملفات CSV الستة + مصدر v1 "المنتظمين فقط" أعلاه): عمود "الحالة" صريح لكل
+/// صف يغطي منتظم/مفصول أكاديميًا/منقطع عن الدراسة معًا، وعمود "الجنس" صريح
+/// لكل صف (لا استنتاج من عنوان كتلة) - تأكيد سليمان صراحةً (2026-09-29).
+/// استبدال كامل (لا دمج هجين مطلوب هنا، خلافًا لـ[runUploadAcademicDataRegular]
+/// أعلاه) لأن هذا المصدر شامل بذاته. انظر [AcademicDataDetailedHtmlParserService].
+Future<void> runUploadAcademicDataDetailed({
+  required BuildContext context,
+  required ValueChanged<bool> setUploading,
+  required VoidCallback onSuccess,
+}) async {
+  final result = await FilePicker.platform.pickFiles(
+    type: FileType.custom,
+    allowedExtensions: const ['xls'],
+    withData: true,
+    allowMultiple: true,
+  );
+  if (result == null || result.files.isEmpty) return;
+
+  setUploading(true);
+  try {
+    final byShatr = <Shatr, List<AdvisingCaseRecord>>{};
+    final failedFiles = <({String fileName, String error})>[];
+    for (final file in result.files) {
+      final bytes = file.bytes;
+      if (bytes == null) {
+        failedFiles.add((fileName: file.name, error: 'تعذّرت قراءة محتوى الملف.'));
+        continue;
+      }
+      try {
+        final records = AcademicDataDetailedHtmlParserService.parse(bytes);
+        if (records.isEmpty) {
+          failedFiles.add((fileName: file.name, error: 'لم يُعثر على أي سجل طالب بهذا الملف.'));
+          continue;
+        }
+        for (final r in records) {
+          final shatr = r.shatr == Shatr.female.label ? Shatr.female : Shatr.male;
+          byShatr.putIfAbsent(shatr, () => []).add(r);
+        }
+      } catch (e) {
+        failedFiles.add((fileName: file.name, error: '$e'));
+      }
+    }
+
+    if (byShatr.isEmpty) {
+      throw Exception(
+        failedFiles.isEmpty
+            ? 'لم يُعثر على أي سجل طالب بالملفات المختارة.'
+            : 'تعذّر استخراج أي سجل من الملفات المختارة:\n${failedFiles.map((f) => '${f.fileName}: ${f.error}').join('\n')}',
+      );
+    }
+
+    final summary = byShatr.entries.map((e) => '${e.key.label}: ${e.value.length} طالبًا').join('\n');
+    final failuresNote = failedFiles.isEmpty ? '' : '\n\nملفات تعذّرت معالجتها:\n${failedFiles.map((f) => '${f.fileName}: ${f.error}').join('\n')}';
+    if (!context.mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('تأكيد اعتماد "بيانات الطلبة الأكاديمية التفصيلية"'),
+        content: SizedBox(
+          width: 480,
+          child: SingleChildScrollView(
+            child: Text('$summary\n\nسيستبدل هذا آخر نسخة معتمدة لكل شطر ظهر بالملفات بالكامل (كل الحالات: منتظم/مفصول/منقطع). '
+                'هل تريد الاعتماد؟$failuresNote'),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('اعتماد')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    for (final entry in byShatr.entries) {
+      await AdvisingReportRepository.promoteBaseToPrevious(entry.key);
+      await AdvisingReportRepository.save(
+        entry.key,
+        entry.value,
+        kind: AdvisingReportKind.base,
+        sourceFileName: '${result.files.length} ملفًا',
+      );
+    }
+
+    onSuccess();
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('تم اعتماد بيانات الطلبة الأكاديمية التفصيلية بنجاح')),
+    );
+  } catch (e) {
+    if (!context.mounted) return;
+    showUploadErrorDialog(context, 'تعذّر إتمام العملية', '$e');
+  } finally {
+    setUploading(false);
+  }
+}
+
 
 // ==================== جدول مواعيد الإرشاد ====================
 

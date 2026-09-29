@@ -101,6 +101,7 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   bool _uploadingAcademicMale = false;
   bool _uploadingAcademicFemale = false;
   bool _uploadingAcademicRegular = false;
+  bool _uploadingAcademicDetailed = false;
   bool _uploadingSchedule = false;
   bool _uploadingFormsFile = false;
   bool _downloadingFormsFile = false;
@@ -1400,6 +1401,17 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
         },
       );
 
+  /// رفع ملفات "بيانات الطلبة الأكاديمية" التفصيلية (كل الحالات معًا) -
+  /// انظر توثيق [runUploadAcademicDataDetailed].
+  Future<void> _pickAndUploadAcademicDataDetailed() => runUploadAcademicDataDetailed(
+        context: context,
+        setUploading: (v) => setState(() => _uploadingAcademicDetailed = v),
+        onSuccess: () async {
+          await _loadDates();
+          if (mounted) _showSuccessSnackBar('تم اعتماد بيانات الطلبة الأكاديمية التفصيلية بنجاح');
+        },
+      );
+
   /// مربع "بيانات الطلبة الأكاديمية" (المعدل/الساعات) - نفس هوية "منسوبي
   /// الكلية"/"المقررات الدراسية" حرفيًا (بطلب سليمان صراحةً 2026-08-26).
   Widget _academicDataBanner() {
@@ -1422,6 +1434,14 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
               runSpacing: 8,
               children: [
                 _bannerButton(uploading: uploading, label: 'رفع الملفات', onPressed: _pickAndUploadAcademicData),
+                // المصدر الشامل الموصى به لكل بداية فصل دراسي (20 ملف عادة: قسم × نوع
+                // دراسة) - يستبدل الحاجة لبقية الأزرار بالكامل (تأكيد سليمان 2026-09-29).
+                _bannerButton(
+                  uploading: _uploadingAcademicDetailed,
+                  label: 'رفع بيانات الفصل (تفصيلي شامل - موصى به)',
+                  icon: Icons.upload_file,
+                  onPressed: _pickAndUploadAcademicDataDetailed,
+                ),
                 // ملف "بيانات الطلبة الأكاديمية v1" الأشمل - يحدّث المنتظمين
                 // فقط بلا مساس بالمفصولين/المنقطعين (انظر خطة piped-humming-fox).
                 _bannerButton(
