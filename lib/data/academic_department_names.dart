@@ -49,6 +49,15 @@ bool isBusinessCollegeBeneficiary(String beneficiary) {
   return loose.contains('ادارةالاعمال');
 }
 
+/// كلمات مفتاحية لمسارات قسم الاقتصاد والتمويل الثلاثة (اقتصاد/تمويل/تأمين)
+/// - عمود "التخصص" بتقارير الطلبة يذكر أحيانًا صياغات لا حصر لها لهذا القسم
+/// تحديدًا (مثال فعلي: "الاستثمار والتمويل تخصص التأمين" - لا يطابق حرفيًا
+/// أيًا من مفاتيح [_canonicalDepartments] الثابتة، فيبقى "خارج كليتنا" خطأً
+/// رغم كونه نفس القسم فعليًا - سليمان صراحةً 2026-09-29). بخلاف الأقسام
+/// الأربعة الأخرى (مطابقة حرفية كافية لها، أسماؤها لا تتفرّع لمسارات)، هذا
+/// القسم وحده يحتاج مطابقة بالكلمة المفتاحية بدل الاسم الكامل.
+const List<String> _economicsFinanceTrackKeywords = ['اقتصاد', 'تمويل', 'تامين', 'استثمار'];
+
 /// يوحّد صيغة اسم القسم إلى الصيغة الرسمية "قسم X" بغض النظر عن وجود كلمة
 /// "قسم"، اختلاف صور الهمزة، أو عبارة شطر ملتصقة بالنص.
 String normalizeDepartmentName(String raw) {
@@ -56,6 +65,9 @@ String normalizeDepartmentName(String raw) {
   final loose = _looseKey(_stripLeadingQism(trimmed));
   for (final entry in _canonicalDepartments.entries) {
     if (_looseKey(entry.key) == loose) return entry.value;
+  }
+  if (_economicsFinanceTrackKeywords.any(loose.contains)) {
+    return 'قسم الاقتصاد و التمويل';
   }
   return trimmed;
 }
