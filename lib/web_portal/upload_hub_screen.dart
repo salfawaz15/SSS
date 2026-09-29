@@ -91,7 +91,6 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   int _academicFemaleCount = 0;
   int _academicRegularCount = 0;
   int _academicDismissedCount = 0;
-  int _academicWithdrawnCount = 0;
   DateTime? _scheduleLatestDate;
   int _scheduleUploadedCount = 0;
   bool _loadingDates = true;
@@ -177,7 +176,6 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
         // (سليمان 2026-08-27: "تعليق كبير جدًا... تظهر صفحة في الانتظار").
         _academicRegularCount = statusMale.regular + statusFemale.regular;
         _academicDismissedCount = statusMale.dismissed + statusFemale.dismissed;
-        _academicWithdrawnCount = statusMale.withdrawn + statusFemale.withdrawn;
         _scheduleLatestDate = results[12] as DateTime?;
         _scheduleUploadedCount = results[13] as int;
         _maleCourseCount = (results[14] as List<CourseSectionRecord>).length;
@@ -1411,9 +1409,11 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
             children: [
               Expanded(child: _courseCountStat(label: 'منتظم', count: _academicRegularCount, emoji: '✅')),
               const SizedBox(width: 10),
-              Expanded(child: _courseCountStat(label: 'مفصول أكاديميًا', count: _academicDismissedCount, emoji: '⛔')),
-              const SizedBox(width: 10),
-              Expanded(child: _courseCountStat(label: 'منقطع عن الدراسة', count: _academicWithdrawnCount, emoji: '⏸️')),
+              // بطاقة واحدة شاملة بدل بطاقتَي "مفصول"/"منقطع" المنفصلتين سابقًا -
+              // كانتا تغطيان حالتين فقط بالاسم الحرفي فتُخفيان صمتًا أي حالة
+              // أخرى (مؤجل/موقوف تأديبي/منسحب...) - التفصيل الكامل بشاشة
+              // "متابعة حالات الإرشاد" (تبويب "حالات غير منتظمة" + فلتر الحالة).
+              Expanded(child: _courseCountStat(label: 'غير منتظم (كل الحالات الأخرى)', count: _academicDismissedCount, emoji: '⚠️')),
             ],
           ),
           if (academicDate != null)

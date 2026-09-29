@@ -100,15 +100,16 @@ class AdvisingReportRepository {
       }
     }
 
-    // توزيع الحالات الثلاث (منتظم/مفصول أكاديميًا/منقطع عن الدراسة) يُحسَب
-    // ويُخزَّن هنا وقت الرفع - لا عند كل زيارة لصفحة "رفع وتنزيل الملفات" -
-    // بعد أن كان تحميل كل السجلات (`load`) هناك فقط لحساب هذا التوزيع يُجمِّد
-    // الصفحة فعليًا مع آلاف السجلات (سليمان 2026-08-27: "تعليق كبير جدًا").
-    // حقل عام غير مرتبط بنوع تقرير محدَّد - قيمته صفر/فارغ لأنواع التقارير
-    // الأخرى التي لا تحمل enrollmentStatus أصلًا، بلا أي ضرر.
-    final regularCount = records.where((r) => r.enrollmentStatus.isEmpty || r.enrollmentStatus == 'منتظم').length;
-    final dismissedCount = records.where((r) => r.enrollmentStatus.contains('مفصول')).length;
-    final withdrawnCount = records.where((r) => r.enrollmentStatus.contains('منقطع')).length;
+    // dismissedCount يعني "غير منتظم" **شاملاً** (أي حالة لا تحوي "منتظم":
+    // مفصول/منقطع/مؤجل/موقوف تأديبي/منسحب/مطوي قيده/معتذر/متوفى...) - كان
+    // مقصورًا سابقًا على مطابقة حرفية لـ"مفصول" فقط، فأي حالة أخرى ("منسحب"
+    // مثلاً) لم تُحتسَب بأي من الحقول الثلاثة فبدت العملية "ناقصة" 332 طالبًا
+    // - دليل فعلي: سليمان 2026-09-29 بعد رفع ملفات فيها 6 حالات مختلفة غير
+    // "منتظم"/"مفصول"/"منقطع" حرفيًا. withdrawnCount يبقى دومًا 0 (متروك
+    // للتوافق الخلفي بلا استخدام فعلي بعد الآن - لا حذف حقل من الوثيقة).
+    final regularCount = records.where((r) => r.isRegularlyEnrolled).length;
+    final dismissedCount = records.length - regularCount;
+    const withdrawnCount = 0;
 
     final docData = {
       'uploadedAt': FieldValue.serverTimestamp(),
