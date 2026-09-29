@@ -1022,8 +1022,14 @@ class AdvisingCaseAnalyzer {
       // 1) طلاب المرشدين المعفَين وجوبًا (كل طلابهم بلا استثناء) + المرشدين
       // ذوي الحالة المجمَّدة (معار/مجاز/مبتعث/مطوي القيد...) - بطلب سليمان
       // الصريح (2026-08-14) تُعامَل نفس معاملة الإعفاء الكامل هنا تحديدًا.
+      // **يُستبعَد طلاب الحالات الخاصة (ذوو الإعاقة) من كل اقتراحات النقل
+      // العادية بهذا القسم بأكمله (نقاط 1-3 أدناه)** - قاعدتهم مختلفة كليًا
+      // (يجب أن يكون مرشدهم أمين القسم تحديدًا، لا نقل عشوائي دوراني على
+      // بقية الأعضاء) وتُعالَج بمسار منفصل تمامًا (healthMismatches أسفل) -
+      // كانت خطة "إعادة التوزيع العادل" تقترح نقلهم كأي طالب عادي رغم هذا
+      // الشرط، فتتعارض مع قاعدة أمين القسم - دليل فعلي: سليمان 2026-09-29.
       for (final c in [...exemptWithStudents, ...frozenWithStudents].where((c) => c.advisor.department == dept)) {
-        for (final s in c.students) {
+        for (final s in c.students.where((s) => !s.hasHealthCondition)) {
           final receiver = pickReceiver();
           if (receiver != null) consumeCapacity(receiver);
           transfers.add(TransferSuggestion(
@@ -1033,7 +1039,8 @@ class AdvisingCaseAnalyzer {
 
       // 2) فائض المرشدين فوق الحصة العادلة (عدد الطلاب المقترح نقلهم فقط).
       for (final o in overloaded.where((o) => o.advisor.department == dept)) {
-        final studentsOfAdvisor = byAdvisorKey[_key(displayName(o.advisor.name))] ?? const [];
+        final studentsOfAdvisor =
+            (byAdvisorKey[_key(displayName(o.advisor.name))] ?? const []).where((s) => !s.hasHealthCondition).toList();
         final sorted = [...studentsOfAdvisor]..sort((a, b) => a.studentName.compareTo(b.studentName));
         for (final s in sorted.take(o.suggestedTransferCount)) {
           final receiver = pickReceiver();
@@ -1054,7 +1061,7 @@ class AdvisingCaseAnalyzer {
       // بمنظومة الجامعة (طالب مرتبط بشخص من خارج الكلية تمامًا) يحتاج تحقُّقًا
       // يدويًا لا نقلاً تلقائيًا لمرشد آخر - يبقى ظاهرًا بتبويب "على غير
       // مرشدهم" بوضوح ("غير موجود بملف منسوبي الكلية") بدل اقتراح نقل مضلِّل.
-      for (final c in wrongDept.where((c) => c.student.department == dept && c.advisor != null)) {
+      for (final c in wrongDept.where((c) => c.student.department == dept && c.advisor != null && !c.student.hasHealthCondition)) {
         final receiver = pickReceiver();
         if (receiver != null) consumeCapacity(receiver);
         transfers.add(TransferSuggestion(
@@ -1065,7 +1072,6 @@ class AdvisingCaseAnalyzer {
         ));
       }
     }
-
     final atRisk = activeStudents.where((s) => gpaStatusOf(s.gpa).needsAttention).toList();
 
     // حالات صحية/إعاقة: يجب أن يكون مرشد الطالب هو أمين قسمه (حالات خاصة
