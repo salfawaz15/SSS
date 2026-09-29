@@ -319,6 +319,8 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       ('خطة إعادة التوزيع العادل', _tabTransfer),
       ('إحصائيات الإرشاد', _tabAdvisorStatistics),
       ('حركات الإرشاد', _tabMovements),
+      ('الطلبة المنتظمون', _tabAllStudents),
+      ('الحالات الأخرى', _tabNonRegular),
       ('الطلبة المستجدون', _tabNewStudents),
       ('حالات غير منتظمة', _tabNonRegular),
     ];
@@ -470,6 +472,15 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       _analysis.transferSuggestions.length,
       _analysis.advisorStatistics.fold<int>(0, (sum, b) => sum + b.totalAdvisors),
       _movementsLog.length,
+      // مجموع هاتين البطاقتين الجديدتين (سليمان صراحةً 2026-09-30) يساوي
+      // دائمًا بطاقة "الكل" أعلاه (نفس تقسيم منتظم/غير منتظم هناك).
+      _classification.studentsCorrectlyAssigned.length +
+          _classification.studentsWithoutAdvisor.length +
+          _classification.studentsWithWrongDeptAdvisor.length +
+          _classification.externalAdvisorsWithOurStudents.length +
+          _classification.ourAdvisorsWithExternalStudents.length +
+          _classification.newStudents.length,
+      _classification.dismissedStudents.length,
       _classification.newStudents.length,
       _nonRegularFiltered.length,
     ];
@@ -488,6 +499,8 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       Icons.published_with_changes_outlined,
       Icons.bar_chart_outlined,
       Icons.history_outlined,
+      Icons.groups_2_outlined,
+      Icons.rule_folder_outlined,
       Icons.fiber_new_outlined,
       Icons.pause_circle_outline,
     ];
@@ -506,6 +519,8 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
       Colors.pink.shade700,
       Colors.lime.shade800,
       Colors.blueGrey.shade400,
+      Colors.orange.shade600,
+      Colors.blue.shade600,
       Colors.orange.shade700,
       Colors.red.shade700,
     ];
@@ -541,7 +556,7 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
         );
 
     const primaryIndices = [0, 1, 2, 3, 4];
-    const secondaryIndices = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+    const secondaryIndices = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
 
     Widget grid({required List<int> indices, required bool compact, required int Function(double width) columnsFor}) {
       return LayoutBuilder(
