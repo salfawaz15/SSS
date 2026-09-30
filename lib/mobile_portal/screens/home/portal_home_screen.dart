@@ -96,29 +96,28 @@ class _PortalHomeScreenState extends State<PortalHomeScreen> {
             return _StatGrid(
               cards: [
                 _StatCardData(
-                  label: 'طلبة على غير مرشدهم',
-                  value: '${a.wrongAdvisor}',
-                  note: 'منهم ${a.wrongAdvisorWithDisability} من ذوي الإعاقة',
-                  icon: Icons.sync_problem_outlined,
-                  color: AppColors.gold,
+                  label: 'الكل',
+                  value: '${a.allStudents}',
+                  icon: Icons.groups_outlined,
+                  color: AppColors.greenDark,
                 ),
                 _StatCardData(
-                  label: 'طلبة بلا مرشد',
-                  value: '${a.withoutAdvisor}',
-                  icon: Icons.person_off_outlined,
-                  color: AppColors.errorRed,
-                ),
-                _StatCardData(
-                  label: 'طلبة تابعين لمرشد – ذوي الإعاقة',
-                  value: '${a.assignedWithDisability}',
-                  icon: Icons.accessible_outlined,
-                  color: AppColors.green,
+                  label: 'المنتظمون',
+                  value: '${a.regular}',
+                  icon: Icons.groups_2_outlined,
+                  color: Colors.teal.shade400,
                 ),
                 _StatCardData(
                   label: 'طلبة تابعين لمرشد',
                   value: '${a.assigned}',
                   icon: Icons.school_outlined,
-                  color: AppColors.greenDark,
+                  color: AppColors.green,
+                ),
+                _StatCardData(
+                  label: 'حالات غير منتظمة',
+                  value: '${a.otherStatuses}',
+                  icon: Icons.pause_circle_outline,
+                  color: Colors.amber.shade800,
                 ),
               ],
             );
