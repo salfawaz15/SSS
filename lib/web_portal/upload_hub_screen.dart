@@ -29,6 +29,7 @@ import '../theme/app_theme.dart';
 import 'admin_nav.dart';
 import 'portal_header.dart';
 import 'round_icon_button.dart';
+import 'student_data_stats_screen.dart';
 import 'upload_dialogs.dart';
 import 'upload_flows.dart';
 
@@ -89,8 +90,6 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
   DateTime? _academicFemaleDate;
   int _academicMaleCount = 0;
   int _academicFemaleCount = 0;
-  int _academicRegularCount = 0;
-  int _academicDismissedCount = 0;
   DateTime? _scheduleLatestDate;
   int _scheduleUploadedCount = 0;
   bool _loadingDates = true;
@@ -142,8 +141,6 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
         AdvisingReportRepository.currentUploadDate(Shatr.female, kind: AdvisingReportKind.base),
         AdvisingReportRepository.currentRecordsCount(Shatr.male, kind: AdvisingReportKind.base),
         AdvisingReportRepository.currentRecordsCount(Shatr.female, kind: AdvisingReportKind.base),
-        AdvisingReportRepository.currentStatusCounts(Shatr.male, kind: AdvisingReportKind.base),
-        AdvisingReportRepository.currentStatusCounts(Shatr.female, kind: AdvisingReportKind.base),
         AdvisingScheduleRepository.latestUploadDate(),
         AdvisingScheduleRepository.uploadedCount(),
         CourseScheduleRepository.loadSchedule(Shatr.male),
@@ -153,10 +150,8 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
         InstructorTeachingLoadReportRepository.currentMeta(),
       ]);
       if (!mounted) return;
-      final roster = results[17] as List<CollegeRosterMember>;
-      final instructorLoadMeta = results[18] as ({DateTime? uploadedAt, int count});
-      final statusMale = results[10] as ({int regular, int dismissed, int withdrawn});
-      final statusFemale = results[11] as ({int regular, int dismissed, int withdrawn});
+      final roster = results[15] as List<CollegeRosterMember>;
+      final instructorLoadMeta = results[16] as ({DateTime? uploadedAt, int count});
       setState(() {
         _maleExportDate = results[0] as DateTime?;
         _femaleExportDate = results[1] as DateTime?;
@@ -168,19 +163,11 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
         _academicFemaleDate = results[7] as DateTime?;
         _academicMaleCount = results[8] as int;
         _academicFemaleCount = results[9] as int;
-        // العدّادات الثلاثة بجانب زر "بيانات الطلبة الأكاديمية" - بطلب سليمان
-        // صراحةً (2026-08-27) بعد اعتماد رفع الملفات الستة CSV، حتى يرى
-        // توزيع الحالات فور الرفع بلا فتح شاشة الإحصائيات المنفصلة. تُقرأ من
-        // حقول محسوبة وقت الرفع (`currentStatusCounts`) لا بتحميل كل السجلات
-        // هنا - كان تحميل آلاف السجلات بكل زيارة لهذه الصفحة يُجمِّدها فعليًا
-        // (سليمان 2026-08-27: "تعليق كبير جدًا... تظهر صفحة في الانتظار").
-        _academicRegularCount = statusMale.regular + statusFemale.regular;
-        _academicDismissedCount = statusMale.dismissed + statusFemale.dismissed;
-        _scheduleLatestDate = results[12] as DateTime?;
-        _scheduleUploadedCount = results[13] as int;
-        _maleCourseCount = (results[14] as List<CourseSectionRecord>).length;
-        _femaleCourseCount = (results[15] as List<CourseSectionRecord>).length;
-        _rosterLastSavedAt = results[16] as DateTime?;
+        _scheduleLatestDate = results[10] as DateTime?;
+        _scheduleUploadedCount = results[11] as int;
+        _maleCourseCount = (results[12] as List<CourseSectionRecord>).length;
+        _femaleCourseCount = (results[13] as List<CourseSectionRecord>).length;
+        _rosterLastSavedAt = results[14] as DateTime?;
         _rosterFacultyCount = roster.where((m) => m.type == CollegeMemberType.faculty).length;
         _rosterAdminCount = roster.where((m) => m.type == CollegeMemberType.admin).length;
         _instructorLoadReportUploadedAt = instructorLoadMeta.uploadedAt;
@@ -1366,9 +1353,11 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
     );
   }
 
-  /// رفع ملفات "بيانات الطلبة الأكاديمية" التفصيلية (كل الحالات معًا) -
-  /// انظر توثيق [runUploadAcademicDataDetailed].
-  Future<void> _pickAndUploadAcademicDataDetailed() => runUploadAcademicDataDetailed(
+  /// رفع "بيانات الطلبة الأكاديمية" - ملف CSV خام واحد لكل شطر مباشرة من
+  /// المنظومة الجامعية (لا تحويل وسيط)، يغطي كل حالات القيد التاريخية معًا -
+  /// استبدل بالكامل كل المصادر السابقة (سليمان صراحةً 2026-09-30). انظر
+  /// [runUploadAcademicDataRaw].
+  Future<void> _pickAndUploadAcademicData() => runUploadAcademicDataRaw(
         context: context,
         setUploading: (v) => setState(() => _uploadingAcademicDetailed = v),
         onSuccess: () async {
@@ -1393,8 +1382,9 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
             icon: Icons.school_outlined,
             title: 'بيانات الطلبة الأكاديمية',
             subtitleIcon: Icons.info_outline,
-            subtitle: academicDate != null ? 'آخر رفع: ${dateFmt.format(academicDate)}' : 'بيانات الطلبة والتخصص والشطر والحالة الأكاديمية (منتظم/مفصول/منقطع)',
-            button: _bannerButton(uploading: _uploadingAcademicDetailed, label: 'رفع بيانات الفصل', icon: Icons.upload_file, onPressed: _pickAndUploadAcademicDataDetailed),
+            subtitle: academicDate != null ? 'آخر رفع: ${dateFmt.format(academicDate)}' : 'بيانات الطلبة والتخصص والشطر والحالة الأكاديمية - ملف خام من المنظومة الجامعية',
+            button: _bannerButton(uploading: _uploadingAcademicDetailed, label: 'رفع الملفات', onPressed: _pickAndUploadAcademicData),
+            verticalPadding: 12,
           ),
           const SizedBox(height: 10),
           Row(
@@ -1405,26 +1395,24 @@ class _UploadHubScreenState extends State<UploadHubScreen> {
             ],
           ),
           const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(child: _courseCountStat(label: 'منتظم', count: _academicRegularCount, emoji: '✅')),
-              const SizedBox(width: 10),
-              // بطاقة واحدة شاملة بدل بطاقتَي "مفصول"/"منقطع" المنفصلتين سابقًا -
-              // كانتا تغطيان حالتين فقط بالاسم الحرفي فتُخفيان صمتًا أي حالة
-              // أخرى (مؤجل/موقوف تأديبي/منسحب...) - التفصيل الكامل بشاشة
-              // "متابعة حالات الإرشاد" (تبويب "حالات غير منتظمة" + فلتر الحالة).
-              Expanded(child: _courseCountStat(label: 'غير منتظم (كل الحالات الأخرى)', count: _academicDismissedCount, emoji: '⚠️')),
-            ],
+          // بلا عدادات/إحصائيات تفصيلية هنا (هذه صفحة **رفع** فقط بطلب سليمان
+          // صراحةً - انظر تعليق أعلى الملف) - التفاصيل الكاملة (كل حالات
+          // القيد، تبويب الخريجين، الفلاتر، التصدير) انتقلت بالكامل لشاشة
+          // "بيانات الطلبة الأكاديمية" الاحترافية (2026-09-30).
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StudentDataStatsScreen())),
+              icon: const Icon(Icons.open_in_new, size: 16),
+              label: const Text('عرض التفاصيل الكاملة (تبويب الخريجين وكل الحالات)'),
+            ),
           ),
           if (academicDate != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 10),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: _clearDataButton(
-                  label: 'مسح بيانات الطلبة الأكاديمية',
-                  onPressed: () => _clearKindBoth(AdvisingReportKind.base, 'ملف بيانات الطلبة الأكاديمية'),
-                ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: _clearDataButton(
+                label: 'مسح بيانات الطلبة الأكاديمية',
+                onPressed: () => _clearKindBoth(AdvisingReportKind.base, 'ملف بيانات الطلبة الأكاديمية'),
               ),
             ),
         ],

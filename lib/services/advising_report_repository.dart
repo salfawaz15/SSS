@@ -100,16 +100,25 @@ class AdvisingReportRepository {
       }
     }
 
-    // dismissedCount يعني "غير منتظم" **شاملاً** (أي حالة لا تحوي "منتظم":
-    // مفصول/منقطع/مؤجل/موقوف تأديبي/منسحب/مطوي قيده/معتذر/متوفى...) - كان
-    // مقصورًا سابقًا على مطابقة حرفية لـ"مفصول" فقط، فأي حالة أخرى ("منسحب"
-    // مثلاً) لم تُحتسَب بأي من الحقول الثلاثة فبدت العملية "ناقصة" 332 طالبًا
-    // - دليل فعلي: سليمان 2026-09-29 بعد رفع ملفات فيها 6 حالات مختلفة غير
-    // "منتظم"/"مفصول"/"منقطع" حرفيًا. withdrawnCount يبقى دومًا 0 (متروك
-    // للتوافق الخلفي بلا استخدام فعلي بعد الآن - لا حذف حقل من الوثيقة).
-    final regularCount = records.where((r) => r.isRegularlyEnrolled).length;
-    final dismissedCount = records.length - regularCount;
-    const withdrawnCount = 0;
+    // توزيع الحالات يُحسَب ويُخزَّن هنا وقت الرفع - لا عند كل زيارة لصفحة "رفع
+    // وتنزيل الملفات" - بعد أن كان تحميل كل السجلات (`load`) هناك فقط لحساب
+    // هذا التوزيع يُجمِّد الصفحة فعليًا مع آلاف السجلات (سليمان 2026-08-27:
+    // "تعليق كبير جدًا"). حقل عام غير مرتبط بنوع تقرير محدَّد - قيمته صفر/فارغ
+    // لأنواع التقارير الأخرى التي لا تحمل enrollmentStatus أصلًا، بلا أي ضرر.
+    // الحالات السبع الإضافية (متخرج/مطوي قيده/موقوف تأديبي/مؤجل/معتذر/منسحب/
+    // متوفى) أُضيفت بعد اعتماد مصدر "بيانات الطلبة الأكاديمية" الخام الشامل
+    // (سليمان 2026-09-30 - انظر AcademicDataRawCsvParserService) الذي يغطي كل
+    // حالات القيد التاريخية لا المنتظمين/المفصولين/المنقطعين فقط.
+    final regularCount = records.where((r) => r.enrollmentStatus.isEmpty || r.enrollmentStatus == 'منتظم').length;
+    final dismissedCount = records.where((r) => r.isAcademicallyDismissed).length;
+    final withdrawnCount = records.where((r) => r.enrollmentStatus.contains('منقطع')).length;
+    final graduatedCount = records.where((r) => r.enrollmentStatus == 'متخرج').length;
+    final rolledOverCount = records.where((r) => r.enrollmentStatus == 'مطوي قيده').length;
+    final disciplinarySuspendedCount = records.where((r) => r.isDisciplinarySuspended).length;
+    final deferredCount = records.where((r) => r.enrollmentStatus == 'مؤجل').length;
+    final excusedCount = records.where((r) => r.enrollmentStatus == 'معتذر').length;
+    final resignedCount = records.where((r) => r.enrollmentStatus == 'منسحب').length;
+    final deceasedCount = records.where((r) => r.enrollmentStatus == 'متوفى').length;
 
     final docData = {
       'uploadedAt': FieldValue.serverTimestamp(),
@@ -117,6 +126,13 @@ class AdvisingReportRepository {
       'regularCount': regularCount,
       'dismissedCount': dismissedCount,
       'withdrawnCount': withdrawnCount,
+      'graduatedCount': graduatedCount,
+      'rolledOverCount': rolledOverCount,
+      'disciplinarySuspendedCount': disciplinarySuspendedCount,
+      'deferredCount': deferredCount,
+      'excusedCount': excusedCount,
+      'resignedCount': resignedCount,
+      'deceasedCount': deceasedCount,
       'sourceFileName': ?sourceFileName,
     };
     await _writeWithDiagnostics('مستند ${kind.name}/${shatr.docId} الرئيسي', docData, () => docRef.set(docData));
@@ -184,10 +200,22 @@ class AdvisingReportRepository {
     return (doc.data()?['studentsCount'] as num?)?.toInt() ?? 0;
   }
 
-  /// توزيع الحالات الثلاث (منتظم/مفصول أكاديميًا/منقطع عن الدراسة) - من
-  /// حقول محسوبة وقت [save] مباشرةً، بلا تحميل كل القطع (`chunks`) - نفس
-  /// مبدأ [currentRecordsCount] تمامًا. صفر لكل قيمة إن لم تُرفع بيانات بعد.
-  static Future<({int regular, int dismissed, int withdrawn})> currentStatusCounts(
+  /// توزيع كل حالات القيد العشر - من حقول محسوبة وقت [save] مباشرةً، بلا
+  /// تحميل كل القطع (`chunks`) - نفس مبدأ [currentRecordsCount] تمامًا. صفر
+  /// لكل قيمة إن لم تُرفع بيانات بعد.
+  static Future<
+      ({
+        int regular,
+        int dismissed,
+        int withdrawn,
+        int graduated,
+        int rolledOver,
+        int disciplinarySuspended,
+        int deferred,
+        int excused,
+        int resigned,
+        int deceased,
+      })> currentStatusCounts(
     Shatr shatr, {
     AdvisingReportKind kind = AdvisingReportKind.base,
   }) async {
@@ -197,6 +225,13 @@ class AdvisingReportRepository {
       regular: (data?['regularCount'] as num?)?.toInt() ?? 0,
       dismissed: (data?['dismissedCount'] as num?)?.toInt() ?? 0,
       withdrawn: (data?['withdrawnCount'] as num?)?.toInt() ?? 0,
+      graduated: (data?['graduatedCount'] as num?)?.toInt() ?? 0,
+      rolledOver: (data?['rolledOverCount'] as num?)?.toInt() ?? 0,
+      disciplinarySuspended: (data?['disciplinarySuspendedCount'] as num?)?.toInt() ?? 0,
+      deferred: (data?['deferredCount'] as num?)?.toInt() ?? 0,
+      excused: (data?['excusedCount'] as num?)?.toInt() ?? 0,
+      resigned: (data?['resignedCount'] as num?)?.toInt() ?? 0,
+      deceased: (data?['deceasedCount'] as num?)?.toInt() ?? 0,
     );
   }
 

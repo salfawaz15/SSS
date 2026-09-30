@@ -15,9 +15,9 @@ import '../models/advising_schedule.dart';
 import '../models/college_roster_member.dart';
 import '../models/course_section_record.dart';
 import '../models/instructor_teaching_load_report.dart';
-import '../services/academic_data_detailed_html_parser_service.dart';
+import '../services/academic_data_raw_csv_parser_service.dart';
 import '../services/advising_case_analyzer.dart';
-import '../services/advising_report_parser_service.dart';
+import '../services/disability_academic_excel_parser_service.dart';
 import '../services/advising_report_csv_parser_service.dart';
 import '../services/advising_report_pdf_parser_service.dart';
 import '../services/advising_report_repository.dart';
@@ -330,7 +330,7 @@ Future<void> runUploadHealth({
 }) async {
   final result = await FilePicker.platform.pickFiles(
     type: FileType.custom,
-    allowedExtensions: const ['docx'],
+    allowedExtensions: const ['xlsx'],
     withData: true,
   );
   if (result == null || result.files.single.bytes == null) return;
@@ -341,41 +341,32 @@ Future<void> runUploadHealth({
     showUploadProcessingDialog(context, 'جاري معالجة الملف...');
     await Future.delayed(const Duration(milliseconds: 300));
     List<AdvisingCaseRecord> records;
-    var exclusionCounts = <String, int>{};
+    final unresolvedStudents = <String>[];
     try {
-      try {
-        records = AdvisingReportParserService.parse(
-          bytes,
-          requireDepartment: false,
-          isHealthReport: true,
-          exclusionCounts: exclusionCounts,
-        );
-      } finally {
-        hideUploadProcessingDialog(context);
-      }
-    } on ShatrRequiredException {
-      if (!context.mounted) return;
-      final chosen = await showDialog<Shatr>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('تحديد الشطر'),
-          content: const Text('ملف "طلبة ذوي الإعاقة" هذا لا يحتوي عمود "الجنس" فلا يمكن فرزه تلقائيًا - '
-              'حدّد الشطر الذي يمثّله هذا الملف بالكامل.'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, Shatr.male), child: const Text('شطر الطلاب')),
-            TextButton(onPressed: () => Navigator.pop(context, Shatr.female), child: const Text('شطر الطالبات')),
-          ],
-        ),
-      );
-      if (chosen == null) return;
-      exclusionCounts = <String, int>{};
-      records = AdvisingReportParserService.parse(
+      // ملف "بيانات الطلبة الأكاديمية لذوي الإعاقة" (xlsx) يضم الشطرين معًا
+      // بلا عمود جنس - يُستنتَج شطر كل طالب من بيانات "حالات الإرشاد"
+      // الأساسية المرفوعة مسبقًا (المصدر الوحيد الموثوق لجنس الطالب هنا).
+      // يُجمَع من مصدرين معًا لا "base" وحده (سليمان لاحظ 2026-09-30: 9 حالات
+      // من 22 غير مُطابَقة كانت فعليًا موجودة بـ"حالات الإرشاد" allColleges
+      // - المعروضة بالموقع فعليًا وأوسع تغطية من "base" بيانات المعدل/الساعات
+      // وحدها - لا خسارة لو وُجد الطالب بالاثنين معًا، آخر قيمة مقروءة تسود).
+      final baseMale = await AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.base);
+      final baseFemale = await AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.base);
+      final allCollegesMale = await AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.allColleges);
+      final allCollegesFemale = await AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.allColleges);
+      final shatrByStudentId = <String, String>{
+        for (final r in allCollegesMale) r.studentId: Shatr.male.label,
+        for (final r in allCollegesFemale) r.studentId: Shatr.female.label,
+        for (final r in baseMale) r.studentId: Shatr.male.label,
+        for (final r in baseFemale) r.studentId: Shatr.female.label,
+      };
+      records = DisabilityAcademicExcelParserService.parse(
         bytes,
-        shatr: chosen,
-        requireDepartment: false,
-        isHealthReport: true,
-        exclusionCounts: exclusionCounts,
+        shatrByStudentId: shatrByStudentId,
+        unresolvedStudents: unresolvedStudents,
       );
+    } finally {
+      hideUploadProcessingDialog(context);
     }
 
     final male = records.where((r) => r.shatr == Shatr.male.label).toList();
@@ -394,7 +385,9 @@ Future<void> runUploadHealth({
                   ? 'الملف لا يحتوي أي بيانات. سيُعتمد كقائمة فارغة لكلا الشطرين. هل تريد الاعتماد؟'
                   : 'تم استخراج ${male.length} سجل لشطر الطلاب و${female.length} سجل لشطر الطالبات '
                       '(${records.length} إجمالًا).\n\n'
-                      'سيستبدل هذا آخر نسخة معتمدة لكل شطر ظهر في الملف. هل تريد الاعتماد؟',
+                      '${unresolvedStudents.isNotEmpty ? 'تعذّر تحديد شطر ${unresolvedStudents.length} طالب (رقمه الجامعي غير موجود ببيانات حالات الإرشاد الأساسية): '
+                          '${unresolvedStudents.take(5).join('، ')}${unresolvedStudents.length > 5 ? '...' : ''}\n\n' : ''}'
+                      'سيستبدل هذا آخر نسخة معتمدة لكل شطر. هل تريد الاعتماد؟',
             ),
           ),
         ),
@@ -413,20 +406,15 @@ Future<void> runUploadHealth({
       await AdvisingReportRepository.save(Shatr.male, const [], kind: AdvisingReportKind.health, sourceFileName: result.files.single.name);
       await AdvisingReportRepository.save(Shatr.female, const [], kind: AdvisingReportKind.health, sourceFileName: result.files.single.name);
     } else {
-      if (male.isNotEmpty) {
-        await AdvisingReportRepository.save(Shatr.male, male, kind: AdvisingReportKind.health, sourceFileName: result.files.single.name);
-      }
-      if (female.isNotEmpty) {
-        await AdvisingReportRepository.save(Shatr.female, female, kind: AdvisingReportKind.health, sourceFileName: result.files.single.name);
-      }
+      await AdvisingReportRepository.save(Shatr.male, male, kind: AdvisingReportKind.health, sourceFileName: result.files.single.name);
+      await AdvisingReportRepository.save(Shatr.female, female, kind: AdvisingReportKind.health, sourceFileName: result.files.single.name);
     }
     final totalOld = oldMaleCount + oldFemaleCount;
-    final totalNew = records.length;
 
     onSuccess();
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('تم اعتماد ملف "طلبة ذوي الإعاقة" بنجاح - حُذف $totalOld سجلًا قديمًا وأُضيف $totalNew سجلًا جديدًا.')),
+      SnackBar(content: Text('تم اعتماد ملف "طلبة ذوي الإعاقة" بنجاح - حُذف $totalOld سجلًا قديمًا وأُضيف ${records.length} سجلًا جديدًا.')),
     );
   } catch (e) {
     if (!context.mounted) return;
@@ -437,19 +425,21 @@ Future<void> runUploadHealth({
 }
 
 
-/// يرفع ملفات "بيانات الطلبة الأكاديمية" (عادة عدة ملفات - قسم × نوع دراسة،
-/// اختيار متعدد) - المصدر المعتمَد الوحيد لهذه البيانات (بتأكيد سليمان صراحةً
-/// 2026-09-29): عمود "الحالة" صريح لكل صف يغطي كل الحالات (منتظم/مفصول
-/// أكاديميًا/مؤجل/موقوف تأديبي/منقطع...) بنصها الخام كما وردت، وعمود "الجنس"
-/// صريح لكل صف (لا استنتاج من عنوان كتلة). انظر [AcademicDataDetailedHtmlParserService].
-Future<void> runUploadAcademicDataDetailed({
+/// يرفع ملفَي "بيانات الطلبة الأكاديمية" الخام (شطر لكل ملف، بلا حاجة لاسم
+/// ملف مميَّز - الشطر يُستنتَج من عمود "المقر" لكل صف داخل
+/// [AcademicDataRawCsvParserService]) - **مصدر شامل تاريخي وحيد** يستبدل
+/// بالكامل كل المصادر السابقة الثلاثة (CSV الستة المستنتِجة الحالة من اسم
+/// الملف، xlsx القديم، وHTML التفصيلي - حُذفت جميعًا، بتأكيد سليمان الصريح
+/// 2026-09-30). استبدال كامل لا دمج هجين (المصدر شامل كل حالات القيد بذاته:
+/// منتظم/مفصول/مطوي قيد/متخرج/موقوف تأديبي/مؤجل/معتذر/منسحب/متوفى/منقطع).
+Future<void> runUploadAcademicDataRaw({
   required BuildContext context,
   required ValueChanged<bool> setUploading,
   required VoidCallback onSuccess,
 }) async {
   final result = await FilePicker.platform.pickFiles(
     type: FileType.custom,
-    allowedExtensions: const ['xls'],
+    allowedExtensions: const ['csv'],
     withData: true,
     allowMultiple: true,
   );
@@ -458,6 +448,11 @@ Future<void> runUploadAcademicDataDetailed({
   setUploading(true);
   try {
     final byShatr = <Shatr, List<AdvisingCaseRecord>>{};
+    // نفس الطالب (رقمه الجامعي) قد يظهر بأكثر من ملف معًا (تحقَّق فعليًا -
+    // سليمان 2026-09-30: ~5573 طالبة مكرَّرة حرفيًا بين ملفَي الشطرين) - يُبقى
+    // أول ظهور فقط، بغض النظر عن أي الملفين احتواه، حتى لا يُخزَّن سجلان
+    // للطالب نفسه (كان الجدول يُخفي التكرار عرضًا فقط بينما القاعدة تحتفظ به).
+    final seenIds = <String>{};
     final failedFiles = <({String fileName, String error})>[];
     for (final file in result.files) {
       final bytes = file.bytes;
@@ -466,12 +461,13 @@ Future<void> runUploadAcademicDataDetailed({
         continue;
       }
       try {
-        final records = AcademicDataDetailedHtmlParserService.parse(bytes);
+        final records = AcademicDataRawCsvParserService.parse(bytes);
         if (records.isEmpty) {
           failedFiles.add((fileName: file.name, error: 'لم يُعثر على أي سجل طالب بهذا الملف.'));
           continue;
         }
         for (final r in records) {
+          if (!seenIds.add(r.studentId)) continue;
           final shatr = r.shatr == Shatr.female.label ? Shatr.female : Shatr.male;
           byShatr.putIfAbsent(shatr, () => []).add(r);
         }
@@ -488,7 +484,17 @@ Future<void> runUploadAcademicDataDetailed({
       );
     }
 
-    final summary = byShatr.entries.map((e) => '${e.key.label}: ${e.value.length} طالبًا').join('\n');
+    String statusBreakdown(List<AdvisingCaseRecord> records) {
+      final counts = <String, int>{};
+      for (final r in records) {
+        counts.update(r.enrollmentStatus.isEmpty ? 'منتظم' : r.enrollmentStatus, (v) => v + 1, ifAbsent: () => 1);
+      }
+      return counts.entries.map((e) => '  ${e.key}: ${e.value}').join('\n');
+    }
+
+    final summary = byShatr.entries
+        .map((e) => '${e.key.label}: ${e.value.length} إجمالًا\n${statusBreakdown(e.value)}')
+        .join('\n\n');
     final failuresNote = failedFiles.isEmpty ? '' : '\n\nملفات تعذّرت معالجتها:\n${failedFiles.map((f) => '${f.fileName}: ${f.error}').join('\n')}';
     if (!context.mounted) return;
     final confirmed = await showDialog<bool>(
@@ -498,7 +504,7 @@ Future<void> runUploadAcademicDataDetailed({
         content: SizedBox(
           width: 480,
           child: SingleChildScrollView(
-            child: Text('$summary\n\nسيستبدل هذا آخر نسخة معتمدة لكل شطر ظهر بالملفات بالكامل (كل الحالات: منتظم/مفصول/منقطع). '
+            child: Text('$summary\n\nسيستبدل هذا آخر نسخة معتمدة لكل شطر ظهر بالملفات بالكامل (وتُحفظ النسخة الحالية كـ"النطاق السابق"). '
                 'هل تريد الاعتماد؟$failuresNote'),
           ),
         ),

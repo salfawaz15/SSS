@@ -46,6 +46,11 @@ class AdvisingCaseRecord {
   /// "الساعات المسجلة" بالفصل الحالي - من نفس مصدر [academicWarnings]، لا
   /// تُحسَب منها [completedHours] (ذلك يعتمد حصرًا على [planHours]/[remainingHours]).
   final int? registeredHours;
+  /// عمود "اسم التخصص" من مصدر "بيانات الطلبة الأكاديمية" الخام - أدق من
+  /// [department] أحيانًا (قد يكون تفريعًا منه، مثال: "التمويل" تحت قسم
+  /// الاقتصاد والتمويل). فارغ يعني مصدرًا لا يحمل هذا العمود إطلاقًا (كل
+  /// المصادر الأخرى قبل 2026-09-30).
+  final String specialization;
 
   const AdvisingCaseRecord({
     required this.studentId,
@@ -64,6 +69,7 @@ class AdvisingCaseRecord {
     this.academicWarnings,
     this.registeredCoursesCount,
     this.registeredHours,
+    this.specialization = '',
   });
 
   bool get hasAdvisor => advisorNameRaw.trim().isNotEmpty;
@@ -79,9 +85,15 @@ class AdvisingCaseRecord {
   /// بيانات الساعات لهذا الطالب بعد.
   int? get completedHours => (planHours != null && remainingHours != null) ? planHours! - remainingHours! : null;
 
+  /// موقوف تأديبيًا (فصل مؤقت تأديبي، لا أكاديمي) - فئة منفصلة تمامًا عن
+  /// [isAcademicallyDismissed] رغم احتواء النص على كلمة "مفصول" (بطلب سليمان
+  /// الصريح 2026-09-30: لا يُعامَل كمفصول أكاديميًا).
+  bool get isDisciplinarySuspended => enrollmentStatus.contains('موقوف تأديبي');
+
   /// طالب مفصول أكاديميًا - يُستبعَد من كل قوائم متابعة الإرشاد العادية
-  /// ويُعرَض في قائمة منفصلة (انظر [AdvisingCaseAnalyzer.analyze]).
-  bool get isAcademicallyDismissed => enrollmentStatus.contains('مفصول');
+  /// ويُعرَض في قائمة منفصلة (انظر [AdvisingCaseAnalyzer.analyze]). يستثني
+  /// [isDisciplinarySuspended] رغم احتوائه أيضًا على كلمة "مفصول".
+  bool get isAcademicallyDismissed => enrollmentStatus.contains('مفصول') && !isDisciplinarySuspended;
 
   AdvisingCaseRecord copyWith({
     String? studentName,
@@ -98,6 +110,7 @@ class AdvisingCaseRecord {
     int? academicWarnings,
     int? registeredCoursesCount,
     int? registeredHours,
+    String? specialization,
   }) =>
       AdvisingCaseRecord(
         studentId: studentId,
@@ -116,6 +129,7 @@ class AdvisingCaseRecord {
         academicWarnings: academicWarnings ?? this.academicWarnings,
         registeredCoursesCount: registeredCoursesCount ?? this.registeredCoursesCount,
         registeredHours: registeredHours ?? this.registeredHours,
+        specialization: specialization ?? this.specialization,
       );
 
   Map<String, dynamic> toJson() => {
@@ -135,6 +149,7 @@ class AdvisingCaseRecord {
         'academicWarnings': academicWarnings,
         'registeredCoursesCount': registeredCoursesCount,
         'registeredHours': registeredHours,
+        'specialization': specialization,
       };
 
   factory AdvisingCaseRecord.fromJson(Map<String, dynamic> json) => AdvisingCaseRecord(
@@ -154,6 +169,7 @@ class AdvisingCaseRecord {
         academicWarnings: (json['academicWarnings'] as num?)?.toInt(),
         registeredCoursesCount: (json['registeredCoursesCount'] as num?)?.toInt(),
         registeredHours: (json['registeredHours'] as num?)?.toInt(),
+        specialization: json['specialization'] as String? ?? '',
       );
 }
 

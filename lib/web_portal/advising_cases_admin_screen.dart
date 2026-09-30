@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
 
+import '../data/advising_load_rules.dart';
 import '../models/advising_case_record.dart';
 import '../models/college_roster_member.dart';
 import '../services/advising_case_analyzer.dart';
@@ -1343,6 +1344,14 @@ class _AdvisingCasesAdminScreenState extends State<AdvisingCasesAdminScreen> {
   ];
   String _advisorStatusOf(AdvisorStatRow r) {
     if (r.weight == 0) return r.countInSystem > 0 ? 'معفى وله طلاب (يحتاج مراجعة)' : 'معفى/مجمَّد';
+    // أمين القسم (حالات خاصة فقط): تجاوز نصابه المستهدف (50%) بسبب الحالات
+    // الخاصة ليس خللاً إطلاقًا (بطلب سليمان الصريح 2026-09-28) - لا يُصنَّف
+    // "فوق النصاب" أبدًا، فقط "دون النصاب" لو كانت حالاته الخاصة أقل من
+    // المستهدف (فتُستكمَل بطلاب عاديين تلقائيًا عبر إعادة التوزيع).
+    if (r.advisor.advisingLoad == AdvisingLoad.specialCasesOnly) {
+      if (r.diffFromTarget < -1) return 'دون النصاب';
+      return 'متوازن';
+    }
     if (r.diffFromTarget > 1) return 'فوق النصاب';
     if (r.diffFromTarget < -1) return 'دون النصاب';
     return 'متوازن';

@@ -11,7 +11,6 @@ import '../theme/app_theme.dart';
 import '../theme/dashboard_table.dart';
 import '../theme/dashboard_tokens.dart';
 import '../theme/filter_pills.dart';
-import '../utils/name_display.dart';
 import 'admin_nav.dart';
 import 'advising_workspace.dart';
 import 'portal_header.dart';
@@ -27,11 +26,24 @@ const _kDepartmentOrder = [
   'قسم نظم المعلومات الادارية',
 ];
 
-/// حالات القيد الثلاث كما تُستنتَج من اسم كل ملف من الملفات الستة عند الرفع
-/// (انظر `upload_flows.dart`: `_enrollmentStatusFromFreeText`).
-const _kEnrollmentStatusOrder = ['منتظم', 'مفصول أكاديميًا', 'منقطع عن الدراسة'];
+/// تبويب لكل حالة قيد (10 تبويبات) + تبويب "الكل" أول تبويب (index 0، بلا
+/// حالة محدَّدة) - بطلب سليمان الصريح 2026-09-30. المفتاح رقم التبويب،
+/// القيمة نص الحالة كما يصل من `AcademicDataRawCsvParserService`.
+const _kStatusByTabIndex = <int, String>{
+  1: 'منتظم',
+  2: 'مفصول أكاديميًا',
+  3: 'موقوف تأديبي / مفصول مؤقت',
+  4: 'منقطع عن الدراسة',
+  5: 'مطوي قيده',
+  6: 'متخرج',
+  7: 'مؤجل',
+  8: 'معتذر',
+  9: 'منسحب',
+  10: 'متوفى',
+};
 
-String _dash(String s) => s.trim().isEmpty ? '—' : s;
+const _kGraduatesTabIndex = 6;
+const _kTabCount = 11;
 
 /// نفس ألوان "النطاق" المعتمَدة بشاشة "بحث عن مرشد"
 /// (`advisor_students_lookup_screen.dart`: `_rangeColor`) - أحمر (ضعيف) إلى
@@ -50,16 +62,31 @@ Widget _rangeBar(double? gpa) {
   return DashProgressCell(value: gpa / 4.0, color: _rangeColor(gpaStatusOf(gpa)), label: gpa.toStringAsFixed(2));
 }
 
-/// شاشة "بيانات الطلبة الأكاديمية" - **كل** طلبة الملفات الستة المرفوعة
-/// (منتظم/مفصول أكاديميًا/منقطع عن الدراسة معًا)، بخلاف كل شاشات الإرشاد
-/// الأخرى التي تستبعد غير المنتظم كليًا (انظر
-/// `AdvisingCaseAnalyzer.isRegularlyEnrolled`) - هذه الشاشة مصدر الرؤية
-/// الشاملة لكل حالات القيد معًا، بطلب سليمان صراحةً (2026-08-27). تقرأ
-/// `AdvisingReportKind.base` مباشرة بلا مرور بـ`AdvisingCaseAnalyzer.analyze`
-/// حتى لا يُستبعَد أي طالب. عمود/فلتر "المرشد" يُثرى إضافيًا من تقرير "كل
-/// الكليات" (`AdvisingReportKind.allColleges`) مطابقةً بالرقم الجامعي - غير
-/// موجود أصلًا ببيانات "بيانات الطلبة الأكاديمية" نفسها (بطلب سليمان صراحةً
-/// 2026-08-27: فلتر شطر/قسم/مرشد/حالة كالمعتاد بشاشة "الخدمات السريعة").
+/// يضع TabBar داخل خلفية خضراء صلبة - ألوان TabBar الافتراضية في هذا
+/// المشروع (نص أبيض) مصمَّمة لخلفية AppBar الخضراء التقليدية، فتختفي تمامًا
+/// (أبيض على أبيض) لو وُضع التبويب مباشرة على خلفية بيضاء بلا هذا الغلاف -
+/// نفس السبب الجذري لاختفاء تبويب "الخريجون" بالنسخة الأولى (سليمان
+/// 2026-09-30: "ظهر لي بالصدفة"). نسخة مطابقة لـ`_GreenTabBar` الخاصة
+/// بـ`course_schedule_admin_screen.dart` (النمط البصري الناجح المعتمَد فعليًا
+/// بالموقع).
+class _GreenTabBar extends StatelessWidget implements PreferredSizeWidget {
+  final TabBar tabBar;
+  const _GreenTabBar(this.tabBar);
+
+  @override
+  Widget build(BuildContext context) => Container(color: AppColors.green, child: tabBar);
+
+  @override
+  Size get preferredSize => tabBar.preferredSize;
+}
+
+/// شاشة "بيانات الطلبة الأكاديمية" - تبويب "الكل" + تبويب مستقل لكل حالة قيد
+/// (10 حالات، بطلب سليمان الصريح 2026-09-30: "المفترض يكون لكل حالة تبويب")
+/// بدل فلتر حالة واحد. تبويب "متخرج" يحصل إضافيًا على فلتر تخصص، بطاقة توزيع
+/// حسب القسم، وتنبيه عدم توفر بيانات تواصل - تمهيدًا لاستخدام هذه البيانات
+/// مستقبلاً بمتابعة/تواصل الخريجين متى توفرت بيانات اتصال بالمصدر الخام (لا
+/// بريد/جوال بالمصدر الحالي إطلاقًا). تقرأ `AdvisingReportKind.base` مباشرة
+/// بلا مرور بـ`AdvisingCaseAnalyzer.analyze` حتى لا يُستبعَد أي طالب.
 class StudentDataStatsScreen extends StatefulWidget {
   const StudentDataStatsScreen({super.key});
 
@@ -67,43 +94,32 @@ class StudentDataStatsScreen extends StatefulWidget {
   State<StudentDataStatsScreen> createState() => _StudentDataStatsScreenState();
 }
 
-class _StudentDataStatsScreenState extends State<StudentDataStatsScreen> {
+class _StudentDataStatsScreenState extends State<StudentDataStatsScreen> with SingleTickerProviderStateMixin {
+  late final TabController _tabController = TabController(length: _kTabCount, vsync: this);
+
   bool _loading = true;
   String? _error;
   List<AdvisingCaseRecord> _all = [];
 
-  String? _departmentFilter;
-  String? _shatrFilter;
-  String? _statusFilter;
-  String? _advisorFilter;
+  // فلاتر شطر/قسم مستقلة لكل تبويب (بفهرس التبويب) - بدل تكرار متغيرات لكل
+  // حالة على حدة.
+  final Map<int, String?> _deptFilterByTab = {};
+  final Map<int, String?> _shatrFilterByTab = {};
+  String? _gradSpecializationFilter; // فقط لتبويب "متخرج" (index 6)
 
-  String? _sortKey;
-  bool _sortAscending = true;
-
-  bool get _hasFilter => _departmentFilter != null || _shatrFilter != null || _statusFilter != null || _advisorFilter != null;
-
-  void _resetFilters() => setState(() {
-        _departmentFilter = null;
-        _shatrFilter = null;
-        _statusFilter = null;
-        _advisorFilter = null;
-      });
-
-  void _onSort(String key) {
-    setState(() {
-      if (_sortKey == key) {
-        _sortAscending = !_sortAscending;
-      } else {
-        _sortKey = key;
-        _sortAscending = true;
-      }
-    });
-  }
+  final Map<int, String?> _sortKeyByTab = {};
+  final Map<int, bool> _sortAscendingByTab = {};
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -115,25 +131,15 @@ class _StudentDataStatsScreenState extends State<StudentDataStatsScreen> {
       final results = await Future.wait([
         AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.base),
         AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.base),
-        AdvisingReportRepository.load(Shatr.male, kind: AdvisingReportKind.allColleges),
-        AdvisingReportRepository.load(Shatr.female, kind: AdvisingReportKind.allColleges),
       ]);
       final seen = <String>{};
       final merged = <AdvisingCaseRecord>[];
       for (final r in [...results[0], ...results[1]]) {
         if (seen.add(r.studentId)) merged.add(r);
       }
-      // إثراء المرشد من تقرير "كل الكليات" - مطابقة بالرقم الجامعي فقط (نفس
-      // مبدأ AdvisingCaseAnalyzer.mergeAcademicData لكن بالاتجاه المعاكس:
-      // هنا الأساس "بيانات الطلبة الأكاديمية" ونثري منه المرشد، لا العكس).
-      final advisorById = {for (final a in [...results[2], ...results[3]]) a.studentId: a.advisorNameRaw};
-      final enriched = [
-        for (final r in merged)
-          if (advisorById[r.studentId]?.trim().isNotEmpty ?? false) r.copyWith(advisorNameRaw: advisorById[r.studentId]) else r,
-      ];
       if (!mounted) return;
       setState(() {
-        _all = enriched;
+        _all = merged;
         _loading = false;
       });
     } catch (e) {
@@ -145,43 +151,150 @@ class _StudentDataStatsScreenState extends State<StudentDataStatsScreen> {
     }
   }
 
-  List<AdvisingCaseRecord> get _scopedByDeptAndShatr => _all.where((r) {
-        if (_departmentFilter != null && r.department != _departmentFilter) return false;
-        if (_shatrFilter != null && r.shatr != _shatrFilter) return false;
-        return true;
-      }).toList();
+  @override
+  Widget build(BuildContext context) {
+    return PortalScaffold(
+      title: 'بيانات الطلبة الأكاديمية',
+      navItems: buildAdminNavItems(context, current: 'reports-hub'),
+      bottom: _GreenTabBar(
+        TabBar(
+          controller: _tabController,
+          isScrollable: true,
+          indicatorColor: AppColors.gold,
+          tabs: [
+            const Tab(text: 'الكل'),
+            for (var i = 1; i < _kTabCount; i++) Tab(text: _kStatusByTabIndex[i]!),
+          ],
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [for (var i = 0; i < _kTabCount; i++) _buildStatusTab(context, i)],
+      ),
+    );
+  }
 
-  List<String> get _advisorFilterOptions => _scopedByDeptAndShatr
-      .map((r) => r.advisorNameRaw.trim())
-      .where((n) => n.isNotEmpty)
-      .toSet()
-      .toList()
-    ..sort();
+  Widget _buildStatusTab(BuildContext context, int tabIndex) {
+    return Container(
+      color: DashTokens.pageBg,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: kAdvisingWorkspaceMaxWidth),
+            child: _StatusTabBody(
+              key: PageStorageKey('tab-$tabIndex'),
+              tabIndex: tabIndex,
+              loading: _loading,
+              error: _error,
+              all: _all,
+              onRetry: _load,
+              deptFilter: _deptFilterByTab[tabIndex],
+              shatrFilter: _shatrFilterByTab[tabIndex],
+              specializationFilter: tabIndex == _kGraduatesTabIndex ? _gradSpecializationFilter : null,
+              sortKey: _sortKeyByTab[tabIndex],
+              sortAscending: _sortAscendingByTab[tabIndex] ?? true,
+              onDeptFilterChanged: (v) => setState(() => _deptFilterByTab[tabIndex] = v),
+              onShatrFilterChanged: (v) => setState(() => _shatrFilterByTab[tabIndex] = v),
+              onSpecializationFilterChanged: (v) => setState(() => _gradSpecializationFilter = v),
+              onResetFilters: () => setState(() {
+                _deptFilterByTab[tabIndex] = null;
+                _shatrFilterByTab[tabIndex] = null;
+                if (tabIndex == _kGraduatesTabIndex) _gradSpecializationFilter = null;
+              }),
+              onSort: (key) => setState(() {
+                if (_sortKeyByTab[tabIndex] == key) {
+                  _sortAscendingByTab[tabIndex] = !(_sortAscendingByTab[tabIndex] ?? true);
+                } else {
+                  _sortKeyByTab[tabIndex] = key;
+                  _sortAscendingByTab[tabIndex] = true;
+                }
+              }),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// جسم تبويب حالة واحد (أو "الكل") - مستقل بالكامل عن بقية التبويبات (كل
+/// فلاتره/فرزه خاص به فقط، مُمرَّر من الأب عبر خرائط بفهرس التبويب).
+class _StatusTabBody extends StatelessWidget {
+  final int tabIndex;
+  final bool loading;
+  final String? error;
+  final List<AdvisingCaseRecord> all;
+  final VoidCallback onRetry;
+  final String? deptFilter;
+  final String? shatrFilter;
+  final String? specializationFilter;
+  final String? sortKey;
+  final bool sortAscending;
+  final ValueChanged<String?> onDeptFilterChanged;
+  final ValueChanged<String?> onShatrFilterChanged;
+  final ValueChanged<String?> onSpecializationFilterChanged;
+  final VoidCallback onResetFilters;
+  final ValueChanged<String> onSort;
+
+  const _StatusTabBody({
+    super.key,
+    required this.tabIndex,
+    required this.loading,
+    required this.error,
+    required this.all,
+    required this.onRetry,
+    required this.deptFilter,
+    required this.shatrFilter,
+    required this.specializationFilter,
+    required this.sortKey,
+    required this.sortAscending,
+    required this.onDeptFilterChanged,
+    required this.onShatrFilterChanged,
+    required this.onSpecializationFilterChanged,
+    required this.onResetFilters,
+    required this.onSort,
+  });
+
+  bool get isGraduatesTab => tabIndex == _kGraduatesTabIndex;
+  String? get status => _kStatusByTabIndex[tabIndex];
+  String get title => status ?? 'كل الطلبة';
+
+  List<AdvisingCaseRecord> get _byStatus {
+    if (status == null) return all;
+    return all.where((r) => r.enrollmentStatus == status || (status == 'منتظم' && r.enrollmentStatus.isEmpty)).toList();
+  }
+
+  List<AdvisingCaseRecord> get _scoped {
+    var list = _byStatus;
+    if (deptFilter != null) list = list.where((r) => r.department == deptFilter).toList();
+    if (shatrFilter != null) list = list.where((r) => r.shatr == shatrFilter).toList();
+    return list;
+  }
 
   List<AdvisingCaseRecord> get _filtered {
-    var scoped = _scopedByDeptAndShatr;
-    if (_statusFilter != null) scoped = scoped.where((r) => r.enrollmentStatus.trim() == _statusFilter).toList();
-    if (_advisorFilter != null) scoped = scoped.where((r) => r.advisorNameRaw.trim() == _advisorFilter).toList();
-    return scoped;
+    var list = _scoped;
+    if (isGraduatesTab && specializationFilter != null) {
+      list = list.where((r) => r.specialization.trim() == specializationFilter).toList();
+    }
+    return list;
   }
 
   List<AdvisingCaseRecord> _sorted(List<AdvisingCaseRecord> list) {
-    if (_sortKey == null) return list;
+    if (sortKey == null) return list;
     final sorted = [...list];
     int cmp(AdvisingCaseRecord a, AdvisingCaseRecord b) {
-      switch (_sortKey) {
+      switch (sortKey) {
         case 'studentId':
           return a.studentId.compareTo(b.studentId);
         case 'studentName':
           return a.studentName.compareTo(b.studentName);
         case 'department':
           return a.department.compareTo(b.department);
+        case 'specialization':
+          return a.specialization.compareTo(b.specialization);
         case 'shatr':
           return a.shatr.compareTo(b.shatr);
-        case 'advisor':
-          return a.advisorNameRaw.compareTo(b.advisorNameRaw);
-        case 'status':
-          return a.enrollmentStatus.compareTo(b.enrollmentStatus);
         case 'gpa':
           return (a.gpa ?? -1).compareTo(b.gpa ?? -1);
         case 'remainingHours':
@@ -192,33 +305,16 @@ class _StudentDataStatsScreenState extends State<StudentDataStatsScreen> {
     }
 
     sorted.sort(cmp);
-    if (!_sortAscending) return sorted.reversed.toList();
+    if (!sortAscending) return sorted.reversed.toList();
     return sorted;
   }
 
+  bool get _hasFilter => deptFilter != null || shatrFilter != null || (isGraduatesTab && specializationFilter != null);
+
   @override
   Widget build(BuildContext context) {
-    return PortalScaffold(
-      title: 'بيانات الطلبة الأكاديمية',
-      navItems: buildAdminNavItems(context, current: 'reports-hub'),
-      body: Container(
-        color: DashTokens.pageBg,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: kAdvisingWorkspaceMaxWidth),
-              child: _buildBody(context),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBody(BuildContext context) {
-    if (_loading) return const Padding(padding: EdgeInsets.only(top: 60), child: Center(child: CircularProgressIndicator()));
-    if (_error != null) {
+    if (loading) return const Padding(padding: EdgeInsets.only(top: 60), child: Center(child: CircularProgressIndicator()));
+    if (error != null) {
       return Padding(
         padding: const EdgeInsets.only(top: 60),
         child: Center(
@@ -226,20 +322,28 @@ class _StudentDataStatsScreenState extends State<StudentDataStatsScreen> {
             children: [
               Icon(Icons.error_outline, size: 32, color: Colors.red.shade400),
               const SizedBox(height: 8),
-              Text('تعذّر تحميل بيانات الطلبة: $_error'),
+              Text('تعذّر تحميل بيانات الطلبة: $error'),
               const SizedBox(height: 12),
-              FilledButton(onPressed: _load, child: const Text('إعادة المحاولة')),
+              FilledButton(onPressed: onRetry, child: const Text('إعادة المحاولة')),
             ],
           ),
         ),
       );
     }
 
-    final scoped = _scopedByDeptAndShatr;
+    final scoped = _scoped;
     final filtered = _sorted(_filtered);
-    final showDepartmentColumn = _departmentFilter == null;
+    final showDepartmentColumn = deptFilter == null;
+    final showShatrColumn = shatrFilter == null;
 
-    const headers = ['الرقم الجامعي', 'اسم الطالب', 'القسم', 'الشطر', 'المرشد', 'الحالة', 'المعدل', 'الساعات المتبقية'];
+    final headers = [
+      'الرقم الجامعي',
+      'اسم الطالب',
+      'القسم',
+      'الشطر',
+      'المعدل',
+      if (!isGraduatesTab) 'الساعات المتبقية',
+    ];
     final rows = [
       for (final r in filtered)
         [
@@ -247,10 +351,8 @@ class _StudentDataStatsScreenState extends State<StudentDataStatsScreen> {
           r.studentName,
           r.department,
           r.shatr,
-          _dash(displayName(r.advisorNameRaw)),
-          r.enrollmentStatus.isEmpty ? 'منتظم' : r.enrollmentStatus,
           r.gpa?.toStringAsFixed(2) ?? '—',
-          r.remainingHours?.toString() ?? '—',
+          if (!isGraduatesTab) r.remainingHours?.toString() ?? '—',
         ],
     ];
 
@@ -258,17 +360,19 @@ class _StudentDataStatsScreenState extends State<StudentDataStatsScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         AdvisingPageHeader(
-          breadcrumbTrail: 'بيانات الطلبة الأكاديمية',
-          title: 'بيانات الطلبة الأكاديمية',
-          description: 'كل طلبة الكلية من الملفات الستة المرفوعة (منتظم/مفصول أكاديميًا/منقطع عن الدراسة) - يشمل كل الحالات معًا، بخلاف شاشات الإرشاد التي تستبعد غير المنتظم.',
-          icon: Icons.groups_2_outlined,
+          breadcrumbTrail: 'بيانات الطلبة الأكاديمية / $title',
+          title: title,
+          description: status == null
+              ? 'كل طلبة الكلية من "بيانات الطلبة الأكاديمية" الخام - كل حالات القيد معًا.'
+              : 'طلبة الكلية بحالة "$title" فقط.',
+          icon: isGraduatesTab ? Icons.school_outlined : Icons.groups_2_outlined,
           actions: [
             TextButton.icon(
               onPressed: filtered.isEmpty
                   ? null
                   : () {
-                      final bytes = AdvisingCaseExcelService.build(title: 'بيانات الطلبة الأكاديمية', headers: headers, rows: rows);
-                      downloadBytes(bytes, 'بيانات الطلبة الأكاديمية.xlsx');
+                      final bytes = AdvisingCaseExcelService.build(title: title, headers: headers, rows: rows);
+                      downloadBytes(bytes, '$title.xlsx');
                     },
               icon: const Icon(Icons.table_chart_outlined, size: 18),
               label: const Text('Excel'),
@@ -277,8 +381,8 @@ class _StudentDataStatsScreenState extends State<StudentDataStatsScreen> {
               onPressed: filtered.isEmpty
                   ? null
                   : () async {
-                      final bytes = await AdvisingCasePdfService.build(title: 'بيانات الطلبة الأكاديمية', headers: headers, rows: rows);
-                      await Printing.sharePdf(bytes: bytes, filename: 'بيانات الطلبة الأكاديمية.pdf');
+                      final bytes = await AdvisingCasePdfService.build(title: title, headers: headers, rows: rows);
+                      await Printing.sharePdf(bytes: bytes, filename: '$title.pdf');
                     },
               icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
               label: const Text('PDF/طباعة'),
@@ -286,63 +390,41 @@ class _StudentDataStatsScreenState extends State<StudentDataStatsScreen> {
           ],
         ),
         const SizedBox(height: 16),
-        _statCards(scoped),
+        _countCards(scoped),
+        if (isGraduatesTab) ...[
+          const SizedBox(height: 16),
+          _noContactNotice(),
+          const SizedBox(height: 16),
+          _departmentBreakdownCard(scoped),
+        ],
         const SizedBox(height: 16),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          crossAxisAlignment: WrapCrossAlignment.center,
+        FilterBarShell(
           children: [
-            FilterResetChip(active: !_hasFilter, onTap: _resetFilters),
+            FilterResetChip(active: !_hasFilter, onTap: onResetFilters),
             FilterPillDropdown<String>(
               label: 'الشطر',
-              value: _shatrFilter,
+              value: shatrFilter,
               items: [Shatr.male.label, Shatr.female.label],
               itemLabel: (v) => v,
-              onChanged: (v) => setState(() {
-                _shatrFilter = v;
-                _advisorFilter = null;
-              }),
+              onChanged: onShatrFilterChanged,
             ),
             FilterPillDropdown<String>(
               label: 'القسم العلمي',
-              value: _departmentFilter,
+              value: deptFilter,
               items: _kDepartmentOrder,
               itemLabel: (v) => v.replaceFirst('قسم ', ''),
-              onChanged: (v) => setState(() {
-                _departmentFilter = v;
-                _advisorFilter = null;
-              }),
-            ),
-            FilterPillDropdown<String>(
-              key: ValueKey('$_departmentFilter|$_shatrFilter'),
-              label: 'المرشد',
-              value: _advisorFilter,
-              items: _advisorFilterOptions,
-              itemLabel: displayName,
-              onChanged: (v) => setState(() => _advisorFilter = v),
-            ),
-            FilterPillDropdown<String>(
-              label: 'الحالة',
-              value: _statusFilter,
-              items: _kEnrollmentStatusOrder,
-              itemLabel: (v) => v,
-              onChanged: (v) => setState(() => _statusFilter = v),
+              onChanged: onDeptFilterChanged,
             ),
           ],
         ),
         const SizedBox(height: 16),
-        // مفتاح صريح على كل الفلاتر - يضمن تخلّص Flutter من أي حالة قديمة
-        // بالجدول عند أي تغيير فلتر (بطلب سليمان صراحةً 2026-08-27 بعد أن
-        // لاحظ أن الجدول أحيانًا لا يعكس الفلتر المختار فورًا).
         KeyedSubtree(
-          key: ValueKey('$_departmentFilter|$_shatrFilter|$_statusFilter|$_advisorFilter|$_sortKey|$_sortAscending'),
+          key: ValueKey('$tabIndex|$deptFilter|$shatrFilter|$sortKey|$sortAscending'),
           child: Builder(builder: (context) {
             // عرض أول 120 نتيجة فقط بالجدول - رسم آلاف الصفوف دفعة واحدة
             // (DashTable يبني كل صف كـWidget فعلي بلا Virtualization) هو ما
-            // كان يُجمِّد الصفحة مع بيانات الكلية الكاملة (اقتراح سليمان
-            // صراحةً 2026-08-27). التصدير Excel/PDF يبقى على القائمة الكاملة
-            // غير المقصوصة (`filtered`/`rows` أعلاه) - القصّ للعرض فقط.
+            // كان يُجمِّد الصفحة مع بيانات الكلية الكاملة. التصدير Excel/PDF
+            // يبقى على القائمة الكاملة غير المقصوصة - القصّ للعرض فقط.
             const cap = 120;
             final tableRows = filtered.length > cap ? filtered.sublist(0, cap) : filtered;
             return Column(
@@ -357,120 +439,163 @@ class _StudentDataStatsScreenState extends State<StudentDataStatsScreen> {
                   table: DashTable(
                     columns: [
                       const DashTableColumn(key: 'studentId', label: 'الرقم الجامعي', flex: 12, sortable: true),
-                      const DashTableColumn(key: 'studentName', label: 'اسم الطالب', flex: 20, sortable: true),
+                      const DashTableColumn(key: 'studentName', label: 'اسم الطالب', flex: 22, sortable: true),
                       if (showDepartmentColumn) const DashTableColumn(key: 'department', label: 'القسم', flex: 14, sortable: true),
-                      const DashTableColumn(key: 'shatr', label: 'الشطر', flex: 9, sortable: true),
-                      const DashTableColumn(key: 'advisor', label: 'المرشد', flex: 16, sortable: true),
-                      const DashTableColumn(key: 'status', label: 'الحالة', flex: 13, sortable: true),
-                      const DashTableColumn(key: 'gpa', label: 'النطاق', flex: 11, sortable: true),
-                      const DashTableColumn(key: 'remainingHours', label: 'الساعات المتبقية', flex: 11, sortable: true),
+                      if (showShatrColumn) const DashTableColumn(key: 'shatr', label: 'الشطر', flex: 9, sortable: true),
+                      DashTableColumn(key: 'gpa', label: isGraduatesTab ? 'المعدل' : 'النطاق', flex: 11, sortable: true),
+                      if (!isGraduatesTab) const DashTableColumn(key: 'remainingHours', label: 'الساعات المتبقية', flex: 11, sortable: true),
                     ],
                     rowCount: tableRows.length,
-                    sortKey: _sortKey,
-                    sortAscending: _sortAscending,
-                    onSort: _onSort,
+                    sortKey: sortKey,
+                    sortAscending: sortAscending,
+                    onSort: onSort,
                     cellBuilder: (context, i, key) {
                       final r = tableRows[i];
                       switch (key) {
-                      case 'studentId':
-                        return Text(r.studentId, style: const TextStyle(fontSize: 12.5));
-                      case 'studentName':
-                        return Text(r.studentName, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600));
-                      case 'department':
-                        return Text(r.department, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12.5));
-                      case 'shatr':
-                        return Text(r.shatr, style: const TextStyle(fontSize: 12.5));
-                      case 'advisor':
-                        return Text(_dash(displayName(r.advisorNameRaw)), textAlign: TextAlign.center, style: const TextStyle(fontSize: 12.5));
-                      case 'status':
-                        return _StatusBadge(status: r.enrollmentStatus);
-                      case 'gpa':
-                        return _rangeBar(r.gpa);
-                      case 'remainingHours':
-                        return Text(r.remainingHours?.toString() ?? '—', style: const TextStyle(fontSize: 12.5));
-                      default:
-                        return const SizedBox.shrink();
-                    }
-                  },
+                        case 'studentId':
+                          return Text(r.studentId, style: const TextStyle(fontSize: 12.5));
+                        case 'studentName':
+                          return Text(r.studentName, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600));
+                        case 'department':
+                          return Text(r.department, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12.5));
+                        case 'shatr':
+                          return Text(r.shatr, style: const TextStyle(fontSize: 12.5));
+                        case 'gpa':
+                          // تبويب "متخرج": رقم المعدل فقط بلا شريط النطاق
+                          // الملوَّن (بطلب سليمان الصريح 2026-09-30 - "لا داعي
+                          // للنطاق نهائيًا، يكتفي بالمعدل").
+                          return isGraduatesTab
+                              ? Text(r.gpa?.toStringAsFixed(2) ?? '—', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600))
+                              : _rangeBar(r.gpa);
+                        case 'remainingHours':
+                          return Text(r.remainingHours?.toString() ?? '—', style: const TextStyle(fontSize: 12.5));
+                        default:
+                          return const SizedBox.shrink();
+                      }
+                    },
+                  ),
                 ),
-              ),
-            ],
-          );
-        }),
+              ],
+            );
+          }),
         ),
       ],
     );
   }
 
-  Widget _statCards(List<AdvisingCaseRecord> scoped) {
-    final total = scoped.length;
-    final regular = scoped.where((r) => r.enrollmentStatus.isEmpty || r.enrollmentStatus == 'منتظم').length;
-    final dismissed = scoped.where((r) => r.isAcademicallyDismissed).length;
-    final withdrawn = scoped.where((r) => r.enrollmentStatus.contains('منقطع')).length;
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final w = constraints.maxWidth;
-        final crossAxisCount = w >= 900 ? 4 : (w >= 500 ? 2 : 1);
-        final cards = [
-          _StatCard(label: 'الإجمالي', value: total, color: DashTokens.green900),
-          _StatCard(label: 'منتظم', value: regular, color: AppColors.greenDark),
-          _StatCard(label: 'مفصول أكاديميًا', value: dismissed, color: Colors.red.shade600),
-          _StatCard(label: 'منقطع عن الدراسة', value: withdrawn, color: Colors.orange.shade700),
-        ];
-        return GridView.count(
-          crossAxisCount: crossAxisCount,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: 10,
-          crossAxisSpacing: 10,
-          childAspectRatio: 2.4,
-          children: cards,
-        );
-      },
+  /// الإجمالي + طلبة شطر الطلاب + طلبة شطر الطالبات بنفس صف واحد - امتداد
+  /// أفقي لنمط `_courseCountStat` المعتمَد بـ`upload_hub_screen.dart` (بطلب
+  /// سليمان: "عدد الإجمالي يكون تحت طلاب طالبات كالمعتاد").
+  Widget _countCards(List<AdvisingCaseRecord> scoped) {
+    final male = scoped.where((r) => r.shatr == Shatr.male.label).length;
+    final female = scoped.where((r) => r.shatr == Shatr.female.label).length;
+    return Row(
+      children: [
+        Expanded(child: _CountStat(label: 'الإجمالي', count: scoped.length, emoji: '📊')),
+        const SizedBox(width: 10),
+        Expanded(child: _CountStat(label: 'طلبة شطر الطلاب', count: male, emoji: '👨‍🎓')),
+        const SizedBox(width: 10),
+        Expanded(child: _CountStat(label: 'طلبة شطر الطالبات', count: female, emoji: '👩‍🎓')),
+      ],
     );
   }
-}
 
-class _StatCard extends StatelessWidget {
-  final String label;
-  final int value;
-  final Color color;
-  const _StatCard({required this.label, required this.value, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
+  /// تنبيه ثابت: لا تتوفر بيانات تواصل (بريد/جوال) بالمصدر الخام حاليًا -
+  /// بطلب سليمان الصريح 2026-09-30 يُسجَّل كملاحظة واضحة بالواجهة بدل أي
+  /// وظيفة إرسال وهمية، لحين توفر بيانات الاتصال (انظر بند TODO.md).
+  Widget _noContactNotice() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.amber.shade50,
+        border: Border.all(color: Colors.amber.shade300),
+        borderRadius: BorderRadius.circular(DashTokens.radiusLg),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.info_outline, size: 18, color: Colors.amber.shade800),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'لا تتوفر حاليًا بيانات تواصل (بريد إلكتروني/جوال) للخريجين بالمصدر الخام - ستُضاف إمكانية التواصل المباشر متى توفرت بيانات الاتصال.',
+              style: TextStyle(fontSize: 12.5, color: Colors.amber.shade900, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// توزيع الخريجين حسب القسم (عدد + شريط نسبة من إجمالي [scoped]).
+  Widget _departmentBreakdownCard(List<AdvisingCaseRecord> scoped) {
+    final total = scoped.length;
+    final counts = <String, int>{};
+    for (final r in scoped) {
+      counts.update(r.department, (v) => v + 1, ifAbsent: () => 1);
+    }
+    final ordered = [
+      for (final d in _kDepartmentOrder)
+        if ((counts[d] ?? 0) > 0) d,
+      for (final d in counts.keys)
+        if (!_kDepartmentOrder.contains(d)) d,
+    ];
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(color: Colors.white, border: Border.all(color: DashTokens.border), borderRadius: BorderRadius.circular(DashTokens.radiusLg)),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('$value', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: color)),
-          const SizedBox(height: 2),
-          Text(label, style: const TextStyle(fontSize: 11.5, color: DashTokens.textSecondary, fontWeight: FontWeight.w600)),
+          const Text('توزيع الخريجين حسب القسم', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: DashTokens.textSecondary)),
+          const SizedBox(height: 10),
+          if (ordered.isEmpty) const Text('لا بيانات', style: TextStyle(fontSize: 12.5, color: DashTokens.textSecondary)),
+          for (final d in ordered)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  SizedBox(width: 140, child: Text(d.replaceFirst('قسم ', ''), style: const TextStyle(fontSize: 12))),
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: LinearProgressIndicator(
+                        value: total == 0 ? 0 : (counts[d] ?? 0) / total,
+                        minHeight: 10,
+                        backgroundColor: DashTokens.pageBg,
+                        color: AppColors.green,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  SizedBox(width: 32, child: Text('${counts[d] ?? 0}', textAlign: TextAlign.end, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
+                ],
+              ),
+            ),
         ],
       ),
     );
   }
 }
 
-class _StatusBadge extends StatelessWidget {
-  final String status;
-  const _StatusBadge({required this.status});
+/// بطاقة عدد بسيطة (إيموجي+رقم كبير، تسمية تحتها) - نفس نمط `_courseCountStat`
+/// المعتمَد بـ`upload_hub_screen.dart`.
+class _CountStat extends StatelessWidget {
+  final String label;
+  final int count;
+  final String emoji;
+  const _CountStat({required this.label, required this.count, required this.emoji});
 
   @override
   Widget build(BuildContext context) {
-    final text = status.isEmpty ? 'منتظم' : status;
-    final color = status.contains('مفصول')
-        ? Colors.red.shade600
-        : status.contains('منقطع')
-            ? Colors.orange.shade700
-            : AppColors.greenDark;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(20)),
-      child: Text(text, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+      decoration: BoxDecoration(color: Colors.white, border: Border.all(color: DashTokens.border), borderRadius: BorderRadius.circular(DashTokens.radiusLg)),
+      child: Column(
+        children: [
+          Text('$emoji  $count', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppColors.greenDark)),
+          const SizedBox(height: 2),
+          Text(label, style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600), textAlign: TextAlign.center),
+        ],
+      ),
     );
   }
 }
