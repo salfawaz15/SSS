@@ -13,6 +13,13 @@ class AdvisingOverviewStats {
   final int withoutAdvisor;
   final int wrongAdvisor;
   final int wrongAdvisorWithDisability;
+  // "الكل" الحقيقي (كل طالب مهما كانت حالته أو كونه مستجدًا) و"المنتظمون"
+  // و"الحالات الأخرى" - نفس بطاقات advising_cases_admin_screen.dart بالموقع
+  // حرفيًا (سليمان صراحةً 2026-09-30)، تُستخدَم بتطبيق الجوال بدل بطاقات
+  // "على غير مرشدهم/بلا مرشد/تابعين لمرشد – ذوي الإعاقة" السابقة.
+  final int allStudents;
+  final int regular;
+  final int otherStatuses;
 
   const AdvisingOverviewStats({
     required this.total,
@@ -21,6 +28,9 @@ class AdvisingOverviewStats {
     required this.withoutAdvisor,
     required this.wrongAdvisor,
     required this.wrongAdvisorWithDisability,
+    required this.allStudents,
+    required this.regular,
+    required this.otherStatuses,
   });
 }
 
@@ -117,6 +127,9 @@ class AdvisingOverviewStatsService {
         classification.externalAdvisorsWithOurStudents.length +
         classification.ourAdvisorsWithExternalStudents.length;
 
+    final regular = total + classification.newStudents.length;
+    final allStudents = regular + classification.dismissedStudents.length;
+
     return AdvisingOverviewStats(
       total: total,
       assigned: classification.studentsCorrectlyAssigned.length,
@@ -124,6 +137,9 @@ class AdvisingOverviewStatsService {
       withoutAdvisor: classification.studentsWithoutAdvisor.length,
       wrongAdvisor: classification.studentsWithWrongDeptAdvisor.length,
       wrongAdvisorWithDisability: wrongAdvisorWithDisability,
+      allStudents: allStudents,
+      regular: regular,
+      otherStatuses: classification.dismissedStudents.length,
     );
   }
 }
