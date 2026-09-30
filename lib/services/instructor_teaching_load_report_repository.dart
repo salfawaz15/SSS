@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../models/course_section_record.dart';
 import '../models/instructor_teaching_load_report.dart';
 
 /// يخزّن تقارير "جدول المحاضرين" الرسمية (عمادة القبول والتسجيل) - مصدر
@@ -87,5 +88,72 @@ class InstructorTeachingLoadReportRepository {
       totals[name.trim()] = (totals[name.trim()] ?? 0) + total.round();
     }
     return totals;
+  }
+
+  /// يحوّل صفوف "جدول المحاضرين" الرسمي إلى نفس شكل [CourseSectionRecord]
+  /// (تصميم جدول "الحويّة" القديم) - مصدر واحد مشترك لهذا التحويل تحديدًا
+  /// (سليمان صراحةً 2026-09-30: القاعة تظهر خطأً كرقم منسوب بتطبيق الجوال
+  /// لأنه كان يقرأ `courseSchedules` مباشرة بلا اعتماد هذا التقرير الأدق أصلاً
+  /// - كان مكرَّرًا فقط بشاشة الموقع `course_schedule_admin_screen.dart`،
+  /// استُخرِج هنا ليُستخدَم بالموقع والتطبيق معًا بلا ازدواج). نظري/عملي
+  /// يُدمَجان بقاعدة "شعبة العملي = شعبة النظري + 1".
+  static List<CourseSectionRecord> recordsFromReports(List<InstructorTeachingLoadReport> reports) {
+    final allCourses = [for (final r in reports) ...r.courses];
+    final byCourseCode = <String, List<TeachingLoadCourseRow>>{};
+    for (final c in allCourses) {
+      byCourseCode.putIfAbsent(c.courseCode, () => []).add(c);
+    }
+
+    final records = <CourseSectionRecord>[];
+    for (final group in byCourseCode.values) {
+      final theoryRows = group.where((c) => !c.activity.contains('عملي')).toList();
+      final practicalRows = group.where((c) => c.activity.contains('عملي')).toList();
+      final usedPractical = <TeachingLoadCourseRow>{};
+
+      for (final theory in theoryRows) {
+        final theorySectionNum = int.tryParse(theory.section.trim());
+        TeachingLoadCourseRow? practical;
+        if (theorySectionNum != null) {
+          for (final p in practicalRows) {
+            if (usedPractical.contains(p)) continue;
+            if (int.tryParse(p.section.trim()) == theorySectionNum + 1) {
+              practical = p;
+              break;
+            }
+          }
+        }
+        if (practical != null) usedPractical.add(practical);
+
+        records.add(CourseSectionRecord(
+          courseCode: theory.courseCode,
+          courseName: theory.courseName,
+          sequence: 0,
+          theorySection: theory.section,
+          practicalSection: practical?.section,
+          meetings: theory.meetings,
+          practicalMeetings: practical?.meetings ?? const [],
+          instructorName: theory.courseName,
+          practicalInstructorName: practical != null ? theory.courseName : null,
+          theoryHours: theory.load.round(),
+          practicalHours: practical?.load.round() ?? 0,
+          theoryActivityLabel: theory.activity.trim().isEmpty || theory.activity.contains('نظري') ? null : theory.activity.trim(),
+        ));
+      }
+
+      // صفوف عملي بلا نظري مطابِق (نادر) - تبقى مستقلة بدل إسقاطها.
+      for (final p in practicalRows) {
+        if (usedPractical.contains(p)) continue;
+        records.add(CourseSectionRecord(
+          courseCode: p.courseCode,
+          courseName: p.courseName,
+          sequence: 0,
+          theorySection: p.section,
+          meetings: p.meetings,
+          theoryHours: p.load.round(),
+          theoryActivityLabel: 'عملي',
+        ));
+      }
+    }
+    return records;
   }
 }

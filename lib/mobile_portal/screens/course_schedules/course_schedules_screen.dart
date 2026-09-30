@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../../data/course_catalog.dart';
 import '../../../models/course_section_record.dart';
+import '../../../models/instructor_teaching_load_report.dart';
 import '../../../services/course_schedule_repository.dart';
+import '../../../services/instructor_teaching_load_report_repository.dart';
 import '../../theme/portal_theme.dart';
 import '../../widgets/mobile_empty_state.dart';
 import '../../widgets/mobile_error_state.dart';
@@ -279,30 +281,61 @@ class _InstructorScheduleList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // كل شعبة (مادة) يظهر منها فقط الجزء الذي يُدرّسه هذا المحاضر تحديدًا -
-    // قد يكون نظري فقط، عملي فقط، أو كلاهما لو كان محاضر الجزأين معًا.
-    final courses = records.where((r) => r.instructorName == name || r.practicalInstructorName == name).toList();
-    courses.sort((a, b) => a.courseName.compareTo(b.courseName));
+    // يُفضَّل مصدر "جدول المحاضرين" الرسمي (عمادة القبول والتسجيل) إن وُجد
+    // لهذا العضو - أدق وأشمل من "الحويّة" (نفس منطق شاشة الموقع
+    // course_schedule_admin_screen.dart حرفيًا)، ويُستخدَم "الحويّة" فقط
+    // احتياطيًا إن لم يُرفَع بعد تقرير رسمي له - بطلب سليمان صراحةً
+    // (2026-09-30): كانت القاعة تظهر خطأً كرقم منسوب بالتطبيق لأنه كان يعرض
+    // "الحويّة" فقط بلا اعتماد هذا التقرير الأدق إطلاقًا.
+    return FutureBuilder<List<InstructorTeachingLoadReport>>(
+      future: InstructorTeachingLoadReportRepository.forInstructorName(name),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final officialReports = snapshot.data ?? const <InstructorTeachingLoadReport>[];
+        final useOfficial = officialReports.isNotEmpty;
+        final effectiveRecords = useOfficial ? InstructorTeachingLoadReportRepository.recordsFromReports(officialReports) : records;
 
-    // مجموعات: (اسم المادة، صفوف مواعيدها [النوع/اليوم/الوقت/القاعة]).
-    // عمود "المقرر" الآن Row جانبي (لا خلية Table عادية) يتمدَّد بارتفاع كل
-    // صفوف مادته فيتوسّط رأسيًا حقًا مقابل المجموعة كاملة - بطلب سليمان
-    // صراحةً (2026-08-24: "لا يظهر في متوسط الخلية... اجعله في المنتصف")،
-    // فـ`Table` العادي لا يدعم دمج خلايا رأسيًا (rowspan) أصلًا.
-    final groups = <(String course, String section, List<(String type, String day, String time, String room)> meetings)>[];
-    for (final course in courses) {
-      final meetings = <(String type, String day, String time, String room)>[
-        if (course.instructorName == name)
-          for (final m in course.meetings) ('نظري', m.dayName, '${m.from}\n${m.to}', m.room.isEmpty ? '-' : m.room),
-        if (course.practicalInstructorName == name)
-          for (final m in course.practicalMeetings) ('عملي', m.dayName, '${m.from}\n${m.to}', m.room.isEmpty ? '-' : m.room),
-      ];
-      // رقم الشعبة المعروض تحت اسم المقرر هو رقم الشعبة النظرية دائمًا (هي
-      // ما يُسجَّله الطالب فعليًا) حتى لو كان المحاضر يُدرّس العملي فقط لهذه
-      // الشعبة - بطلب سليمان صراحةً (2026-08-24).
-      if (meetings.isNotEmpty) groups.add((course.courseName, course.theorySection, meetings));
-    }
+        // كل شعبة (مادة) يظهر منها فقط الجزء الذي يُدرّسه هذا المحاضر تحديدًا
+        // - قد يكون نظري فقط، عملي فقط، أو كلاهما لو كان محاضر الجزأين معًا.
+        // سجلات المصدر الرسمي مُستعلَمة أصلاً باسم هذا المحاضر تحديدًا
+        // (forInstructorName) فلا حاجة لفلترة اسم إضافية عليها (حقل
+        // instructorName بها يحمل اسم المقرر لا اسم المحاضر - انظر
+        // recordsFromReports).
+        final courses = useOfficial
+            ? effectiveRecords
+            : effectiveRecords.where((r) => r.instructorName == name || r.practicalInstructorName == name).toList();
+        courses.sort((a, b) => a.courseName.compareTo(b.courseName));
 
+        // مجموعات: (اسم المادة، صفوف مواعيدها [النوع/اليوم/الوقت/القاعة]).
+        // عمود "المقرر" الآن Row جانبي (لا خلية Table عادية) يتمدَّد بارتفاع
+        // كل صفوف مادته فيتوسّط رأسيًا حقًا مقابل المجموعة كاملة - بطلب
+        // سليمان صراحةً (2026-08-24: "لا يظهر في متوسط الخلية... اجعله في
+        // المنتصف")، فـ`Table` العادي لا يدعم دمج خلايا رأسيًا (rowspan) أصلاً.
+        final groups = <(String course, String section, List<(String type, String day, String time, String room)> meetings)>[];
+        for (final course in courses) {
+          final meetings = <(String type, String day, String time, String room)>[
+            if (useOfficial || course.instructorName == name)
+              for (final m in course.meetings) ('نظري', m.dayName, '${m.from}\n${m.to}', m.room.isEmpty ? '-' : m.room),
+            if (useOfficial ? course.practicalSection != null : course.practicalInstructorName == name)
+              for (final m in course.practicalMeetings) ('عملي', m.dayName, '${m.from}\n${m.to}', m.room.isEmpty ? '-' : m.room),
+          ];
+          // رقم الشعبة المعروض تحت اسم المقرر هو رقم الشعبة النظرية دائمًا (هي
+          // ما يُسجَّله الطالب فعليًا) حتى لو كان المحاضر يُدرّس العملي فقط
+          // لهذه الشعبة - بطلب سليمان صراحةً (2026-08-24).
+          if (meetings.isNotEmpty) groups.add((course.courseName, course.theorySection, meetings));
+        }
+
+        return _instructorScheduleBody(context, groups);
+      },
+    );
+  }
+
+  Widget _instructorScheduleBody(
+    BuildContext context,
+    List<(String course, String section, List<(String type, String day, String time, String room)> meetings)> groups,
+  ) {
     return ListView(
       padding: const EdgeInsets.fromLTRB(AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.lg),
       children: [
